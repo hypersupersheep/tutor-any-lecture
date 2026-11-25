@@ -5,11 +5,14 @@ import re
 import shutil
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 import pytest
 from packaging.version import Version
 
+from tools.build_skill_zip import build_zip, skill_folders
+from tools.build_skill_zip import main as zip_main
 from tools.release_check import check, main, semver_to_pep440
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -367,6 +370,91 @@ def test_changelog_entry_for_this_version(tmp_path, capsys):
 
 
 def test_release_tools_use_only_the_standard_library():
-    for name in ("release_check.py",):
+    for name in ("release_check.py", "build_skill_zip.py"):
         for module in imported_top_names(ROOT / "tools" / name):
             assert module in sys.stdlib_module_names, f"{name} imports {module}"
+
+
+# ---- Z1 to Z3: one upload-ready ZIP per skill folder ----
+
+def write_skill_tree(root: Path) -> Path:
+    demo = root / "skills" / "demo"
+    for rel, data in (
+        ("SKILL.md", b"---\nname: demo\n---\n# Demo\n"),
+        ("scripts/run.sh", b"#!/usr/bin/env bash\necho demo\n"),
+        ("references/课程 资料.md", "# 资料\n".encode("utf-8")),
+        ("__pycache__/x.pyc", b"\x00\x01"),
+        (".DS_Store", b"\x00"),
+    ):
+        path = demo / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    empty = root / "skills" / "empty"
+    empty.mkdir(parents=True)
+    (empty / "notes.md").write_text("no skill here\n", encoding="utf-8", newline="\n")
+    return root
+
+
+def test_zip_holds_the_skill_folder_at_the_top(tmp_path):
+    tree = write_skill_tree(tmp_path / "tree")
+    folders = skill_folders(tree)
+    assert [f.name for f in folders] == ["demo"]
+    out = tmp_path / "out"
+    out.mkdir()
+    built = [build_zip(f, out) for f in folders]
+    assert built == [out / "demo.zip"]
+    assert sorted(p.name for p in out.iterdir()) == ["demo.zip"]
+    with zipfile.ZipFile(out / "demo.zip") as zf:
+        assert zf.namelist() == ["demo/SKILL.md", "demo/references/课程 资料.md", "demo/scripts/run.sh"]
+
+
+def test_repository_zips_are_upload_ready(tmp_path):
+    folders = skill_folders(ROOT)
+    assert "tutor-any-lecture" in [f.name for f in folders]
+    for folder in folders:
+        build_zip(folder, tmp_path)
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted(f.name + ".zip" for f in folders)
+    with zipfile.ZipFile(tmp_path / "tutor-any-lecture.zip") as zf:
+        names = zf.namelist()
+        assert all(name.startswith("tutor-any-lecture/") for name in names)
+        for name in ("tutor-any-lecture/SKILL.md", "tutor-any-lecture/VERSION", "tutor-any-lecture/scripts/install.sh"):
+            assert name in names
+        assert zf.read("tutor-any-lecture/SKILL.md") == (ROOT / "skills" / "tutor-any-lecture" / "SKILL.md").read_bytes()
+
+
+def test_zip_bytes_are_reproducible(tmp_path):
+    tree = write_skill_tree(tmp_path / "tree")
+    first, second = tmp_path / "one", tmp_path / "two"
+    first.mkdir()
+    second.mkdir()
+    folder = tree / "skills" / "demo"
+    build_zip(folder, first)
+    build_zip(folder, second)
+    assert (first / "demo.zip").read_bytes() == (second / "demo.zip").read_bytes()
+    with zipfile.ZipFile(first / "demo.zip") as zf:
+        infos = {info.filename: info for info in zf.infolist()}
+    assert all(info.date_time == (1980, 1, 1, 0, 0, 0) for info in infos.values())
+    assert (infos["demo/scripts/run.sh"].external_attr >> 16) & 0o777 == 0o755
+    assert (infos["demo/SKILL.md"].external_attr >> 16) & 0o777 == 0o644
+
+
+def test_zip_cli_prints_the_paths(tmp_path, capsys):
+    tree = write_skill_tree(tmp_path / "tree")
+    out = tmp_path / "dist" / "new"
+    (tree / "skills" / "second").mkdir()
+    (tree / "skills" / "second" / "SKILL.md").write_text("# Second\n", encoding="utf-8", newline="\n")
+    assert zip_main(["--out", str(out), "--root", str(tree)]) == 0
+    printed = json.loads(capsys.readouterr().out)
+    assert printed == {"paths": [str(out / "demo.zip"), str(out / "second.zip")]}
+    assert (out / "demo.zip").is_file() and (out / "second.zip").is_file()
+    # a second run replaces the files of the same name
+    assert zip_main(["--out", str(out), "--root", str(tree)]) == 0
+    assert json.loads(capsys.readouterr().out) == printed
+
+
+def test_zip_cli_without_skills_exits_1(tmp_path, capsys):
+    (tmp_path / "skills" / "empty").mkdir(parents=True)
+    assert zip_main(["--out", str(tmp_path / "dist"), "--root", str(tmp_path)]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.splitlines() == [f"no skill folder with a SKILL.md under {tmp_path / 'skills'}"]
