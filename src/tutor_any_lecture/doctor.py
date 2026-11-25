@@ -197,12 +197,75 @@ def check_asr_model() -> tuple:
     return False, f"{model} is not cached", _MODEL_FIX
 
 
+def check_command() -> tuple[bool, str]:
+    """Reachable the way SKILL.md calls it: the bare name on PATH, else the path in cli-path."""
+    from .config import config_dir
+
+    found = shutil.which("tutor-any-lecture")
+    if found:
+        return True, f"on PATH: {found}"
+    record = config_dir() / "cli-path"
+    if not record.is_file():
+        return False, f"not on PATH and no {record}"
+    lines = record.read_text(encoding="utf-8").splitlines()
+    path = lines[0].strip() if lines else ""
+    if not path:
+        return False, "cli-path is empty"
+    if Path(path).is_file():
+        return True, f"cli-path: {path}"
+    return False, f"cli-path names {path}, which does not exist"
+
+
+# A release id (the skill's VERSION): X.Y.Z, X.Y.Z-dev.N or X.Y.Z-rc.N, no leading zeros.
+_NUM = r"(0|[1-9][0-9]*)"
+_RELEASE_ID_RE = re.compile(rf"{_NUM}\.{_NUM}\.{_NUM}(?:-(dev|rc)\.{_NUM})?")
+
+
+def _pep440(release_id: str) -> str | None:
+    """The PEP 440 twin of a release id (X.Y.Z-dev.N -> X.Y.Z.devN, X.Y.Z-rc.N -> X.Y.ZrcN),
+    or None when ``release_id`` is not one."""
+    m = _RELEASE_ID_RE.fullmatch(release_id)
+    if m is None:
+        return None
+    base = ".".join(m.group(1, 2, 3))
+    if m.group(4) is None:
+        return base
+    return f"{base}.dev{m.group(5)}" if m.group(4) == "dev" else f"{base}rc{m.group(5)}"
+
+
+# The skill folder that ``run_doctor`` was given, for the length of that call only.
+_skill: Path | None = None
+
+
+def check_skill_version() -> tuple[bool, str]:
+    """Do this command and the skill folder that calls it carry the same release?"""
+    skill = _skill
+    if skill is None:
+        return True, "not compared (pass --skill <skill folder>)"
+    version_file = skill / "VERSION"
+    if not version_file.is_file():
+        return False, f"no VERSION file in {skill}"
+    release_id = version_file.read_text(encoding="utf-8").strip()
+    twin = _pep440(release_id)
+    # __version__ is looked up at call time, so a test can patch it.
+    if release_id == __version__ or (twin is not None and twin == __version__):
+        return True, f"{release_id} (command {__version__})"
+    if twin is not None:
+        return False, f"skill {release_id}, command {__version__}"
+    return False, f"VERSION holds '{release_id}', which is not a release id"
+
+
 # Speech recognition is an optional extra: a machine without it is still ready.
 _ASR_FIX = (
     "Optional: needed only for audio or video without captions. "
     "Run the installer again with --with-asr (Windows: -WithAsr)."
 )
 _MODEL_FIX = "Optional: the model downloads once, on the first transcription."
+_COMMAND_FIX = "Optional: run the installer again; it records the command's full path in cli-path."
+_SKILL_FIX = (
+    "Optional: the command and this skill differ; "
+    "reinstall the command with the skill's installer and --cli-only (Windows: -CliOnly)."
+)
 
 CHECKS: list[Check] = [
     Check("python", True, check_python,
@@ -221,23 +284,35 @@ CHECKS: list[Check] = [
           "it is used only for rendered outputs."),
     Check("asr_backend", False, check_asr_backend, _ASR_FIX),
     Check("asr_model", False, check_asr_model, _ASR_FIX),
+    Check("command", False, check_command, _COMMAND_FIX),
+    Check("skill_version", False, check_skill_version, _SKILL_FIX),
 ]
 
 
-def run_doctor() -> dict:
-    """Run every check in ``CHECKS`` (read at call time). Never raises."""
-    checks = []
-    ready = True
-    for c in CHECKS:
-        fix = c.fix
-        try:
-            result = c.fn()
-            ok, detail = bool(result[0]), result[1]
-            if len(result) > 2:  # the check named a fix more specific than its default
-                fix = result[2]
-        except Exception as e:
-            ok, detail = False, f"{type(e).__name__}: {e}"
-        checks.append({"name": c.name, "ok": ok, "detail": detail, "fix": "" if ok else fix})
-        if c.required and not ok:
-            ready = False
-    return {"ready": ready, "checks": checks, "version": __version__}
+def run_doctor(skill: Path | None = None) -> dict:
+    """Run every check in ``CHECKS`` (read at call time). Never raises.
+
+    ``skill`` is the skill folder whose VERSION ``skill_version`` compares with this
+    command's version; it is kept in a module-level value for the length of the call,
+    so every check stays a function of no arguments.
+    """
+    global _skill
+    _skill = Path(skill) if skill is not None else None
+    try:
+        checks = []
+        ready = True
+        for c in CHECKS:
+            fix = c.fix
+            try:
+                result = c.fn()
+                ok, detail = bool(result[0]), result[1]
+                if len(result) > 2:  # the check named a fix more specific than its default
+                    fix = result[2]
+            except Exception as e:
+                ok, detail = False, f"{type(e).__name__}: {e}"
+            checks.append({"name": c.name, "ok": ok, "detail": detail, "fix": "" if ok else fix})
+            if c.required and not ok:
+                ready = False
+        return {"ready": ready, "checks": checks, "version": __version__}
+    finally:
+        _skill = None

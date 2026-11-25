@@ -2,6 +2,7 @@ import dataclasses
 import importlib
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import PurePosixPath, PureWindowsPath
@@ -14,10 +15,13 @@ from tutor_any_lecture.config import config_dir
 from tutor_any_lecture.doctor import run_doctor
 
 REQUIRED = ["python", "ffmpeg", "yt_dlp", "config_dir"]
-OPTIONAL = ["js_runtime", "browser", "asr_backend", "asr_model"]
+OPTIONAL = ["js_runtime", "browser", "asr_backend", "asr_model", "command", "skill_version"]
 ASR_FIX = ("Optional: needed only for audio or video without captions. "
            "Run the installer again with --with-asr (Windows: -WithAsr).")
 MODEL_FIX = "Optional: the model downloads once, on the first transcription."
+COMMAND_FIX = "Optional: run the installer again; it records the command's full path in cli-path."
+SKILL_FIX = ("Optional: the command and this skill differ; reinstall the command with the skill's "
+             "installer and --cli-only (Windows: -CliOnly).")
 
 
 def patch_checks(monkeypatch, required, optional=True):
@@ -104,7 +108,7 @@ def test_text_output(monkeypatch, capsys):
     patch_checks(monkeypatch, required=True, optional=False)
     assert main(["doctor"]) == 0
     lines = capsys.readouterr().out.splitlines()
-    assert len(lines) == 14
+    assert len(lines) == 18
     assert lines[0] == f"tutor-any-lecture {__version__}"
     assert "[ok] python: patched" in lines
     i = lines.index("[warn] browser: patched")
@@ -115,7 +119,7 @@ def test_text_output(monkeypatch, capsys):
     patch_checks(monkeypatch, required=False)
     assert main(["doctor"]) == 3
     lines = capsys.readouterr().out.splitlines()
-    assert len(lines) == 14
+    assert len(lines) == 16
     j = lines.index("[FAIL] python: patched")
     assert lines[j + 1].startswith("  fix: ") and "Optional" not in lines[j + 1]
     assert "[ok] browser: patched" in lines
@@ -312,3 +316,95 @@ def test_model_fix_text_depends_on_the_backend(monkeypatch, tmp_cfg):
     monkeypatch.setattr(asr, "_installed", lambda module: False)
     by_name = {c["name"]: c for c in run_doctor()["checks"]}
     assert [by_name[n]["fix"] for n in ("asr_backend", "asr_model")] == [ASR_FIX, ASR_FIX]
+
+
+# --- the command and the skill ---
+
+
+def by_name(report):
+    return {c["name"]: c for c in report["checks"]}
+
+
+def test_command_reachable_on_path_or_through_cli_path(monkeypatch, tmp_cfg, tmp_path):
+    stand_in = tmp_path / "课程 资料" / "tutor-any-lecture"
+    stand_in.parent.mkdir()
+    stand_in.write_bytes(b"")
+    stand_in.chmod(0o755)
+    real_which = shutil.which
+    on_path = {"answer": str(stand_in)}
+
+    def which(name, *args, **kwargs):
+        if name == "tutor-any-lecture":
+            return on_path["answer"]
+        return real_which(name, *args, **kwargs)
+
+    monkeypatch.setattr(doctor.shutil, "which", which)
+    record = config_dir() / "cli-path"
+
+    def command_entry():
+        entry = by_name(run_doctor())["command"]
+        return entry["ok"], entry["detail"], entry["fix"]
+
+    assert command_entry() == (True, f"on PATH: {stand_in}", "")
+
+    on_path["answer"] = None
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text(f"{stand_in}\r\n", encoding="utf-8", newline="")
+    assert command_entry() == (True, f"cli-path: {stand_in}", "")
+
+    record.write_text("", encoding="utf-8", newline="\n")
+    assert command_entry() == (False, "cli-path is empty", COMMAND_FIX)
+
+    missing = tmp_path / "课程 资料" / "gone"
+    record.write_text(f"{missing}\n", encoding="utf-8", newline="\n")
+    assert command_entry() == (False, f"cli-path names {missing}, which does not exist", COMMAND_FIX)
+
+    record.unlink()
+    assert command_entry() == (False, f"not on PATH and no {config_dir() / 'cli-path'}", COMMAND_FIX)
+
+
+def skill_folder(tmp_path, version):
+    """A skill folder under a path with a space and CJK characters, with VERSION (or none)."""
+    skill = tmp_path / "课程 资料" / "tutor-any-lecture"
+    skill.mkdir(parents=True)
+    if version is not None:
+        (skill / "VERSION").write_text(version + "\n", encoding="utf-8", newline="\n")
+    return skill
+
+
+@pytest.mark.parametrize(
+    "version, command, ok, detail",
+    [
+        ("2.0.0-dev.0", "2.0.0.dev0", True, "2.0.0-dev.0 (command 2.0.0.dev0)"),
+        ("2.0.0-rc.1", "2.0.0rc1", True, "2.0.0-rc.1 (command 2.0.0rc1)"),
+        ("2.0.0", "2.0.0", True, "2.0.0 (command 2.0.0)"),
+        ("2.0.0.dev0", "2.0.0.dev0", True, "2.0.0.dev0 (command 2.0.0.dev0)"),
+        ("2.0.0-rc.1", "2.0.0.dev0", False, "skill 2.0.0-rc.1, command 2.0.0.dev0"),
+        ("banana", "2.0.0", False, "VERSION holds 'banana', which is not a release id"),
+        (None, "2.0.0", False, "no VERSION file in {skill}"),
+    ],
+)
+def test_skill_version_compares_both_spellings(monkeypatch, tmp_cfg, tmp_path, version, command, ok, detail):
+    skill = skill_folder(tmp_path, version)
+    monkeypatch.setattr(doctor, "__version__", command)
+    monkeypatch.setattr(doctor, "CHECKS", [c for c in doctor.CHECKS if c.name == "skill_version"])
+    entry = run_doctor(skill=skill)["checks"][0]
+    assert (entry["name"], entry["ok"], entry["detail"]) == ("skill_version", ok, detail.format(skill=skill))
+    assert entry["fix"] == ("" if ok else SKILL_FIX)
+
+
+def test_skill_version_not_compared_without_a_skill(monkeypatch, tmp_cfg, tmp_path):
+    skill = skill_folder(tmp_path, "banana")
+    monkeypatch.setattr(doctor, "CHECKS", [c for c in doctor.CHECKS if c.name == "skill_version"])
+    assert run_doctor(skill=skill)["checks"][0]["ok"] is False
+    assert run_doctor()["checks"] == [
+        {"name": "skill_version", "ok": True, "detail": "not compared (pass --skill <skill folder>)", "fix": ""}
+    ]
+
+
+def test_cli_doctor_takes_a_skill_folder(tmp_cfg, tmp_path, capsys):
+    skill = skill_folder(tmp_path, "9.9.9")
+    assert main(["doctor", "--json", "--skill", str(skill)]) == 0
+    entry = by_name(json.loads(capsys.readouterr().out))["skill_version"]
+    assert entry["ok"] is False
+    assert entry["detail"] == f"skill 9.9.9, command {__version__}"

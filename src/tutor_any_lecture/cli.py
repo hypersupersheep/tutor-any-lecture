@@ -125,7 +125,7 @@ def _cmd_profile_set(args) -> int:
 def _cmd_doctor(args) -> int:
     from . import doctor
 
-    report = doctor.run_doctor()
+    report = doctor.run_doctor(skill=args.skill)
     if args.json:
         _print_json(report)
     else:
@@ -521,6 +521,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     doc = sub.add_parser("doctor", help="check that this machine is ready to run the tool")
     doc.add_argument("--json", action="store_true", help="print the report as one JSON line")
+    doc.add_argument("--skill", type=_path, default=None, metavar="DIR",
+                     help="the skill folder whose VERSION this command's version is compared with")
     doc.set_defaults(func=_cmd_doctor)
     acquire = sub.add_parser("acquire", help="get a lecture's transcript into a unit folder")
     acquire_sub = acquire.add_subparsers(dest="acquire_command")
