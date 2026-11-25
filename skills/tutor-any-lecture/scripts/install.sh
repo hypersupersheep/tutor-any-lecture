@@ -10,7 +10,8 @@
 set -u
 unset CDPATH
 
-GITHUB_SOURCE="git+https://github.com/hypersupersheep/tutor-any-lecture"
+REPO_URL="https://github.com/hypersupersheep/tutor-any-lecture"
+GITHUB_SOURCE="git+$REPO_URL"
 
 usage() {
   cat <<'EOF'
@@ -30,7 +31,8 @@ Installs the tutor-any-lecture command-line tool, records its full path in
                     (default: each of them whose home folder exists)
   --from PATH|URL   what to install, passed unchanged to uv or pip
                     (default: this checkout, else the GitHub repository at the
-                    tag v<VERSION>, VERSION being the file in the skill folder)
+                    release tag v<VERSION>, VERSION being the file in the skill
+                    folder, else its default branch for a development VERSION)
   -h, --help        show this text and exit
 
 Exit codes: 0 ready, 1 failed or cancelled, 2 bad option, 3 needs action.
@@ -147,19 +149,58 @@ if [ -f "$SKILL_SRC/VERSION" ]; then
   IFS= read -r VERSION <"$SKILL_SRC/VERSION" || true
   VERSION="${VERSION//[[:space:]]/}"
 fi
+
+# names_this_project FILE succeeds when FILE is a pyproject.toml whose [project]
+# table holds name = "tutor-any-lecture". Pure bash: each line is compared with
+# its spaces, tabs and a trailing CR removed; the table ends at the next "[".
+TAB="$(printf '\t')"
+CR="$(printf '\r')"
+names_this_project() {
+  local line in_project=0
+  [ -f "$1" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$CR}"
+    line="${line//[ $TAB]/}"
+    case "$line" in
+      "[project]") in_project=1 ;;
+      "["*) in_project=0 ;;
+      "name=\"tutor-any-lecture\"" | "name='tutor-any-lecture'")
+        if [ "$in_project" -eq 1 ]; then
+          return 0
+        fi
+        ;;
+    esac
+  done <"$1"
+  return 1
+}
+
+# SOURCE_KIND says where FROM came from: from (--from), checkout, tag (a release
+# id in VERSION), dev (a development id, never tagged) or none (no release id).
+# A number is 0 or has no leading zero, and letter case counts.
+NUM='(0|[1-9][0-9]*)'
+TAGGED_RE="^$NUM\\.$NUM\\.$NUM(-rc\\.$NUM)?\$"
+DEV_RE="^$NUM\\.$NUM\\.$NUM-dev\\.$NUM\$"
+SOURCE_KIND="from"
 if [ "$FROM_SET" -eq 0 ]; then
-  if [ -f "$D/../../../pyproject.toml" ]; then
+  if names_this_project "$D/../../../pyproject.toml"; then
     FROM="$(cd -- "$D/../../.." && pwd -P)" || die "install.sh: cannot find the repository folder" 1
-  elif [ -n "$VERSION" ]; then
+    SOURCE_KIND="checkout"
+  elif [[ $VERSION =~ $TAGGED_RE ]]; then
     FROM="$GITHUB_SOURCE@v$VERSION"
+    SOURCE_KIND="tag"
+  elif [[ $VERSION =~ $DEV_RE ]]; then
+    FROM="$GITHUB_SOURCE"
+    SOURCE_KIND="dev"
   else
     FROM="$GITHUB_SOURCE"
+    SOURCE_KIND="none"
   fi
 fi
 
+GIT=""
 case "$FROM" in
   git+*)
-    if ! find_tool git >/dev/null; then
+    if ! GIT="$(find_tool git)"; then
       if [ "$OS_NAME" = "Darwin" ]; then
         how="get it with 'xcode-select --install' or 'brew install git'"
       else
@@ -268,6 +309,20 @@ EOF
   exit 3
 fi
 
+# ---- the release tag -------------------------------------------------------
+# A release tag that cannot be fetched ends the script here, in the dry run too,
+# before any plan line. GitHub answers 401 for a missing repository; the empty
+# credential.helper drops every configured helper, and the two variables turn off
+# git's terminal prompt and any Credential Manager prompt, so nothing asks to sign in.
+check_release_tag() {
+  [ "$SOURCE_KIND" = "tag" ] || return 0
+  if ! GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never "$GIT" -c credential.helper= \
+    ls-remote --exit-code --tags "$REPO_URL" "refs/tags/v$VERSION" >/dev/null 2>&1; then
+    die "install.sh: the release tag v$VERSION could not be fetched from $REPO_URL (it is missing, or GitHub cannot be reached); check the network and run this installer again, or pass --from <a checkout or an unpacked download>" 3
+  fi
+}
+check_release_tag
+
 # ---- paths (joined from the environment, never resolved) -------------------
 CFG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/tutor-any-lecture"
 CLI_PATH_FILE="$CFG_DIR/cli-path"
@@ -279,7 +334,28 @@ CLI=""
 # The dry run, the confirmation prompt and the real run all go through these
 # functions, so the printed plan and the real run cannot drift apart.
 
-# The two optional flags, as the plan's first lines.
+# Where a skill copy installs from when that is the default branch: the plan's
+# first line, and the real run's first line.
+source_note() {
+  case "$SOURCE_KIND" in
+    dev)
+      if [ "$1" = "plan" ]; then
+        say "PLAN: install from the default branch (VERSION $VERSION is a development version, which is never tagged)"
+      else
+        say "Installing from the default branch: VERSION $VERSION is a development version, which is never tagged."
+      fi
+      ;;
+    none)
+      if [ "$1" = "plan" ]; then
+        say "PLAN: install from the default branch (the skill folder has no release id in VERSION)"
+      else
+        say "Installing from the default branch: the skill folder has no release id in VERSION."
+      fi
+      ;;
+  esac
+}
+
+# The two optional flags, as the plan's next lines.
 plan_options() {
   if [ "$WITH_ASR" -eq 1 ]; then
     say "PLAN: --with-asr on (speech recognition is installed)"
@@ -379,6 +455,7 @@ plan_doctor() {
 }
 
 print_plan() {
+  source_note plan
   plan_options
   install_cli plan
   write_cli_path plan
@@ -408,6 +485,7 @@ if [ "$YES" -eq 0 ] && [ -t 0 ]; then
 fi
 
 # ---- real run --------------------------------------------------------------
+source_note run
 install_cli run
 write_cli_path run
 copy_skills run

@@ -18,7 +18,8 @@
 #                    (default: each of them whose home folder exists)
 #   -From PATH|URL   what to install, passed unchanged to uv or pip
 #                    (default: this checkout, else the GitHub repository at the
-#                    tag v<VERSION>, VERSION being the file in the skill folder)
+#                    release tag v<VERSION>, VERSION being the file in the skill
+#                    folder, else its default branch for a development VERSION)
 #
 # Exit codes: 0 ready, 1 failed or cancelled, 2 bad option, 3 needs action.
 [CmdletBinding(PositionalBinding = $false)]
@@ -34,7 +35,8 @@ param(
     [string[]]$Rest
 )
 $ErrorActionPreference = 'Stop'
-$GitHubSource = 'git+https://github.com/hypersupersheep/tutor-any-lecture'
+$RepoUrl = 'https://github.com/hypersupersheep/tutor-any-lecture'
+$GitHubSource = 'git+' + $RepoUrl
 
 function Say([string]$Message) {
     [Console]::Out.WriteLine($Message)
@@ -77,24 +79,68 @@ $VersionFile = Join-Path $SkillSrc 'VERSION'
 if (Test-Path -LiteralPath $VersionFile -PathType Leaf) {
     $Version = ([System.IO.File]::ReadAllText($VersionFile, (New-Object System.Text.UTF8Encoding($false)))).Trim()
 }
+# True when the file is a pyproject.toml whose [project] table holds
+# name = "tutor-any-lecture". It is read as UTF-8; each line is compared with its
+# spaces, tabs and a trailing CR removed, and the table ends at the next '['.
+function Test-NamesThisProject([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return $false
+    }
+    try {
+        $text = [System.IO.File]::ReadAllText($Path, (New-Object System.Text.UTF8Encoding($false)))
+    } catch {
+        return $false
+    }
+    $inProject = $false
+    foreach ($raw in $text.Split("`n")) {
+        $line = $raw
+        if ($line.EndsWith("`r")) {
+            $line = $line.Substring(0, $line.Length - 1)
+        }
+        $line = $line.Replace(' ', '').Replace("`t", '')
+        if ($line -ceq '[project]') {
+            $inProject = $true
+        } elseif ($line.StartsWith('[')) {
+            $inProject = $false
+        } elseif ($inProject -and (($line -ceq 'name="tutor-any-lecture"') -or ($line -ceq "name='tutor-any-lecture'"))) {
+            return $true
+        }
+    }
+    return $false
+}
+
+# $SourceKind says where $From came from: from (-From), checkout, tag (a release
+# id in VERSION), dev (a development id, never tagged) or none (no release id).
+# A number is 0 or has no leading zero, and letter case counts (-cmatch).
+$Num = '(0|[1-9][0-9]*)'
+$TaggedPattern = '^' + $Num + '\.' + $Num + '\.' + $Num + '(-rc\.' + $Num + ')?$'
+$DevPattern = '^' + $Num + '\.' + $Num + '\.' + $Num + '-dev\.' + $Num + '$'
+$SourceKind = 'from'
 if ($PSBoundParameters.ContainsKey('From')) {
     if ([string]::IsNullOrEmpty($From)) {
         Fail 'install.ps1: -From needs a path or URL.' 2
     }
+} elseif (Test-NamesThisProject (Join-Path $D '../../../pyproject.toml')) {
+    $From = [System.IO.Path]::GetFullPath((Join-Path $D '../../..'))
+    $SourceKind = 'checkout'
+} elseif ($Version -cmatch $TaggedPattern) {
+    $From = $GitHubSource + '@v' + $Version
+    $SourceKind = 'tag'
+} elseif ($Version -cmatch $DevPattern) {
+    $From = $GitHubSource
+    $SourceKind = 'dev'
 } else {
-    if (Test-Path -LiteralPath (Join-Path $D '../../../pyproject.toml') -PathType Leaf) {
-        $From = [System.IO.Path]::GetFullPath((Join-Path $D '../../..'))
-    } elseif ($Version -ne '') {
-        $From = $GitHubSource + '@v' + $Version
-    } else {
-        $From = $GitHubSource
-    }
+    $From = $GitHubSource
+    $SourceKind = 'none'
 }
 
+$GitExe = ''
 if ($From -like 'git+*') {
-    if (-not (Get-Command 'git' -CommandType Application -ErrorAction SilentlyContinue)) {
+    $gitCommand = Get-Command 'git' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $gitCommand) {
         Fail "install.ps1: installing from $From needs git, which was not found; get it with 'winget install Git.Git', or pass -From <a checkout or an unpacked download>." 3
     }
+    $GitExe = $gitCommand.Path
 }
 
 # The file:// URL of an absolute path (C:\..., \\server\share\... or /...), each
@@ -197,6 +243,47 @@ if ($Method -eq '') {
     exit 3
 }
 
+# ---- the release tag -------------------------------------------------------
+# A release tag that cannot be fetched ends the script here, in the dry run too,
+# before any plan line. GitHub answers 401 for a missing repository, and Git
+# Credential Manager would then open a sign-in window: the empty credential.helper
+# drops every configured helper, and the two variables turn off git's terminal
+# prompt and any Credential Manager prompt. They are set in this process, which is
+# the caller's session under .\install.ps1, so each one's earlier value is put back
+# (or the variable removed) as soon as git returns.
+# Put an environment variable back to a saved value; $null removes it.
+# ($Value has no type, so $null stays $null instead of becoming ''.)
+function Restore-EnvVar([string]$Name, $Value) {
+    if ($null -eq $Value) {
+        Remove-Item -LiteralPath ('Env:' + $Name) -ErrorAction SilentlyContinue
+    } else {
+        Set-Item -LiteralPath ('Env:' + $Name) -Value $Value
+    }
+}
+
+function Test-ReleaseTag {
+    if ($SourceKind -ne 'tag') {
+        return
+    }
+    $ErrorActionPreference = 'Continue'
+    $savedPrompt = [Environment]::GetEnvironmentVariable('GIT_TERMINAL_PROMPT')
+    $savedGcm = [Environment]::GetEnvironmentVariable('GCM_INTERACTIVE')
+    $code = 1
+    try {
+        $env:GIT_TERMINAL_PROMPT = '0'
+        $env:GCM_INTERACTIVE = 'never'
+        & $GitExe -c 'credential.helper=' ls-remote --exit-code --tags $RepoUrl ('refs/tags/v' + $Version) *> $null
+        $code = $LASTEXITCODE
+    } finally {
+        Restore-EnvVar 'GIT_TERMINAL_PROMPT' $savedPrompt
+        Restore-EnvVar 'GCM_INTERACTIVE' $savedGcm
+    }
+    if ($code -ne 0) {
+        Fail ('install.ps1: the release tag v' + $Version + ' could not be fetched from ' + $RepoUrl + ' (it is missing, or GitHub cannot be reached); check the network and run this installer again, or pass -From <a checkout or an unpacked download>.') 3
+    }
+}
+Test-ReleaseTag
+
 # ---- paths (joined from the environment, never resolved) -------------------
 $AppData = $env:APPDATA
 if ([string]::IsNullOrEmpty($AppData)) {
@@ -216,7 +303,25 @@ $script:Cli = ''
 # The dry run, the confirmation prompt and the real run all go through these
 # functions, so the printed plan and the real run cannot drift apart.
 
-# The two optional flags, as the plan's first lines.
+# Where a skill copy installs from when that is the default branch: the plan's
+# first line, and the real run's first line.
+function Show-SourceNote([string]$Mode) {
+    if ($SourceKind -eq 'dev') {
+        if ($Mode -eq 'plan') {
+            Say ('PLAN: install from the default branch (VERSION ' + $Version + ' is a development version, which is never tagged)')
+        } else {
+            Say ('Installing from the default branch: VERSION ' + $Version + ' is a development version, which is never tagged.')
+        }
+    } elseif ($SourceKind -eq 'none') {
+        if ($Mode -eq 'plan') {
+            Say 'PLAN: install from the default branch (the skill folder has no release id in VERSION)'
+        } else {
+            Say 'Installing from the default branch: the skill folder has no release id in VERSION.'
+        }
+    }
+}
+
+# The two optional flags, as the plan's next lines.
 function Show-Options {
     if ($WithAsr) {
         Say 'PLAN: -WithAsr on (speech recognition is installed)'
@@ -364,6 +469,7 @@ function Copy-Skills([string]$Mode) {
 }
 
 function Show-Plan {
+    Show-SourceNote 'plan'
     Show-Options
     Install-Cli 'plan'
     Write-CliPath 'plan'
@@ -393,6 +499,7 @@ if ((-not $Yes) -and (-not [Console]::IsInputRedirected)) {
 }
 
 # ---- real run --------------------------------------------------------------
+Show-SourceNote 'run'
 Install-Cli 'run'
 Write-CliPath 'run'
 Copy-Skills 'run'

@@ -1,3 +1,4 @@
+import itertools
 import os
 import re
 import shutil
@@ -11,7 +12,6 @@ import pytest
 from tutor_any_lecture.config import config_dir
 
 ROOT = Path(__file__).resolve().parents[1]
-RELEASE_ID = (ROOT / "skills" / "tutor-any-lecture" / "VERSION").read_text(encoding="utf-8").strip()
 CANON = Path("skills/tutor-any-lecture/scripts")
 SH_FILES = [Path("install.sh"), CANON / "install.sh"]
 PS1_FILES = [Path("install.ps1"), CANON / "install.ps1"]
@@ -183,6 +183,94 @@ def copied_skill(tmp_path):
     return dest
 
 
+def fake_tool(folder, name, sh_body, cmd_body):
+    """A stand-in program: a #!/bin/sh script (mode 0o755), or a .cmd file on Windows."""
+    folder.mkdir(parents=True, exist_ok=True)
+    if sys.platform == "win32":
+        path = folder / f"{name}.cmd"
+        path.write_text("@echo off\r\n" + cmd_body + "\r\n", encoding="utf-8", newline="")
+    else:
+        path = folder / name
+        path.write_text("#!/bin/sh\n" + sh_body + "\n", encoding="utf-8", newline="\n")
+        path.chmod(0o755)
+    return path
+
+
+def fake_git(folder, log, code):
+    """A git that logs $GIT_TERMINAL_PROMPT $GCM_INTERACTIVE and its arguments, then exits ``code``."""
+    return fake_tool(
+        folder,
+        "git",
+        f"printf '%s\\n' \"$GIT_TERMINAL_PROMPT $GCM_INTERACTIVE $*\" >> '{log}'\nexit {code}",
+        f'>>"{log}" echo %GIT_TERMINAL_PROMPT% %GCM_INTERACTIVE% %*\r\nexit /b {code}',
+    )
+
+
+def with_fakes(env, folder):
+    """``env`` with ``folder`` first on PATH."""
+    env = dict(env)
+    env["PATH"] = str(folder) + os.pathsep + env["PATH"]
+    return env
+
+
+def write_version(skill, version):
+    """Write VERSION into a skill copy, or remove it when ``version`` is None."""
+    if version is None:
+        (skill / "VERSION").unlink()
+    else:
+        (skill / "VERSION").write_text(version + "\n", encoding="utf-8", newline="\n")
+
+
+REPO_URL = "https://github.com/hypersupersheep/tutor-any-lecture"
+# VERSION as written into a skill copy -> the release tag it installs from (None: the default branch).
+VERSION_CASES = {
+    "2.0.0": "2.0.0",
+    "2.0.0-rc.1": "2.0.0-rc.1",
+    "2.0.0-dev.0": None,
+    "2.0.0.dev0": None,
+    "02.0.0": None,
+    "2.0.0-RC.1": None,
+    None: None,
+}
+NO_RELEASE_ID = "PLAN: install from the default branch (the skill folder has no release id in VERSION)"
+
+
+def ls_remote_log(tag):
+    return f"0 never -c credential.helper= ls-remote --exit-code --tags {REPO_URL} refs/tags/v{tag}"
+
+
+def assert_source_follows_version(proc, version, log):
+    assert proc.returncode == 0, proc.stderr
+    tag = VERSION_CASES[version]
+    branch = [ln for ln in (proc.stdout + proc.stderr).splitlines() if "default branch" in ln]
+    if tag is not None:
+        assert f'"{GIT_SOURCE}@v{tag}"' in proc.stdout
+        assert branch == []
+        assert log.read_text(encoding="utf-8").splitlines() == [ls_remote_log(tag)]
+        return
+    assert f'"{GIT_SOURCE}"' in proc.stdout
+    assert "@v" not in proc.stdout
+    if version == "2.0.0-dev.0":
+        expected = (
+            "PLAN: install from the default branch "
+            "(VERSION 2.0.0-dev.0 is a development version, which is never tagged)"
+        )
+    else:
+        expected = NO_RELEASE_ID
+    assert branch == [expected]
+    assert not log.exists()
+
+
+# pyproject.toml bytes beside a copied skills/ folder -> whether that folder is the checkout.
+PYPROJECTS = [
+    pytest.param(b'[project]\r\nname = "tutor-any-lecture"\r\n', True, id="this-project-crlf"),
+    pytest.param(b'[project]\nname = "other-project"\n', False, id="other-project"),
+    pytest.param(
+        b'[tool.x]\nname = "tutor-any-lecture"\n[project]\nname = "other"\n', False, id="name-in-another-table"
+    ),
+]
+
+
 def test_ps1_files_are_ascii_for_windows_powershell():
     # Windows PowerShell 5.1 reads a script without a BOM in the ANSI code page.
     for path in PS1_FILES:
@@ -214,6 +302,16 @@ def test_ps1_declares_the_new_flags():
         assert "[switch]$WithAsr" in text and "[switch]$CliOnly" in text, path
     canonical = (ROOT / CANON / "install.ps1").read_text(encoding="utf-8")
     assert "#   -WithAsr" in canonical and "#   -CliOnly" in canonical
+    header = "\n".join(itertools.takewhile(lambda line: line.startswith("#"), canonical.splitlines()))
+    assert "default branch" in header
+
+
+def test_installers_carry_the_real_run_lines():
+    for name in ("install.sh", "install.ps1"):
+        text = (ROOT / CANON / name).read_text(encoding="utf-8")
+        assert "Installing from the default branch: VERSION " in text, name
+        assert "Installing from the default branch: the skill folder has no release id in VERSION." in text, name
+
 
 # ---- install.sh ---------------------------------------------------------------
 
@@ -256,6 +354,7 @@ def test_sh_help_names_the_new_flags(tmp_path):
     proc = run_rc(sh("--help"), home(tmp_path))
     assert proc.returncode == 0
     assert "--with-asr" in proc.stdout and "--cli-only" in proc.stdout
+    assert "default branch" in proc.stdout
 
 
 @needs_bash
@@ -328,15 +427,47 @@ def test_sh_missing_git_for_git_source_exits_3(tmp_path):
 
 
 @needs_bash
-@pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
-def test_sh_git_fallback_installs_the_version_tag(tmp_path):
+@pytest.mark.parametrize("version", list(VERSION_CASES), ids=lambda v: v or "no-VERSION")
+def test_sh_skill_copy_source_follows_version(tmp_path, version):
     skill = copied_skill(tmp_path)
-    proc = run_rc(
-        ["bash", str(skill / "scripts" / "install.sh"), "--dry-run", "--with-asr"],
-        home(tmp_path / "h"),
-    )
+    write_version(skill, version)
+    log = tmp_path / "git.log"
+    fake_git(tmp_path / "fakes", log, 0)
+    env = with_fakes(home(tmp_path / "h"), tmp_path / "fakes")
+    proc = run_rc(["bash", str(skill / "scripts" / "install.sh"), "--dry-run"], env)
+    assert_source_follows_version(proc, version, log)
+
+
+@needs_bash
+def test_sh_missing_tag_ends_in_one_line(tmp_path):
+    skill = copied_skill(tmp_path)
+    write_version(skill, "2.0.0-rc.1")
+    fake_git(tmp_path / "fakes", tmp_path / "git.log", 2)
+    env = with_fakes(home(tmp_path / "h"), tmp_path / "fakes")
+    proc = run_rc(["bash", str(skill / "scripts" / "install.sh"), "--dry-run"], env)
+    assert proc.returncode == 3
+    lines = proc.stderr.strip().splitlines()
+    assert len(lines) == 1
+    assert "v2.0.0-rc.1" in lines[0] and "--from" in lines[0]
+    assert "PLAN:" not in proc.stdout
+
+
+@needs_bash
+@pytest.mark.parametrize("pyproject, is_checkout", PYPROJECTS)
+def test_sh_checkout_must_name_this_project(tmp_path, pyproject, is_checkout):
+    skill = copied_skill(tmp_path)
+    write_version(skill, "2.0.0-dev.0")
+    checkout = skill.parents[1]
+    (checkout / "pyproject.toml").write_bytes(pyproject)
+    fake_git(tmp_path / "fakes", tmp_path / "git.log", 0)
+    env = with_fakes(home(tmp_path / "h"), tmp_path / "fakes")
+    proc = run_rc(["bash", str(skill / "scripts" / "install.sh"), "--dry-run"], env)
     assert proc.returncode == 0, proc.stderr
-    assert f"tutor-any-lecture[asr] @ {GIT_SOURCE}@v{RELEASE_ID}" in proc.stdout
+    if is_checkout:
+        assert f'"{checkout.resolve()}"' in proc.stdout
+        assert GIT_SOURCE not in proc.stdout
+    else:
+        assert f'"{GIT_SOURCE}"' in proc.stdout
 
 
 # ---- install.ps1 --------------------------------------------------------------
@@ -435,15 +566,70 @@ def test_ps1_missing_git_for_git_source_exits_3(tmp_path):
 
 
 @needs_ps
-@pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
-def test_ps1_git_fallback_installs_the_version_tag(tmp_path):
+@pytest.mark.parametrize("version", list(VERSION_CASES), ids=lambda v: v or "no-VERSION")
+def test_ps1_skill_copy_source_follows_version(tmp_path, version):
     skill = copied_skill(tmp_path)
-    proc = run_rc(
-        ps("-DryRun", "-WithAsr", script=skill / "scripts" / "install.ps1"),
-        home(tmp_path / "h"),
+    write_version(skill, version)
+    log = tmp_path / "git.log"
+    fake_git(tmp_path / "fakes", log, 0)
+    env = with_fakes(home(tmp_path / "h"), tmp_path / "fakes")
+    proc = run_rc(ps("-DryRun", script=skill / "scripts" / "install.ps1"), env)
+    assert_source_follows_version(proc, version, log)
+
+
+@needs_ps
+def test_ps1_missing_tag_ends_in_one_line(tmp_path):
+    skill = copied_skill(tmp_path)
+    write_version(skill, "2.0.0-rc.1")
+    fake_git(tmp_path / "fakes", tmp_path / "git.log", 2)
+    env = with_fakes(home(tmp_path / "h"), tmp_path / "fakes")
+    proc = run_rc(ps("-DryRun", script=skill / "scripts" / "install.ps1"), env)
+    assert proc.returncode == 3
+    lines = proc.stderr.strip().splitlines()
+    assert len(lines) == 1
+    assert "v2.0.0-rc.1" in lines[0] and "-From" in lines[0]
+    assert "PLAN:" not in proc.stdout
+
+
+@needs_ps
+def test_ps1_puts_back_what_it_changed(tmp_path):
+    skill = copied_skill(tmp_path)
+    write_version(skill, "2.0.0")
+    fake_git(tmp_path / "fakes", tmp_path / "git.log", 0)
+    env = with_fakes(home(tmp_path / "h"), tmp_path / "fakes")
+    script = str(skill / "scripts" / "install.ps1").replace("'", "''")
+    driver = tmp_path / "driver.ps1"
+    driver.write_text(
+        "\ufeff"
+        "$env:GIT_TERMINAL_PROMPT = '1'\n"
+        "Remove-Item -LiteralPath Env:GCM_INTERACTIVE -ErrorAction SilentlyContinue\n"
+        "$before = [Console]::OutputEncoding.CodePage\n"
+        f"& '{script}' -DryRun\n"
+        "$same = ($before -eq [Console]::OutputEncoding.CodePage)\n"
+        "[Console]::Out.WriteLine('[' + $env:GIT_TERMINAL_PROMPT + '][' + $env:GCM_INTERACTIVE + '][' + $same + ']')\n",
+        encoding="utf-8",
+        newline="\n",
     )
+    proc = run_rc(ps(script=driver), env)
+    assert proc.stdout.splitlines()[-1] == "[1][][True]", proc.stderr
+
+
+@needs_ps
+@pytest.mark.parametrize("pyproject, is_checkout", PYPROJECTS)
+def test_ps1_checkout_must_name_this_project(tmp_path, pyproject, is_checkout):
+    skill = copied_skill(tmp_path)
+    write_version(skill, "2.0.0-dev.0")
+    checkout = skill.parents[1]
+    (checkout / "pyproject.toml").write_bytes(pyproject)
+    fake_git(tmp_path / "fakes", tmp_path / "git.log", 0)
+    env = with_fakes(home(tmp_path / "h"), tmp_path / "fakes")
+    proc = run_rc(ps("-DryRun", script=skill / "scripts" / "install.ps1"), env)
     assert proc.returncode == 0, proc.stderr
-    assert f"tutor-any-lecture[asr] @ {GIT_SOURCE}@v{RELEASE_ID}" in proc.stdout
+    if is_checkout:
+        assert f'"{checkout}"' in proc.stdout
+        assert GIT_SOURCE not in proc.stdout
+    else:
+        assert f'"{GIT_SOURCE}"' in proc.stdout
 
 
 # ---- packaging ------------------------------------------------------------------
