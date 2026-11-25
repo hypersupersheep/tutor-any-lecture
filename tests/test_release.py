@@ -458,3 +458,74 @@ def test_zip_cli_without_skills_exits_1(tmp_path, capsys):
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err.splitlines() == [f"no skill folder with a SKILL.md under {tmp_path / 'skills'}"]
+
+
+# ---- R1 and R2: the release workflow ----
+
+def load_workflow(name: str) -> dict:
+    import yaml
+
+    return yaml.safe_load((ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8"))
+
+
+def trigger(workflow: dict):
+    # PyYAML reads the key `on` as True.
+    return workflow.get("on", workflow.get(True))
+
+
+def runs(job: dict) -> list[str]:
+    return [step["run"] for step in job.get("steps", []) if "run" in step]
+
+
+def test_release_workflow_runs_only_on_version_tags():
+    assert trigger(load_workflow("release.yml")) == {"push": {"tags": ["v*"]}}
+
+
+def test_only_the_publish_job_may_write():
+    wf = load_workflow("release.yml")
+    assert wf["permissions"] == {"contents": "read"}
+    for name, job in wf["jobs"].items():
+        if name == "publish":
+            assert job["permissions"] == {"contents": "write"}
+        else:
+            assert "permissions" not in job, name
+
+
+def test_ci_can_be_called_by_the_release():
+    on = trigger(load_workflow("ci.yml"))
+    assert "workflow_call" in on
+    assert "push" in on and "pull_request" in on
+
+
+def test_release_workflow_checks_identity_and_main_first():
+    check_job = load_workflow("release.yml")["jobs"]["check"]
+    assert "needs" not in check_job
+    assert check_job["runs-on"] == "ubuntu-latest"
+    checkout = next(s for s in check_job["steps"] if s.get("uses") == "actions/checkout@v4")
+    assert checkout["with"]["fetch-depth"] == 0
+    setup = next(s for s in check_job["steps"] if s.get("uses") == "actions/setup-python@v5")
+    assert str(setup["with"]["python-version"]) == "3.12"
+    commands = "\n".join(runs(check_job))
+    assert "git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main" in commands
+    assert 'tools/release_check.py --tag "$GITHUB_REF_NAME" --on origin/main' in commands
+
+
+def test_release_workflow_runs_the_ci_workflow():
+    test_job = load_workflow("release.yml")["jobs"]["test"]
+    assert test_job["uses"] == "./.github/workflows/ci.yml"
+    assert test_job["needs"] == "check"
+
+
+def test_release_workflow_publishes_after_check_and_tests():
+    text = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    publish = load_workflow("release.yml")["jobs"]["publish"]
+    assert publish["needs"] == ["check", "test"]
+    commands = runs(publish)
+    joined = "\n".join(commands)
+    assert '--notes "$RUNNER_TEMP/notes.md"' in joined
+    assert "tools/build_skill_zip.py --out dist" in joined
+    release = [c for c in commands if "gh release create" in c]
+    assert len(release) == 1
+    for part in ("dist/*.zip", "--verify-tag", '--notes-file "$RUNNER_TEMP/notes.md"', "--prerelease"):
+        assert part in release[0], part
+    assert "secrets." not in text

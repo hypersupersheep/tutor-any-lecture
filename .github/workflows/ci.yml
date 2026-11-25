@@ -3,6 +3,7 @@ name: ci
 on:
   push:
   pull_request:
+  workflow_call:
 
 # No job installs the asr extra: doctor must report ready without speech recognition.
 
