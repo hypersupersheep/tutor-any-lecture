@@ -8,10 +8,10 @@ from urllib.parse import quote
 
 import pytest
 
-from tutor_any_lecture import __version__
 from tutor_any_lecture.config import config_dir
 
 ROOT = Path(__file__).resolve().parents[1]
+RELEASE_ID = (ROOT / "skills" / "tutor-any-lecture" / "VERSION").read_text(encoding="utf-8").strip()
 CANON = Path("skills/tutor-any-lecture/scripts")
 SH_FILES = [Path("install.sh"), CANON / "install.sh"]
 PS1_FILES = [Path("install.ps1"), CANON / "install.ps1"]
@@ -183,11 +183,6 @@ def copied_skill(tmp_path):
     return dest
 
 
-def test_version_file_matches_the_package():
-    version = ROOT / "skills" / "tutor-any-lecture" / "VERSION"
-    assert version.read_text(encoding="utf-8") == __version__ + "\n"
-
-
 def test_ps1_files_are_ascii_for_windows_powershell():
     # Windows PowerShell 5.1 reads a script without a BOM in the ANSI code page.
     for path in PS1_FILES:
@@ -341,7 +336,7 @@ def test_sh_git_fallback_installs_the_version_tag(tmp_path):
         home(tmp_path / "h"),
     )
     assert proc.returncode == 0, proc.stderr
-    assert f"tutor-any-lecture[asr] @ {GIT_SOURCE}@v{__version__}" in proc.stdout
+    assert f"tutor-any-lecture[asr] @ {GIT_SOURCE}@v{RELEASE_ID}" in proc.stdout
 
 
 # ---- install.ps1 --------------------------------------------------------------
@@ -448,7 +443,7 @@ def test_ps1_git_fallback_installs_the_version_tag(tmp_path):
         home(tmp_path / "h"),
     )
     assert proc.returncode == 0, proc.stderr
-    assert f"tutor-any-lecture[asr] @ {GIT_SOURCE}@v{__version__}" in proc.stdout
+    assert f"tutor-any-lecture[asr] @ {GIT_SOURCE}@v{RELEASE_ID}" in proc.stdout
 
 
 # ---- packaging ------------------------------------------------------------------

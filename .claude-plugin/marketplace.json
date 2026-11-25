@@ -4,11 +4,14 @@
   "owner": {
     "name": "Chenyang Sun"
   },
+  "metadata": {
+    "version": "2.0.0-dev.0"
+  },
   "plugins": [
     {
       "name": "tutor-any-lecture",
       "description": "Turn any lecture video, recording or slide deck into a tutor: pretest, cited explanation, graded quiz, Anki review",
-      "version": "2.0.0-dev",
+      "version": "2.0.0-dev.0",
       "homepage": "https://github.com/hypersupersheep/tutor-any-lecture",
       "repository": "https://github.com/hypersupersheep/tutor-any-lecture",
       "source": "./",

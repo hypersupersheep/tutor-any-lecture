@@ -1,6 +1,7 @@
 # tests/test_release.py
 import ast
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -339,6 +340,30 @@ def test_check_runs_as_a_plain_script(tmp_path):
     )
     assert proc.returncode == 0, proc.stderr
     assert json.loads(proc.stdout)["release_id"] == "2.0.0-rc.1"
+
+
+# ---- V7 and C1: today's id and its CHANGELOG entry ----
+
+def repository_release_id() -> str:
+    return (ROOT / "skills" / "tutor-any-lecture" / "VERSION").read_text(encoding="utf-8").strip()
+
+
+def test_repository_release_identity_agrees():
+    import tutor_any_lecture
+
+    assert check(ROOT) == []
+    assert tutor_any_lecture.__version__ == semver_to_pep440(repository_release_id())
+
+
+def test_changelog_entry_for_this_version(tmp_path, capsys):
+    notes_file = tmp_path / "notes.md"
+    assert main(["--root", str(ROOT), "--notes", str(notes_file)]) == 0
+    capsys.readouterr()
+    notes = notes_file.read_text(encoding="utf-8")
+    bullets = [line for line in notes.splitlines() if line.startswith("- ")]
+    assert 5 <= len(bullets) <= 9
+    for pattern in (r"\bM[12][a-c]?\b", "TBD", "later version", "next version", "coming soon"):
+        assert not re.search(pattern, notes, re.IGNORECASE), pattern
 
 
 def test_release_tools_use_only_the_standard_library():

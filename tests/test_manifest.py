@@ -11,7 +11,8 @@ def test_plugin_and_marketplace_use_new_name():
     assert plugin["name"] == "tutor-any-lecture"
     assert market["name"] == "tutor-any-lecture"
     assert market["plugins"][0]["name"] == "tutor-any-lecture"
-    assert plugin["version"] == "2.0.0-dev"
+    version = (ROOT / "skills" / "tutor-any-lecture" / "VERSION").read_text(encoding="utf-8").strip()
+    assert plugin["version"] == version
     assert market["plugins"][0]["version"] == plugin["version"]
     assert market["plugins"][0]["description"] == plugin["description"]
 

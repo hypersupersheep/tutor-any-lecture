@@ -1,7 +1,7 @@
 {
   "name": "tutor-any-lecture",
   "description": "Turn any lecture video, recording or slide deck into a tutor: pretest, cited explanation, graded quiz, Anki review",
-  "version": "2.0.0-dev",
+  "version": "2.0.0-dev.0",
   "author": {
     "name": "Chenyang Sun"
   },
