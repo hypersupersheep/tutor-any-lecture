@@ -277,3 +277,22 @@ def test_guardrail_leaves_audio_to_the_learner():
     references = sorted((SKILL.parent / "references").rglob("*"))
     for path in (p for p in references if p.is_file()):
         assert "downloads are disabled" not in read(path), path
+
+
+def step0_section() -> str:
+    """SKILL.md's Step 0: from its heading to the next H2."""
+    lines = read(SKILL).splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith("## Step 0"))
+    end = next(i for i in range(start + 1, len(lines)) if lines[i].startswith("## "))
+    return "\n".join(lines[start:end])
+
+
+def test_step0_compares_versions_and_names_the_selftest_line():
+    step0 = step0_section()
+    for s in (
+        "doctor --json --skill '<skill folder>'",
+        "`skill_version`",
+        "second-to-last stdout line",
+        "the last stdout line is the selftest command",
+    ):
+        assert s in step0, s

@@ -5,6 +5,9 @@ import shutil
 from pathlib import Path
 from importlib import resources
 
+import pytest
+
+from tutor_any_lecture import doctor
 from tutor_any_lecture.cli import main
 from tutor_any_lecture.selftest import run_selftest
 
@@ -19,7 +22,7 @@ def test_selftest_passes():
     assert run_selftest()["ok"] is True
 
 
-def test_selftest_keep_leaves_unit(tmp_path):
+def test_selftest_keep_leaves_unit(tmp_path, tmp_cfg):
     unit = tmp_path / "unit"
     assert main(["selftest", "--keep", str(unit)]) == 0
     assert (unit / "verify.json").exists()
@@ -117,7 +120,7 @@ def test_selftest_stops_at_the_first_failing_step(monkeypatch, tmp_path):
     assert not (tmp_path / "unit" / "verify.json").exists()
 
 
-def test_selftest_reports_the_exception_name(monkeypatch, tmp_path):
+def test_selftest_reports_the_exception_name(monkeypatch, tmp_path, tmp_cfg):
     fail_cards_export(monkeypatch)
     assert run_selftest(tmp_path / "unit")["steps"][-1]["detail"] == "RuntimeError: boom"
     assert main(["selftest"]) == 1
@@ -146,3 +149,44 @@ def test_selftest_ignores_cleanup_errors(monkeypatch):
     shutil.rmtree(refused[0])
     assert result["ok"] is True
     assert [s["name"] for s in result["steps"]] == STEP_NAMES
+
+
+# ---- the doctor line ----
+
+
+def doctor_report(ready, failing=()):
+    """A doctor report: python ok, and each (name, fix) in ``failing`` not ok."""
+    checks = [{"name": "python", "ok": True, "detail": "3.12", "fix": ""}]
+    checks += [{"name": name, "ok": False, "detail": "not found", "fix": fix} for name, fix in failing]
+    return {"ready": ready, "checks": checks, "version": "0.0.0"}
+
+
+@pytest.mark.parametrize(
+    "report, line",
+    [
+        pytest.param(
+            doctor_report(False, [("ffmpeg", "Reinstall tutor-any-lecture."), ("browser", "Optional: install Chrome.")]),
+            "doctor: not ready; required not ok: ffmpeg; optional not ok: browser",
+            id="required-and-optional",
+        ),
+        pytest.param(doctor_report(True), "doctor: ready", id="all-ok"),
+    ],
+)
+def test_selftest_prints_one_doctor_line(monkeypatch, tmp_path, capsys, report, line):
+    monkeypatch.setattr(doctor, "run_doctor", lambda: report)
+    unit = tmp_path / "unit"
+    assert main(["selftest", "--keep", str(unit)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert [ln for ln in lines if ln.startswith("doctor:")] == [line]
+    i = lines.index(line)
+    assert lines[i - 1].startswith("ok    verify: ")
+    assert lines[i + 1] == f"unit folder: {unit}"
+
+
+def test_selftest_doctor_line_keeps_the_failing_exit_code(monkeypatch, capsys):
+    fail_cards_export(monkeypatch)
+    monkeypatch.setattr(doctor, "run_doctor", lambda: doctor_report(True))
+    assert main(["selftest"]) == 1
+    lines = capsys.readouterr().out.splitlines()
+    assert "doctor: ready" in lines
+    assert lines[-1] == "doctor: ready"

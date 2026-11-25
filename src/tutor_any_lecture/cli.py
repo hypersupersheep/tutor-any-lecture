@@ -462,12 +462,25 @@ def _cmd_verify(args) -> int:
 
 
 def _cmd_selftest(args) -> int:
+    from . import doctor
     from .selftest import run_selftest
 
     # A non-empty --keep folder raises FileExistsError, which main maps to EXIT_ACTION.
     result = run_selftest(Path(args.keep)) if args.keep is not None else run_selftest()
     for step in result["steps"]:
         print(f"{'ok' if step['ok'] else 'FAIL':<4}  {step['name']}: {step['detail']}")
+    # doctor's view in one line, the failing checks split by kind; the exit code
+    # still comes from the steps alone.
+    report = doctor.run_doctor()
+    failing = [c for c in report["checks"] if not c["ok"]]
+    required = [c["name"] for c in failing if not c["fix"].startswith("Optional: ")]
+    optional = [c["name"] for c in failing if c["fix"].startswith("Optional: ")]
+    line = "doctor: " + ("ready" if report["ready"] else "not ready")
+    if required:
+        line += "; required not ok: " + ", ".join(required)
+    if optional:
+        line += "; optional not ok: " + ", ".join(optional)
+    print(line)
     if args.keep is not None:
         print(f"unit folder: {Path(args.keep)}")
     return EXIT_OK if result["ok"] else EXIT_FAIL

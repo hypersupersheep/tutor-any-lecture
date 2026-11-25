@@ -536,6 +536,14 @@ def test_sh_plan_ends_with_the_selftest_command(tmp_path, method):
     assert shlex.split(last[len(prefix):]) == [cli, "selftest"]
 
 
+@needs_bash
+def test_sh_plan_asks_doctor_about_this_skill(tmp_path):
+    proc = run_rc(sh("--dry-run"), home(tmp_path))
+    assert proc.returncode == 0, proc.stderr
+    skill = (ROOT / "skills" / "tutor-any-lecture").resolve()
+    assert f'PLAN: run tutor-any-lecture doctor --json --skill "{skill}"' in proc.stdout.splitlines()
+
+
 # ---- install.ps1 --------------------------------------------------------------
 
 
@@ -750,6 +758,14 @@ def test_ps1_plan_ends_with_the_selftest_command(tmp_path, method):
     local = env.get("LOCALAPPDATA") or str(home_dir) + "\\AppData\\Local"
     cli = local + "\\tutor-any-lecture\\venv\\Scripts\\tutor-any-lecture.exe"
     assert last == prefix + "& '" + cli.replace("'", "''") + "' selftest"
+
+
+@needs_ps
+def test_ps1_plan_asks_doctor_about_this_skill(tmp_path):
+    proc = run_rc(ps("-DryRun"), home(tmp_path))
+    assert proc.returncode == 0, proc.stderr
+    skill = ROOT / "skills" / "tutor-any-lecture"
+    assert f'PLAN: run tutor-any-lecture doctor --json --skill "{skill}"' in proc.stdout.splitlines()
 
 
 # ---- packaging ------------------------------------------------------------------

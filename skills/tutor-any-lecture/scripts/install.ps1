@@ -1,7 +1,8 @@
 # Installer for tutor-any-lecture on Windows.
 # It installs the command-line tool with uv (or, without uv, into a private venv),
 # records the tool's full path in <config dir>\cli-path, copies this skill folder
-# to your agents and runs `tutor-any-lecture doctor --json`.
+# to your agents, runs `tutor-any-lecture doctor --json --skill <this skill>` and
+# ends with the command that runs its selftest.
 # It never downloads a script to run it; uv or pip fetch the package itself.
 # Works in Windows PowerShell 5.1 and PowerShell 7.
 #
@@ -511,6 +512,12 @@ function Copy-Skills([string]$Mode) {
     }
 }
 
+# Step 6: doctor, asked about this skill folder (planned here; run by its full
+# path below).
+function Show-Doctor {
+    Say ('PLAN: run tutor-any-lecture doctor --json --skill "' + $SkillSrc + '"')
+}
+
 # The line that runs a CLI's selftest, for pasting into PowerShell: the call
 # operator and the path in single quotes, each single quote doubled (the curly
 # ones too, which PowerShell also reads as single quotes).
@@ -543,7 +550,7 @@ function Show-Plan {
     Install-Cli 'plan'
     Write-CliPath 'plan'
     Copy-Skills 'plan'
-    Say 'PLAN: run tutor-any-lecture doctor --json'
+    Show-Doctor
     Show-SelftestCommand 'plan'
 }
 
@@ -574,10 +581,16 @@ Install-Cli 'run'
 Write-CliPath 'run'
 Copy-Skills 'run'
 # Steps 6 and 7: run doctor by its full path; its JSON line is the second-to-last
-# stdout line, and its exit code (0 ready, 3 not ready) is ours.
+# stdout line, and its exit code (0 ready, 3 not ready) is ours. A command older
+# than --skill (installed with -From) exits 2 on it, so doctor runs once more
+# without it.
 $ErrorActionPreference = 'Continue'
-& $script:Cli doctor --json
+& $script:Cli doctor --json --skill $SkillSrc
 $code = $LASTEXITCODE
+if ($code -eq 2) {
+    & $script:Cli doctor --json
+    $code = $LASTEXITCODE
+}
 # Step 8: the selftest command, whatever doctor said.
 Show-SelftestCommand 'run'
 Exit-Installer $code

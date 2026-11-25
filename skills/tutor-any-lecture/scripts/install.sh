@@ -2,7 +2,8 @@
 # Installer for tutor-any-lecture on macOS and Linux.
 # It installs the command-line tool with uv (or, without uv, into a private venv),
 # records the tool's full path in <config dir>/cli-path, copies this skill folder
-# to your agents and runs `tutor-any-lecture doctor --json`.
+# to your agents, runs `tutor-any-lecture doctor --json --skill <this skill>` and
+# ends with the command that runs its selftest.
 # It never downloads a script to run it; uv or pip fetch the package itself.
 # Runs under bash 3.2 (the macOS system bash): no arrays, no bash 4 syntax.
 # On Windows (Git Bash, MSYS, Cygwin) it stops and prints the install.ps1 command.
@@ -464,9 +465,10 @@ copy_skills() {
   done
 }
 
-# Step 6: doctor (planned here; run by its full path below).
+# Step 6: doctor, asked about this skill folder (planned here; run by its full
+# path below).
 plan_doctor() {
-  say "PLAN: run tutor-any-lecture doctor --json"
+  say "PLAN: run tutor-any-lecture doctor --json --skill \"$SKILL_SRC\""
 }
 
 # selftest_command CLI prints the line that runs CLI's selftest, for pasting into
@@ -528,9 +530,15 @@ install_cli run
 write_cli_path run
 copy_skills run
 # Steps 6 and 7: run doctor by its full path; its JSON line is the second-to-last
-# stdout line, and its exit code (0 ready, 3 not ready) is ours.
-"$CLI" doctor --json
+# stdout line, and its exit code (0 ready, 3 not ready) is ours. A command older
+# than --skill (installed with --from) exits 2 on it, so doctor runs once more
+# without it.
+"$CLI" doctor --json --skill "$SKILL_SRC"
 code=$?
+if [ "$code" -eq 2 ]; then
+  "$CLI" doctor --json
+  code=$?
+fi
 # Step 8: the selftest command, whatever doctor said.
 print_selftest_command run
 exit "$code"
