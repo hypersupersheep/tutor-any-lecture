@@ -1,6 +1,7 @@
 import itertools
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -470,6 +471,71 @@ def test_sh_checkout_must_name_this_project(tmp_path, pyproject, is_checkout):
         assert f'"{GIT_SOURCE}"' in proc.stdout
 
 
+def canonical_sh():
+    """The repository's own install.sh, run by bash's full path: the checkout is the
+    source, so no git is needed, and PATH may leave bash out."""
+    return [shutil.which("bash"), str(ROOT / CANON / "install.sh"), "--dry-run"]
+
+
+def exits(code):
+    return f"exit {code}", f"exit /b {code}"
+
+
+@needs_bash
+@pytest.mark.parametrize("method", ["uv", "venv"])
+def test_sh_reinstall_always_rebuilds(tmp_path, method):
+    env = home(tmp_path / "h")
+    fakes = tmp_path / "fakes"
+    if method == "uv":
+        fake_tool(fakes, "uv", *exits(0))
+    else:
+        fake_tool(fakes, "python3", *exits(0))
+    env["PATH"] = str(fakes) + os.pathsep + str(tool_dir(tmp_path, "uname", "dirname"))
+    proc = run_rc(canonical_sh(), env)
+    assert proc.returncode == 0, proc.stderr
+    if method == "uv":
+        assert 'PLAN: uv tool install --force --reinstall "' in proc.stdout
+    else:
+        assert '-m pip install --upgrade --force-reinstall "' in proc.stdout
+
+
+@needs_bash
+def test_sh_python_without_venv_module_exits_3(tmp_path):
+    env = home(tmp_path / "h")
+    fakes = tmp_path / "fakes"
+    fake_tool(fakes, "python3", 'case "$*" in *ensurepip*) exit 1 ;; esac\nexit 0', "exit /b 0")
+    env["PATH"] = str(fakes) + os.pathsep + str(tool_dir(tmp_path, "uname", "dirname"))
+    proc = run_rc(canonical_sh(), env)
+    assert proc.returncode == 3
+    lines = proc.stderr.strip().splitlines()
+    assert len(lines) == 1
+    assert "python3-venv" in lines[0] and "uv" in lines[0]
+
+
+ODD_HOME = ("课程 资料", "it's")
+
+
+@needs_bash
+@pytest.mark.parametrize("method", ["venv", "uv"])
+def test_sh_plan_ends_with_the_selftest_command(tmp_path, method):
+    home_dir = tmp_path.joinpath(*ODD_HOME)
+    home_dir.mkdir(parents=True)
+    env = home(home_dir)
+    fakes = tmp_path / "fakes"
+    fake_tool(fakes, "python3" if method == "venv" else "uv", *exits(0))
+    env["PATH"] = str(fakes) + os.pathsep + str(tool_dir(tmp_path, "uname", "dirname"))
+    proc = run_rc(canonical_sh(), env)
+    assert proc.returncode == 0, proc.stderr
+    prefix = "PLAN: print the selftest command: "
+    last = proc.stdout.splitlines()[-1]
+    if method == "uv":
+        assert last == prefix + "'<uv tool bin folder>/tutor-any-lecture' selftest"
+        return
+    cli = f"{home_dir}/.tutor-any-lecture/venv/bin/tutor-any-lecture"
+    assert last == prefix + "'" + cli.replace("'", "'\\''") + "' selftest"
+    assert shlex.split(last[len(prefix):]) == [cli, "selftest"]
+
+
 # ---- install.ps1 --------------------------------------------------------------
 
 
@@ -630,6 +696,60 @@ def test_ps1_checkout_must_name_this_project(tmp_path, pyproject, is_checkout):
         assert GIT_SOURCE not in proc.stdout
     else:
         assert f'"{GIT_SOURCE}"' in proc.stdout
+
+
+def canonical_ps(*args):
+    """The repository's own install.ps1: the checkout is the source, so no git is needed."""
+    return ps(*args, script=ROOT / CANON / "install.ps1")
+
+
+@needs_ps
+@pytest.mark.parametrize("method", ["uv", "venv"])
+def test_ps1_reinstall_always_rebuilds(tmp_path, method):
+    env = home(tmp_path / "h")
+    fakes = tmp_path / "fakes"
+    fake_tool(fakes, "uv" if method == "uv" else "python", *exits(0))
+    env["PATH"] = str(fakes)
+    proc = run_rc(canonical_ps("-DryRun"), env)
+    assert proc.returncode == 0, proc.stderr
+    if method == "uv":
+        assert 'PLAN: uv tool install --force --reinstall "' in proc.stdout
+    else:
+        assert '-m pip install --upgrade --force-reinstall "' in proc.stdout
+
+
+@needs_ps
+def test_ps1_names_the_store_alias(tmp_path):
+    env = home(tmp_path / "h")
+    alias_dir = tmp_path / "Microsoft" / "WindowsApps"
+    fake_tool(alias_dir, "python", *exits(9009))
+    env["PATH"] = str(alias_dir)
+    proc = run_rc(canonical_ps("-DryRun"), env)
+    assert proc.returncode == 3
+    last = proc.stderr.strip().splitlines()[-1]
+    assert last.startswith("Note: the 'python' on PATH")
+    assert "Microsoft Store alias" in last
+
+
+@needs_ps
+@pytest.mark.parametrize("method", ["venv", "uv"])
+def test_ps1_plan_ends_with_the_selftest_command(tmp_path, method):
+    home_dir = tmp_path.joinpath(*ODD_HOME)
+    home_dir.mkdir(parents=True)
+    env = home(home_dir)
+    fakes = tmp_path / "fakes"
+    fake_tool(fakes, "python" if method == "venv" else "uv", *exits(0))
+    env["PATH"] = str(fakes)
+    proc = run_rc(canonical_ps("-DryRun"), env)
+    assert proc.returncode == 0, proc.stderr
+    prefix = "PLAN: print the selftest command: "
+    last = proc.stdout.splitlines()[-1]
+    if method == "uv":
+        assert last == prefix + "& '<uv tool bin folder>\\tutor-any-lecture.exe' selftest"
+        return
+    local = env.get("LOCALAPPDATA") or str(home_dir) + "\\AppData\\Local"
+    cli = local + "\\tutor-any-lecture\\venv\\Scripts\\tutor-any-lecture.exe"
+    assert last == prefix + "& '" + cli.replace("'", "''") + "' selftest"
 
 
 # ---- packaging ------------------------------------------------------------------

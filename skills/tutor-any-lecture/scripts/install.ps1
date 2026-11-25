@@ -38,13 +38,46 @@ $ErrorActionPreference = 'Stop'
 $RepoUrl = 'https://github.com/hypersupersheep/tutor-any-lecture'
 $GitHubSource = 'git+' + $RepoUrl
 
+# [Console]::Out writes in the console's code page (OEM by default), which would
+# turn a CJK path into '?'. Output is UTF-8 (no BOM) from the first line on, and
+# Exit-Installer, the only way out of this script, puts the earlier state back:
+# under .\install.ps1 this process is the caller's session.
+$script:SavedOutputEncoding = $null
+$script:SavedOut = $null
+try {
+    $script:SavedOutputEncoding = [Console]::OutputEncoding
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    [Console]::OutputEncoding = $utf8
+    # A redirected [Console]::Out made before this line keeps its old encoding, so
+    # it is replaced by a UTF-8 writer on the same stream for the length of the run.
+    if ([Console]::IsOutputRedirected -and ([Console]::Out.Encoding.CodePage -ne 65001)) {
+        $writer = New-Object System.IO.StreamWriter -ArgumentList @([Console]::OpenStandardOutput(), $utf8)
+        $writer.AutoFlush = $true
+        $script:SavedOut = [Console]::Out
+        [Console]::SetOut($writer)
+    }
+} catch { }
+
+function Exit-Installer([int]$Code) {
+    if ($null -ne $script:SavedOut) {
+        try {
+            [Console]::Out.Flush()
+            [Console]::SetOut($script:SavedOut)
+        } catch { }
+    }
+    if ($null -ne $script:SavedOutputEncoding) {
+        try { [Console]::OutputEncoding = $script:SavedOutputEncoding } catch { }
+    }
+    exit $Code
+}
+
 function Say([string]$Message) {
     [Console]::Out.WriteLine($Message)
 }
 
 function Fail([string]$Message, [int]$Code) {
     [Console]::Error.WriteLine($Message)
-    exit $Code
+    Exit-Installer $Code
 }
 
 # Run a native command with each argument passed separately; stop with exit 1
@@ -240,17 +273,18 @@ if ($Method -eq '') {
     [Console]::Error.WriteLine('  brew install uv   (macOS)')
     [Console]::Error.WriteLine('or follow https://docs.astral.sh/uv/getting-started/installation/')
     [Console]::Error.WriteLine('Then run this installer again.')
-    exit 3
+    # The Microsoft Store alias is a 'python' that only opens the Store.
+    $alias = Get-Command 'python' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($alias) {
+        $aliasPath = [string]$alias.Path
+        if (($aliasPath -like '*\Microsoft\WindowsApps\*') -or ($aliasPath -like '*/Microsoft/WindowsApps/*')) {
+            [Console]::Error.WriteLine("Note: the 'python' on PATH ($aliasPath) is the Microsoft Store alias, not Python; install Python 3.10 or newer with 'winget install Python.Python.3.12', or turn the alias off under Settings, Apps, Advanced app settings, App execution aliases.")
+        }
+    }
+    Exit-Installer 3
 }
 
 # ---- the release tag -------------------------------------------------------
-# A release tag that cannot be fetched ends the script here, in the dry run too,
-# before any plan line. GitHub answers 401 for a missing repository, and Git
-# Credential Manager would then open a sign-in window: the empty credential.helper
-# drops every configured helper, and the two variables turn off git's terminal
-# prompt and any Credential Manager prompt. They are set in this process, which is
-# the caller's session under .\install.ps1, so each one's earlier value is put back
-# (or the variable removed) as soon as git returns.
 # Put an environment variable back to a saved value; $null removes it.
 # ($Value has no type, so $null stays $null instead of becoming ''.)
 function Restore-EnvVar([string]$Name, $Value) {
@@ -261,6 +295,13 @@ function Restore-EnvVar([string]$Name, $Value) {
     }
 }
 
+# A release tag that cannot be fetched ends the script here, in the dry run too,
+# before any plan line. GitHub answers 401 for a missing repository, and Git
+# Credential Manager would then open a sign-in window: the empty credential.helper
+# drops every configured helper, and the two variables turn off git's terminal
+# prompt and any Credential Manager prompt. They are set in this process, which is
+# the caller's session under .\install.ps1, so each one's earlier value is put back
+# (or the variable removed) as soon as git returns.
 function Test-ReleaseTag {
     if ($SourceKind -ne 'tag') {
         return
@@ -297,6 +338,7 @@ $CfgDir = $AppData + '\tutor-any-lecture'
 $CliPathFile = $CfgDir + '\cli-path'
 $Venv = $LocalAppData + '\tutor-any-lecture\venv'
 $VenvPy = $Venv + '\Scripts\python.exe'
+$VenvCli = $Venv + '\Scripts\tutor-any-lecture.exe'
 $script:Cli = ''
 
 # ---- steps: each takes 'plan' (print a PLAN: line) or 'run' (do it) ---------
@@ -335,14 +377,15 @@ function Show-Options {
     }
 }
 
-# Steps 1 and 2: install the CLI with uv, or into a private venv.
+# Steps 1 and 2: install the CLI with uv, or into a private venv. Both always
+# rebuild, so a reinstall from an updated checkout never keeps the old build.
 function Install-Cli([string]$Mode) {
     if ($Method -eq 'uv') {
         if ($Mode -eq 'plan') {
-            Say ('PLAN: uv tool install --force "' + $InstallSpec + '"')
+            Say ('PLAN: uv tool install --force --reinstall "' + $InstallSpec + '"')
             return
         }
-        Invoke-Native "'uv tool install --force $InstallSpec'" 'uv' @('tool', 'install', '--force', $InstallSpec)
+        Invoke-Native "'uv tool install --force --reinstall $InstallSpec'" 'uv' @('tool', 'install', '--force', '--reinstall', $InstallSpec)
         $ErrorActionPreference = 'Continue'
         # uv prints UTF-8; read it as UTF-8 so a non-ASCII user folder survives.
         $saved = [Console]::OutputEncoding
@@ -361,12 +404,12 @@ function Install-Cli([string]$Mode) {
     } else {
         if ($Mode -eq 'plan') {
             Say "PLAN: python -m venv $Venv"
-            Say ('PLAN: ' + $VenvPy + ' -m pip install --upgrade "' + $InstallSpec + '"')
+            Say ('PLAN: ' + $VenvPy + ' -m pip install --upgrade --force-reinstall "' + $InstallSpec + '"')
             return
         }
         Invoke-Native "creating the venv at $Venv" $PyExe ($PyPrefix + @('-m', 'venv', $Venv))
-        Invoke-Native "'pip install --upgrade $InstallSpec'" $VenvPy @('-m', 'pip', 'install', '--upgrade', $InstallSpec)
-        $script:Cli = $Venv + '\Scripts\tutor-any-lecture.exe'
+        Invoke-Native "'pip install --upgrade --force-reinstall $InstallSpec'" $VenvPy @('-m', 'pip', 'install', '--upgrade', '--force-reinstall', $InstallSpec)
+        $script:Cli = $VenvCli
     }
 }
 
@@ -468,6 +511,32 @@ function Copy-Skills([string]$Mode) {
     }
 }
 
+# The line that runs a CLI's selftest, for pasting into PowerShell: the call
+# operator and the path in single quotes, each single quote doubled (the curly
+# ones too, which PowerShell also reads as single quotes).
+function Get-SelftestCommand([string]$CliPath) {
+    $quoted = $CliPath
+    foreach ($q in @([string][char]0x27, [string][char]0x2018, [string][char]0x2019, [string][char]0x201A, [string][char]0x201B)) {
+        $quoted = $quoted.Replace($q, $q + $q)
+    }
+    return "& '" + $quoted + "' selftest"
+}
+
+# Step 8: the last line, so the command can be reached even when it is not on PATH.
+# The dry run never runs uv, so the plan names uv's bin folder in words.
+function Show-SelftestCommand([string]$Mode) {
+    if ($Mode -eq 'plan') {
+        if ($Method -eq 'uv') {
+            $planned = '<uv tool bin folder>\tutor-any-lecture.exe'
+        } else {
+            $planned = $VenvCli
+        }
+        Say ('PLAN: print the selftest command: ' + (Get-SelftestCommand $planned))
+    } else {
+        Say (Get-SelftestCommand $script:Cli)
+    }
+}
+
 function Show-Plan {
     Show-SourceNote 'plan'
     Show-Options
@@ -475,12 +544,13 @@ function Show-Plan {
     Write-CliPath 'plan'
     Copy-Skills 'plan'
     Say 'PLAN: run tutor-any-lecture doctor --json'
+    Show-SelftestCommand 'plan'
 }
 
 # ---- dry run ---------------------------------------------------------------
 if ($DryRun) {
     Show-Plan
-    exit 0
+    Exit-Installer 0
 }
 
 # ---- confirmation (only with a terminal and without -Yes) ------------------
@@ -494,7 +564,7 @@ if ((-not $Yes) -and (-not [Console]::IsInputRedirected)) {
     $answer = $answer.Trim().ToLowerInvariant()
     if (($answer -ne 'y') -and ($answer -ne 'yes')) {
         Say 'Nothing was changed.'
-        exit 1
+        Exit-Installer 1
     }
 }
 
@@ -503,8 +573,11 @@ Show-SourceNote 'run'
 Install-Cli 'run'
 Write-CliPath 'run'
 Copy-Skills 'run'
-# Steps 6 and 7: run doctor by its full path; its JSON line is the last stdout
-# line, and its exit code (0 ready, 3 not ready) is ours.
+# Steps 6 and 7: run doctor by its full path; its JSON line is the second-to-last
+# stdout line, and its exit code (0 ready, 3 not ready) is ours.
 $ErrorActionPreference = 'Continue'
 & $script:Cli doctor --json
-exit $LASTEXITCODE
+$code = $LASTEXITCODE
+# Step 8: the selftest command, whatever doctor said.
+Show-SelftestCommand 'run'
+Exit-Installer $code

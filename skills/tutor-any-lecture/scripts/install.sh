@@ -309,6 +309,17 @@ EOF
   exit 3
 fi
 
+# ---- the venv module -------------------------------------------------------
+# A Debian or Ubuntu Python can lack its venv module (the python3-venv package);
+# probed here, in the dry run too, so it never ends in "could not create the venv".
+check_venv_module() {
+  [ "$METHOD" = "venv" ] || return 0
+  if ! "$PY" -c "import ensurepip, venv" >/dev/null 2>&1; then
+    die "install.sh: $PY has no working venv module (ensurepip is missing); on Debian or Ubuntu run 'sudo apt install python3-venv', or install uv (https://docs.astral.sh/uv/getting-started/installation/), then run this installer again" 3
+  fi
+}
+check_venv_module
+
 # ---- the release tag -------------------------------------------------------
 # A release tag that cannot be fetched ends the script here, in the dry run too,
 # before any plan line. GitHub answers 401 for a missing repository; the empty
@@ -328,6 +339,7 @@ CFG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/tutor-any-lecture"
 CLI_PATH_FILE="$CFG_DIR/cli-path"
 VENV="$HOME/.tutor-any-lecture/venv"
 VENV_PY="$VENV/bin/python"
+VENV_CLI="$VENV/bin/tutor-any-lecture"
 CLI=""
 
 # ---- steps: each takes "plan" (print a PLAN: line) or "run" (do it) ---------
@@ -369,25 +381,28 @@ plan_options() {
   fi
 }
 
-# Steps 1 and 2: install the CLI with uv, or into a private venv.
+# Steps 1 and 2: install the CLI with uv, or into a private venv. Both always
+# rebuild, so a reinstall from an updated checkout never keeps the old build.
 install_cli() {
   if [ "$METHOD" = "uv" ]; then
     if [ "$1" = "plan" ]; then
-      say "PLAN: uv tool install --force \"$INSTALL_SPEC\""
+      say "PLAN: uv tool install --force --reinstall \"$INSTALL_SPEC\""
       return 0
     fi
-    uv tool install --force "$INSTALL_SPEC" || die "install.sh: 'uv tool install --force $INSTALL_SPEC' failed" 1
+    uv tool install --force --reinstall "$INSTALL_SPEC" ||
+      die "install.sh: 'uv tool install --force --reinstall $INSTALL_SPEC' failed" 1
     bin_dir="$(uv tool dir --bin)" || die "install.sh: 'uv tool dir --bin' failed" 1
     CLI="$bin_dir/tutor-any-lecture"
   else
     if [ "$1" = "plan" ]; then
       say "PLAN: python -m venv $VENV"
-      say "PLAN: $VENV_PY -m pip install --upgrade \"$INSTALL_SPEC\""
+      say "PLAN: $VENV_PY -m pip install --upgrade --force-reinstall \"$INSTALL_SPEC\""
       return 0
     fi
     "$PY" -m venv "$VENV" || die "install.sh: could not create the venv at $VENV" 1
-    "$VENV_PY" -m pip install --upgrade "$INSTALL_SPEC" || die "install.sh: 'pip install --upgrade $INSTALL_SPEC' failed" 1
-    CLI="$VENV/bin/tutor-any-lecture"
+    "$VENV_PY" -m pip install --upgrade --force-reinstall "$INSTALL_SPEC" ||
+      die "install.sh: 'pip install --upgrade --force-reinstall $INSTALL_SPEC' failed" 1
+    CLI="$VENV_CLI"
   fi
 }
 
@@ -454,6 +469,28 @@ plan_doctor() {
   say "PLAN: run tutor-any-lecture doctor --json"
 }
 
+# selftest_command CLI prints the line that runs CLI's selftest, for pasting into
+# a shell: CLI in single quotes, each ' written as '\''.
+selftest_command() {
+  local q="'" rep="'\\''"
+  printf "'%s' selftest\n" "${1//$q/$rep}"
+}
+
+# Step 8: the last line, so the command can be reached even when it is not on PATH.
+# The dry run never runs uv, so the plan names uv's bin folder in words.
+print_selftest_command() {
+  if [ "$1" = "plan" ]; then
+    if [ "$METHOD" = "uv" ]; then
+      planned="<uv tool bin folder>/tutor-any-lecture"
+    else
+      planned="$VENV_CLI"
+    fi
+    say "PLAN: print the selftest command: $(selftest_command "$planned")"
+  else
+    selftest_command "$CLI"
+  fi
+}
+
 print_plan() {
   source_note plan
   plan_options
@@ -461,6 +498,7 @@ print_plan() {
   write_cli_path plan
   copy_skills plan
   plan_doctor
+  print_selftest_command plan
 }
 
 # ---- dry run ---------------------------------------------------------------
@@ -489,7 +527,10 @@ source_note run
 install_cli run
 write_cli_path run
 copy_skills run
-# Steps 6 and 7: run doctor by its full path; its JSON line is the last stdout
-# line, and its exit code (0 ready, 3 not ready) is ours.
+# Steps 6 and 7: run doctor by its full path; its JSON line is the second-to-last
+# stdout line, and its exit code (0 ready, 3 not ready) is ours.
 "$CLI" doctor --json
-exit $?
+code=$?
+# Step 8: the selftest command, whatever doctor said.
+print_selftest_command run
+exit "$code"
