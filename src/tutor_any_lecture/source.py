@@ -12,7 +12,9 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from .plan import read_json
 
 KINDS = ("local", "url", "platform", "transcript", "slides-only")
-ACQUISITIONS = ("cc", "auto", "ocr", "asr", "import", "panopto", "slides")
+# Appended only, so every source.json written before still loads. "embedded": a subtitle
+# track inside the media file.
+ACQUISITIONS = ("cc", "auto", "ocr", "asr", "import", "panopto", "slides", "embedded")
 # The JSON types of each field as read back from source.json; lecture_date may be left out.
 _TEXT, _OPT_TEXT, _OPT_NUMBER, _MAPPING = (str,), (str, type(None)), (int, float, type(None)), (dict,)
 FIELD_TYPES = {

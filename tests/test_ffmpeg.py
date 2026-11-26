@@ -4,6 +4,7 @@ import subprocess
 import pytest
 
 from tutor_any_lecture.ffmpeg import (
+    TEXT_SUBTITLE_CODECS,
     Stream,
     extract_audio,
     ffmpeg_exe,
@@ -12,6 +13,7 @@ from tutor_any_lecture.ffmpeg import (
     parse_streams,
     sample_gray_frames,
     save_frame,
+    subtitle_vtt,
 )
 from tutor_any_lecture.transcript import AcquireError
 
@@ -84,3 +86,42 @@ def test_frame_helpers_name_the_file(tmp_path):
 def test_pillow_comes_with_pdfplumber():
     requires = importlib.metadata.requires("pdfplumber") or []
     assert any(r.lower().startswith("pillow") for r in requires)
+
+
+def srt_time(seconds):
+    # local helper: seconds as an SRT clock, HH:MM:SS,mmm
+    ms = round(seconds * 1000)
+    return f"{ms // 3600000:02d}:{ms // 60000 % 60:02d}:{ms // 1000 % 60:02d},{ms % 1000:03d}"
+
+
+def healthy_cues():
+    # local helper: ten cues of 3 s each over a 30 s tone; cue 1 is styled
+    cues = [(3 * i, 3 * i + 3, f"Sentence number {i + 1} about the lecture.") for i in range(10)]
+    cues[0] = (0, 3, "<i>Sentence number 1</i> about the lecture.")
+    return cues
+
+
+def make_subtitled(folder, name, audio_codec, subtitle_codec, cues):
+    # local helper: a 30 s tone with one subtitle track written from ``cues`` (start, end, text)
+    folder.mkdir(parents=True, exist_ok=True)
+    srt = folder / "subs.srt"
+    srt.write_text(
+        "".join(f"{n}\n{srt_time(a)} --> {srt_time(b)}\n{text}\n\n" for n, (a, b, text) in enumerate(cues, 1)),
+        encoding="utf-8", newline="\n",
+    )
+    subprocess.run(
+        [ffmpeg_exe(), "-hide_banner", "-nostdin", "-f", "lavfi", "-i", "sine=frequency=440:duration=30",
+         "-i", str(srt), "-map", "0:a", "-map", "1:s", "-c:a", audio_codec, "-c:s", subtitle_codec,
+         str(folder / name)],
+        check=True, capture_output=True,
+    )
+    return folder / name
+
+
+def test_subtitle_vtt_reads_a_text_track(tmp_path):
+    mkv = make_subtitled(tmp_path / "课程 资料", "lecture.mkv", "flac", "srt", healthy_cues())
+    vtt = subtitle_vtt(mkv, 1)
+    assert vtt.startswith("WEBVTT")
+    assert "Sentence number 10 about the lecture." in vtt
+    assert subtitle_vtt(mkv, 0) is None   # the audio stream
+    assert TEXT_SUBTITLE_CODECS == ("subrip", "srt", "ass", "ssa", "webvtt", "mov_text", "text")

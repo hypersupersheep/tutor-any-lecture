@@ -1,5 +1,6 @@
-"""The ffmpeg binary: find it, read a media file's duration and streams, extract 16 kHz mono
-audio, sample small gray frames of a video and save one full-size frame."""
+"""The ffmpeg binary: find it, read a media file's duration and streams, convert a text
+subtitle track to WebVTT, extract 16 kHz mono audio, sample small gray frames of a video and
+save one full-size frame."""
 
 from __future__ import annotations
 
@@ -14,6 +15,9 @@ from .transcript import AcquireError
 _DURATION_RE = re.compile(r"Duration:\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)")
 # One stream of input 0: "Stream #0:3[0x4](fre): Subtitle: hdmv_pgs_subtitle (pgssub), ..."
 _STREAM_RE = re.compile(r"^\s*Stream #0:(\d+)(?:\[0x[0-9A-Fa-f]+\])?(?:\(([^)]*)\))?: (\w+): ([^\s,]+)")
+# Subtitle codecs that hold text, which ffmpeg converts to WebVTT. Picture subtitles (PGS,
+# DVD, DVB) are left out: they would need character recognition.
+TEXT_SUBTITLE_CODECS = ("subrip", "srt", "ass", "ssa", "webvtt", "mov_text", "text")
 
 
 @dataclass(frozen=True)
@@ -89,6 +93,22 @@ def media_streams(path: Path) -> list[Stream]:
         capture_output=True,
     )
     return parse_streams(proc.stderr.decode("utf-8", errors="replace"))
+
+
+def subtitle_vtt(path: Path, index: int) -> str | None:
+    """Stream ``index`` of ``path`` converted to WebVTT text; None when ffmpeg cannot convert it.
+
+    WebVTT rather than SRT, so that ``parse_vtt`` removes the ``<i>``, ``<b>`` and similar
+    tags ffmpeg writes for styled cues and decodes entities such as ``&amp;``.
+    """
+    proc = subprocess.run(
+        [ffmpeg_exe(), "-hide_banner", "-nostdin", "-i", str(path), "-map", f"0:{index}",
+         "-c:s", "webvtt", "-f", "webvtt", "pipe:1"],
+        capture_output=True,
+    )
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.decode("utf-8", errors="replace")
 
 
 def extract_audio(src: Path, dst_wav: Path) -> None:

@@ -18,7 +18,7 @@ from tutor_any_lecture.acquire.local import acquire_local, transcribe_audio
 from tutor_any_lecture.cli import main
 from tutor_any_lecture.ffmpeg import ffmpeg_exe
 from tutor_any_lecture.profile import Profile
-from tutor_any_lecture.source import SourceInfo, sha256_file
+from tutor_any_lecture.source import ACQUISITIONS, SourceInfo, sha256_file
 from tutor_any_lecture.transcript import AcquireError, EmptyTranscript, Segment, Transcript
 from tutor_any_lecture.unit import UnitPaths
 
@@ -550,3 +550,14 @@ def test_sigterm_ends_a_running_asr_child(tmp_path):
             proc.communicate()
         if child is not None and alive(child):
             os.kill(child, signal.SIGKILL)
+
+
+def test_embedded_is_an_acquisition(tmp_path):
+    assert ACQUISITIONS[:7] == ("cc", "auto", "ocr", "asr", "import", "panopto", "slides")
+    assert ACQUISITIONS[7] == "embedded"
+    info = SourceInfo(kind="local", title="lecture", url=None, platform=None, duration=30.0,
+                      lecture_language=None, acquisition="embedded", health={}, tool_versions={},
+                      inputs_sha256={})
+    path = tmp_path / "source.json"
+    info.write(path)
+    assert SourceInfo.read(path) == info
