@@ -34,7 +34,7 @@ This is part of the note of the bundled synthetic sample, a fourteen-minute mini
 
 ## How it works
 
-1. **Check.** The skill's Step 0 runs `tutor-any-lecture doctor --json --skill <skill folder>`, and on first use `tutor-any-lecture selftest`.
+1. **Check.** The skill's Step 0 runs `tutor-any-lecture doctor --json --skill <skill folder> --vision-word WORD`, WORD being the word the agent reads in a small image bundled with the skill, or none when it cannot see images, and on first use `tutor-any-lecture selftest`.
 2. **Acquire.** The transcript and the slides go into the unit folder. Captions are used before speech recognition.
 3. **Plan.** The agent writes plan.json, with five tracked concepts (all of them when the lecture has fewer).
 4. **Write.** The agent writes the items, then the note with plain time citations, which `tutor-any-lecture cite link --unit DIR` turns into links for a video link, then the cards and the map.
@@ -53,7 +53,7 @@ This is part of the note of the bundled synthetic sample, a fourteen-minute mini
 npx skills add hypersupersheep/tutor-any-lecture
 ```
 
-This copies the skill into your agent's skills folder. Success check: your agent lists `tutor-any-lecture` among its skills. The command-line tool is installed on first use: the skill's Step 0 runs `tutor-any-lecture doctor --json --skill <skill folder>`, and when the command is missing it offers to run the installer that ships inside the skill, `skills/tutor-any-lecture/scripts/install.sh` (on Windows `skills/tutor-any-lecture/scripts/install.ps1`), with `--cli-only` (`-CliOnly`), since the skill is already in place.
+This copies the skill into your agent's skills folder. Success check: your agent lists `tutor-any-lecture` among its skills. The command-line tool is installed on first use: the skill's Step 0 runs `tutor-any-lecture doctor --json --skill <skill folder> --vision-word WORD`, and when the command is missing it offers to run the installer that ships inside the skill, `skills/tutor-any-lecture/scripts/install.sh` (on Windows `skills/tutor-any-lecture/scripts/install.ps1`), with `--cli-only` (`-CliOnly`), since the skill is already in place.
 
 ### B. Claude Code plugin
 
@@ -142,7 +142,7 @@ Any agent that loads skills and runs shell commands. The skill carries notes for
 
 ### Which sources can it read?
 
-Local video and audio files, folders of materials, YouTube and Bilibili links, transcript files (SRT, VTT, Whisper-style JSON, timestamped TXT, a Zoom transcript TXT or a Teams DOCX export), slide PDFs, PowerPoint (.pptx) decks, and Panopto recordings through an agent with browser tools. Photos of slides must be exported to PDF first.
+Local video and audio files, folders of materials, YouTube and Bilibili links, transcript files (SRT, VTT, Whisper-style JSON, timestamped TXT, a Zoom transcript TXT or a Teams DOCX export), slide PDFs, PowerPoint (.pptx) decks, and Panopto recordings through an agent with browser tools. Photos of slides (three or more, JPEG or PNG) work when your agent can read images; the skill checks this first.
 
 ### Does anything leave my computer?
 

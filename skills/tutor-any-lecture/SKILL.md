@@ -15,8 +15,8 @@ Turn one lecture (a recording, a link, a transcript or a slide deck) into a cite
 
 ## Step 0: Check the tool
 
-- Run `tutor-any-lecture doctor --json --skill '<skill folder>'`, where `<skill folder>` is the folder that holds this SKILL.md. Ready (`"ready": true`, exit 0): continue. Not ready (exit 3): show the `fix` lines of the failing checks and offer to apply them. A fix that starts with "Optional:" never blocks readiness.
-- If the `skill_version` check is not ok, or doctor exits 2 because it does not know `--skill`, offer to reinstall the command with the installer below.
+- Look at `assets/vision-probe.png` in the skill folder and read its one word. Then run `tutor-any-lecture doctor --json --skill '<skill folder>' --vision-word WORD`, where `<skill folder>` is the folder that holds this SKILL.md and WORD is that word, or `none` when you cannot view images; the `vision` check says whether you can read images. Ready (`"ready": true`, exit 0): continue. Not ready (exit 3): show the `fix` lines of the failing checks and offer to apply them. A fix that starts with "Optional:" never blocks readiness.
+- If the `skill_version` check is not ok, or doctor exits 2 because it does not know `--skill` or `--vision-word`, offer to reinstall the command with the installer below.
 - If the command is not found, read the CLI's absolute path from `${XDG_CONFIG_HOME:-$HOME/.config}/tutor-any-lecture/cli-path` (macOS, Linux) or `%APPDATA%\tutor-any-lecture\cli-path` (Windows), and use that path in place of `tutor-any-lecture` for every call in this session.
 - If neither works, offer to install the command with the installer in this skill's folder. The skill is already installed, so pass `--cli-only` (`-CliOnly` on Windows). Run it only after the user agrees:
   - macOS, Linux: `scripts/install.sh`, as `bash '<skill folder>/scripts/install.sh' --yes --cli-only`;
@@ -36,13 +36,14 @@ Infer what the user wants (which lecture, which outputs, how deep) and the setti
 2. For a folder of materials, run `tutor-any-lecture acquire route --folder <materials> --unit <unit folder>`. It only plans. Then:
    - a question about `unsafe-name`: ask the learner to rename the files it lists, then run the route again;
    - any other question: ask the learner its `text` and have them pick one of its `candidates`; for the pick `candidates[i]`, run that question's `argv[i]` as well;
-   - a step with `runnable: false` is material this version cannot read (photos of slides, slides that appear only in the video): tell the learner, ask for a PDF export, then run `tutor-any-lecture slides --pdf`;
-   - run every other step's `argv` as given (an import step may carry `--media`), with the cli-path in place of its first element when needed, in this order: transcript import or panopto, then `slides`, then `acquire local`.
+   - a step with `runnable: false` is material this version cannot read (HEIC photos, slides that appear only in the video): tell the learner, ask for JPEG or PNG exports (then `slides --photos`) or a PDF export (then `slides --pdf`);
+   - run every other step's `argv` as given (an import step may carry `--media`), with the cli-path in place of its first element when needed, in this order: transcript import or panopto, then `slides`, then `acquire local`; a `slides --photos` step only when Step 0's `vision` check is ok (then follow [photos](references/adapters/photos.md); otherwise skip it and ask for a PDF).
 3. Otherwise pick the adapter for the source:
    - a local video or audio file: [local](references/adapters/local.md), `tutor-any-lecture acquire local --file F --unit DIR`;
    - a public video link: [url](references/adapters/url.md), `tutor-any-lecture acquire url --url U --unit DIR [--budget-minutes N]`;
    - a transcript or caption file: [import](references/adapters/import.md), `tutor-any-lecture acquire import --file F --unit DIR`;
    - a Panopto recording: [panopto](references/adapters/panopto.md), `tutor-any-lecture acquire panopto --extract JSON --unit DIR`;
+   - photos of slides (three or more JPEG or PNG files), only when Step 0's `vision` check is ok: [photos](references/adapters/photos.md), `tutor-any-lecture slides --photos <photo files> --unit DIR`;
    - slides on a Moodle course page: [moodle](references/adapters/moodle.md).
    Panopto and Moodle pages need an agent with browser tools; see the agent notes under References.
 4. When there is a slide PDF, run `tutor-any-lecture slides --pdf F --unit DIR` (a PowerPoint deck: `tutor-any-lecture slides --pptx F --unit DIR`) before any transcription (the ASR prompt uses its terms). Slides alone make a slides-only unit: its note cites slides only, never times.

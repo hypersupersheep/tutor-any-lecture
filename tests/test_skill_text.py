@@ -419,3 +419,45 @@ def test_documents_state_how_cjk_is_read():
         "The CJK windows were set on Chinese notes; for Japanese and Korean notes they are estimates,"
         " and every length rule is a WARN."
     ) in writing
+
+
+# ---- photos of slides, and the vision probe in Step 0 ----
+
+PHOTOS_ADAPTER = REFERENCES / "adapters" / "photos.md"
+PHOTO_COMMANDS = (
+    "slides --photos <photo files> --unit DIR [--force]",
+    "slides text --unit DIR --page N --file F [--time S] [--force]",
+)
+
+
+def acquire_step(number: int) -> list[str]:
+    """The lines of SKILL.md's Acquire step ``number``, up to the next numbered step."""
+    lines = section(read(SKILL), "Acquire").splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith(f"{number}. "))
+    end = next((i for i in range(start + 1, len(lines)) if re.match(r"\d+\. ", lines[i])), len(lines))
+    return lines[start:end]
+
+
+def test_step0_reads_the_vision_probe():
+    step0 = step0_section()
+    for s in ("--vision-word WORD", "`assets/vision-probe.png`", "`none`", "`vision`",
+              "does not know `--skill` or `--vision-word`"):
+        assert s in step0, s
+    assert (SKILL.parent / "assets" / "vision-probe.png").is_file()
+
+
+def test_photos_adapter_says_how_pages_get_their_text():
+    photos = read(PHOTOS_ADAPTER)
+    headings = [line for line in photos.splitlines() if line.startswith("## ")]
+    template = [line for line in read(REFERENCES / "adapters" / "TEMPLATE.md").splitlines() if line.startswith("## ")]
+    assert headings == template
+    for s in (*PHOTO_COMMANDS, "`vision`", "IMG_2", "not yet transcribed", "sends them nowhere"):
+        assert s in photos, s
+    last = photos.rindex("\n## ")
+    assert "experimental" in photos[photos.index("\n", last + 1):]
+    skill = read(SKILL)
+    assert "[photos](references/adapters/photos.md)" in skill and "photos of slides," not in skill
+    step2 = "\n".join(acquire_step(2))
+    assert "slides --photos" in step2 and "`vision`" in step2
+    (coverage_row,) = [line for line in read(REFERENCES / "gate.md").splitlines() if line.startswith("| `coverage` |")]
+    assert "not yet transcribed" in coverage_row

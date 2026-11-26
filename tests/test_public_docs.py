@@ -456,3 +456,33 @@ def test_companion_skills_name_the_current_skill():
         assert "lecture-tutor" not in text and "第 8 步" not in text, path
         meta = front_matter(path)
         assert "tutor-any-lecture" in meta["description"], path
+
+
+# ---- photos of slides ----
+
+PHOTOS_SENTENCE = {
+    README: "Photos of slides (three or more, JPEG or PNG) work when your agent can read images; "
+            "the skill checks this first.",
+    README_ZH: "课件照片(三张以上,JPEG 或 PNG)在 agent 能看图时也能用;skill 会先检查这一点。",
+}
+SENTENCE_END = {README: re.compile(r"(?<=[.!?])\s+"), README_ZH: re.compile(r"(?<=[。!?])")}
+PHOTO_AND_EXPORT = {README: ("photo", "export"), README_ZH: ("照片", "导出")}
+
+
+def faq_answer(path: Path, question: str) -> str:
+    """The text under one FAQ question, up to the next question."""
+    lines = section(path, "FAQ").splitlines()
+    start = lines.index("### " + question)
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("### ")), len(lines))
+    return "\n".join(lines[start + 1:end]).strip()
+
+
+@pytest.mark.parametrize("path", READMES, ids=lambda p: p.name)
+def test_faq_says_photos_of_slides_work(path):
+    answer = faq_answer(path, FAQ[path][1])
+    assert PHOTOS_SENTENCE[path] in answer
+    photo, export = PHOTO_AND_EXPORT[path]
+    sentences = [s for s in SENTENCE_END[path].split(answer) if s.strip()]
+    assert len(sentences) >= 2
+    assert [s for s in sentences if photo in s.casefold() and export in s.casefold()] == []
+    assert "photos of slides" in read(ROOT / "CHANGELOG.md")

@@ -34,7 +34,7 @@ Tutor Any Lecture 由一个 agent skill 和一个命令行工具组成,两者都
 
 ## 工作流程
 
-1. **检查**:skill 的第 0 步运行 `tutor-any-lecture doctor --json --skill <skill folder>`,第一次使用时再运行 `tutor-any-lecture selftest`。
+1. **检查**:skill 的第 0 步运行 `tutor-any-lecture doctor --json --skill <skill folder> --vision-word WORD`(WORD 是 agent 从 skill 自带的一张小图里读到的词,看不了图时写 none),第一次使用时再运行 `tutor-any-lecture selftest`。
 2. **取材料**:把转写和课件放进单元文件夹。先用字幕,没有可用字幕才用语音识别。
 3. **规划**:agent 写 plan.json,选出五个跟踪概念(不足五个就全选)。
 4. **写作**:agent 先写题目,再写笔记,时间出处先写成不带链接的普通形式;来自视频链接的课,`tutor-any-lecture cite link --unit DIR` 会把它们变成链接。最后写卡片和概念图。
@@ -53,7 +53,7 @@ Tutor Any Lecture 由一个 agent skill 和一个命令行工具组成,两者都
 npx skills add hypersupersheep/tutor-any-lecture
 ```
 
-这条命令把 skill 复制到 agent 的 skills 文件夹。怎样算成功:agent 列出的 skill 里有 `tutor-any-lecture`。命令行工具在第一次使用时安装:skill 的第 0 步运行 `tutor-any-lecture doctor --json --skill <skill folder>`,找不到命令时,它会提出运行 skill 自带的安装脚本 `skills/tutor-any-lecture/scripts/install.sh`(Windows 上是 `skills/tutor-any-lecture/scripts/install.ps1`),并加上 `--cli-only`(`-CliOnly`),因为 skill 已经装好了。
+这条命令把 skill 复制到 agent 的 skills 文件夹。怎样算成功:agent 列出的 skill 里有 `tutor-any-lecture`。命令行工具在第一次使用时安装:skill 的第 0 步运行 `tutor-any-lecture doctor --json --skill <skill folder> --vision-word WORD`,找不到命令时,它会提出运行 skill 自带的安装脚本 `skills/tutor-any-lecture/scripts/install.sh`(Windows 上是 `skills/tutor-any-lecture/scripts/install.ps1`),并加上 `--cli-only`(`-CliOnly`),因为 skill 已经装好了。
 
 ### 方式二:Claude Code 插件
 
@@ -142,7 +142,7 @@ tutor-any-lecture selftest
 
 ### 能读哪些材料?
 
-本地的视频和音频文件、整个材料文件夹、YouTube 和 B 站链接、转写文件(SRT、VTT、Whisper 格式的 JSON、带时间戳的 TXT、Zoom 的 TXT 转写,或 Teams 导出的 DOCX)、课件 PDF、PowerPoint(.pptx)课件,以及通过带浏览器工具的 agent 读取的 Panopto 录像。课件照片要先导出成 PDF。
+本地的视频和音频文件、整个材料文件夹、YouTube 和 B 站链接、转写文件(SRT、VTT、Whisper 格式的 JSON、带时间戳的 TXT、Zoom 的 TXT 转写,或 Teams 导出的 DOCX)、课件 PDF、PowerPoint(.pptx)课件,以及通过带浏览器工具的 agent 读取的 Panopto 录像。课件照片(三张以上,JPEG 或 PNG)在 agent 能看图时也能用;skill 会先检查这一点。
 
 ### 有什么会离开我的电脑?
 
