@@ -154,7 +154,9 @@ def test_the_password_check_catches_instructions():
 def test_profile_accepts_every_platform_key(tmp_cfg):
     from tutor_any_lecture.profile import set_value
 
-    assert PLATFORM_KEYS == ("echo360", "kaltura", "moodle", "panopto", "teams", "yuja", "zoom")
+    assert PLATFORM_KEYS == (
+        "blackboard", "brightspace", "canvas", "echo360", "kaltura", "moodle", "panopto", "teams", "yuja", "zoom"
+    )
     profile = set_value("platforms", "{" + ", ".join(f"{k}: https://{k}.example.org" for k in PLATFORM_KEYS) + "}")
     assert profile.platforms == {k: f"https://{k}.example.org" for k in PLATFORM_KEYS}
 
@@ -252,3 +254,11 @@ def test_meeting_players_hand_over_transcript_files():
     for stem in sorted(MEETING):
         text = adapter(stem)
         assert "acquire import --file F --unit DIR" in text and "(import.md)" in text, stem
+
+
+def test_learning_platforms_hand_over_slides_and_recordings():
+    for stem in sorted(LMS):
+        text = adapter(stem)
+        assert "slides --pdf F --unit DIR" in text, stem
+        for link in ("panopto.md", "echo360.md", "kaltura.md", "yuja.md", "zoom.md"):
+            assert f"({link})" in text, (stem, link)
