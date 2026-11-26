@@ -12,11 +12,11 @@ from pathlib import Path
 
 import pytest
 
-from tutor_any_lecture import asr, slides
+from tutor_any_lecture import __version__, asr, slides
 from tutor_any_lecture.acquire import local
 from tutor_any_lecture.acquire.local import acquire_local, transcribe_audio
 from tutor_any_lecture.cli import main
-from tutor_any_lecture.ffmpeg import ffmpeg_exe
+from tutor_any_lecture.ffmpeg import Stream, ffmpeg_exe
 from tutor_any_lecture.profile import Profile
 from tutor_any_lecture.source import ACQUISITIONS, SourceInfo, sha256_file
 from tutor_any_lecture.transcript import AcquireError, EmptyTranscript, Segment, Transcript
@@ -561,3 +561,169 @@ def test_embedded_is_an_acquisition(tmp_path):
     path = tmp_path / "source.json"
     info.write(path)
     assert SourceInfo.read(path) == info
+
+
+def srt_time(seconds):
+    """Local helper: seconds as an SRT clock, HH:MM:SS,mmm."""
+    ms = round(seconds * 1000)
+    return f"{ms // 3600000:02d}:{ms // 60000 % 60:02d}:{ms // 1000 % 60:02d},{ms % 1000:03d}"
+
+
+def healthy_cues():
+    """Local helper: ten cues of 3 s each over a 30 s tone; cue 1 is styled."""
+    cues = [(3 * i, 3 * i + 3, f"Sentence number {i + 1} about the lecture.") for i in range(10)]
+    cues[0] = (0, 3, "<i>Sentence number 1</i> about the lecture.")
+    return cues
+
+
+def make_subtitled(folder, name, audio_codec, subtitle_codec, cues):
+    """Local helper: a 30 s tone with one subtitle track written from ``cues`` (start, end, text)."""
+    folder.mkdir(parents=True, exist_ok=True)
+    srt = folder / "subs.srt"
+    srt.write_text(
+        "".join(f"{n}\n{srt_time(a)} --> {srt_time(b)}\n{text}\n\n" for n, (a, b, text) in enumerate(cues, 1)),
+        encoding="utf-8", newline="\n",
+    )
+    subprocess.run(
+        [ffmpeg_exe(), "-hide_banner", "-nostdin", "-f", "lavfi", "-i", "sine=frequency=440:duration=30",
+         "-i", str(srt), "-map", "0:a", "-map", "1:s", "-c:a", audio_codec, "-c:s", subtitle_codec,
+         str(folder / name)],
+        check=True, capture_output=True,
+    )
+    return folder / name
+
+
+def refuse(name):
+    """Local helper: a stand-in that fails the test when called."""
+    def call(*args, **kwargs):
+        raise AssertionError(f"{name} was called")
+    return call
+
+
+def record_vtt(monkeypatch, texts):
+    """Local helper: replaces local.subtitle_vtt; returns the stream indexes it was asked for."""
+    calls = []
+
+    def fake(path, index):
+        calls.append(index)
+        return texts.get(index)
+
+    monkeypatch.setattr(local, "subtitle_vtt", fake)
+    return calls
+
+
+@pytest.mark.parametrize("name, audio_codec, subtitle_codec",
+                         [("lecture.mkv", "flac", "srt"), ("lecture.mp4", "aac", "mov_text")])
+def test_local_uses_a_healthy_subtitle_track_without_asr(monkeypatch, tmp_path, name, audio_codec, subtitle_codec):
+    video = make_subtitled(tmp_path / "课程 资料", name, audio_codec, subtitle_codec, healthy_cues())
+    unit = tmp_path / "课程 资料" / "第1周"
+
+    def missing(backend=None, model=None):
+        raise asr.BackendMissing("no ASR backend is installed")
+
+    monkeypatch.setattr(asr, "resolve_backend", missing)
+    monkeypatch.setattr(asr, "transcribe", refuse("asr.transcribe"))
+    monkeypatch.setattr(local, "temp_dir", refuse("temp_dir"))
+    extracted = []
+    monkeypatch.setattr(local, "extract_audio", lambda src, dst: extracted.append(dst))
+    h = acquire_local(video, unit, Profile(), False)
+    assert h.ok
+    paths = UnitPaths(unit)
+    data = json.loads(paths.transcript.read_text(encoding="utf-8"))
+    segments = data["segments"]
+    assert len(segments) == 10
+    for seg, (start, end, text) in ((segments[0], (0.0, 3.0, "Sentence number 1 about the lecture.")),
+                                    (segments[-1], (27.0, 30.0, "Sentence number 10 about the lecture."))):
+        assert abs(seg["start"] - start) < 0.01 and abs(seg["end"] - end) < 0.01
+        assert seg["text"] == text
+    assert data["language"] is None
+    source = json.loads(paths.source.read_text(encoding="utf-8"))
+    assert source["kind"] == "local" and source["acquisition"] == "embedded"
+    assert source["lecture_language"] is None
+    assert abs(source["duration"] - 30) < 0.2
+    assert source["inputs_sha256"] == {name: sha256_file(video)}
+    assert source["tool_versions"] == {"tutor-any-lecture": __version__}
+    assert extracted == []
+
+
+def test_local_falls_back_to_asr_after_an_unhealthy_track(monkeypatch, tmp_path):
+    video = make_subtitled(tmp_path / "课程 资料", "lecture.mkv", "flac", "srt", [(0, 2, "hello")])
+    unit = tmp_path / "课程 资料" / "第1周"
+    fake = install_fake_asr(monkeypatch)
+    acquire_local(video, unit, Profile(), False)
+    assert len(fake.calls) == 1
+    paths = UnitPaths(unit)
+    assert json.loads(paths.source.read_text(encoding="utf-8"))["acquisition"] == "asr"
+    segments = json.loads(paths.transcript.read_text(encoding="utf-8"))["segments"]
+    assert [s["text"] for s in segments] == ["hello world"]
+
+
+def test_local_never_reads_picture_subtitles(monkeypatch, tmp_path):
+    src = make_tone(tmp_path / "课程 资料")
+    unit = tmp_path / "课程 资料" / "第1周"
+    monkeypatch.setattr(local, "media_streams", lambda path: [
+        Stream(0, "audio", "pcm_s16le", None, False),
+        Stream(1, "subtitle", "hdmv_pgs_subtitle", "eng", False),
+        Stream(2, "subtitle", "dvd_subtitle", None, False),
+    ])
+    calls = record_vtt(monkeypatch, {})
+    fake = install_fake_asr(monkeypatch)
+    acquire_local(src, unit, Profile(), False)
+    assert calls == []
+    assert len(fake.calls) == 1
+
+
+def test_local_skips_a_track_ffmpeg_cannot_convert(monkeypatch, tmp_path):
+    src = make_tone(tmp_path / "课程 资料")
+    unit = tmp_path / "课程 资料" / "第1周"
+    monkeypatch.setattr(local, "media_streams", lambda path: [
+        Stream(0, "audio", "pcm_s16le", None, False),
+        Stream(1, "subtitle", "subrip", None, False),
+        Stream(2, "subtitle", "ass", None, False),
+    ])
+    calls = record_vtt(monkeypatch, {1: None, 2: "WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nhello there\n"})
+    fake = install_fake_asr(monkeypatch)
+    h = acquire_local(src, unit, Profile(), False)
+    assert h.ok
+    assert calls == [1, 2]
+    assert fake.calls == []
+    assert json.loads(UnitPaths(unit).source.read_text(encoding="utf-8"))["acquisition"] == "embedded"
+
+
+def test_local_reads_no_track_from_a_file_without_audio_or_video(monkeypatch, tmp_path):
+    src = make_tone(tmp_path / "课程 资料")
+    unit = tmp_path / "课程 资料" / "第1周"
+    monkeypatch.setattr(local, "media_streams", lambda path: [Stream(0, "subtitle", "subrip", None, False)])
+    calls = record_vtt(monkeypatch, {0: "WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nhello there\n"})
+    fake = install_fake_asr(monkeypatch)
+    acquire_local(src, unit, Profile(), False)
+    assert calls == []
+    assert len(fake.calls) == 1
+    assert json.loads(UnitPaths(unit).source.read_text(encoding="utf-8"))["acquisition"] == "asr"
+
+
+def test_local_guard_fires_before_any_probe(monkeypatch, tmp_path):
+    src = make_tone(tmp_path / "课程 资料")
+    unit = tmp_path / "课程 资料" / "第1周"
+    paths = UnitPaths(unit).ensure()
+    paths.transcript.write_text(Transcript([Segment(0.0, 2.0, "kept")], None).to_json(),
+                                encoding="utf-8", newline="\n")
+    for name in ("media_streams", "media_duration", "subtitle_vtt"):
+        monkeypatch.setattr(local, name, refuse(name))
+    with pytest.raises(FileExistsError):
+        acquire_local(src, unit, Profile(), False)
+
+
+def test_cli_acquire_local_names_the_rung(monkeypatch, tmp_path, tmp_cfg, capsys):
+    video = make_subtitled(tmp_path / "课程 资料", "lecture.mkv", "flac", "srt", healthy_cues())
+    code = main(["acquire", "local", "--file", str(video), "--unit", str(tmp_path / "课程 资料" / "第1周")])
+    out = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert set(out) == {"status", "health", "acquisition"}
+    assert out["acquisition"] == "embedded"
+
+    src = make_tone(tmp_path / "课程 资料")
+    install_fake_asr(monkeypatch)
+    code = main(["acquire", "local", "--file", str(src), "--unit", str(tmp_path / "课程 资料" / "第2周")])
+    out = json.loads(capsys.readouterr().out)
+    assert code == 0 and out["acquisition"] == "asr"

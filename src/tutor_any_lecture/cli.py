@@ -202,11 +202,18 @@ def _cmd_acquire_panopto(args) -> int:
 def _cmd_acquire_local(args) -> int:
     from .acquire.local import acquire_local
     from .profile import load_profile
+    from .source import SourceInfo
+    from .unit import UnitPaths
+
+    def rung():
+        # The rung that made the transcript: "embedded" (a subtitle track in the file) or "asr".
+        return {"acquisition": SourceInfo.read(UnitPaths(args.unit).source).acquisition}
 
     return _run_acquire(
         lambda: acquire_local(
             Path(args.file), Path(args.unit), load_profile(), args.force, budget_minutes=args.budget_minutes
-        )
+        ),
+        rung,
     )
 
 
@@ -727,7 +734,7 @@ def build_parser() -> argparse.ArgumentParser:
     pan.add_argument("--unit", type=_path, required=True, help="the unit folder")
     pan.add_argument("--force", action="store_true", help="replace an existing transcript")
     pan.set_defaults(func=_cmd_acquire_panopto)
-    loc = acquire_sub.add_parser("local", help="transcribe a local video or audio file with ASR")
+    loc = acquire_sub.add_parser("local", help="transcribe a local video or audio file: a subtitle track inside it, else ASR")
     loc.add_argument("--file", type=_path, required=True, help="the video or audio file")
     loc.add_argument("--unit", type=_path, required=True, help="the unit folder")
     loc.add_argument("--force", action="store_true", help="replace an existing transcript")

@@ -1,4 +1,4 @@
-"""Local media (a video or audio file on disk) to a transcript, through ASR."""
+"""Local media (a video or audio file on disk) to a transcript: a subtitle track inside it, else ASR."""
 
 from __future__ import annotations
 
@@ -13,12 +13,12 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-from tutor_any_lecture import asr, slides
+from tutor_any_lecture import __version__, asr, slides
 
-from ..ffmpeg import extract_audio, media_duration
+from ..ffmpeg import TEXT_SUBTITLE_CODECS, extract_audio, media_duration, media_streams, subtitle_vtt
 from ..profile import Profile
 from ..source import SourceInfo, sha256_file, slide_digests
-from ..transcript import AcquireError, EmptyTranscript, Health, health
+from ..transcript import AcquireError, EmptyTranscript, Health, Transcript, health, parse_vtt
 from ..unit import UnitPaths, refuse_overwrite
 
 # The tool's temporary folders sit under one parent in the system temp folder: on POSIX
@@ -152,7 +152,7 @@ def transcribe_audio(
     refuse_overwrite(unit, force)
     audio = Path(audio)
     _require_file(audio)
-    return _transcribe_into_unit(audio, audio, unit, profile, budget_minutes, backend, model)
+    return _transcribe_into_unit(audio, audio, media_duration(audio), unit, profile, budget_minutes, backend, model)
 
 
 def acquire_local(
@@ -162,30 +162,80 @@ def acquire_local(
     force: bool,
     budget_minutes: float | None = None,
 ) -> Health:
-    """Extract ``file``'s audio to a temp folder, transcribe it into the unit, delete the audio."""
+    """Write ``file``'s first healthy text subtitle track into the unit as its transcript.
+
+    Without one, extract ``file``'s audio to a temp folder, transcribe it into the unit and
+    delete the audio. ``budget_minutes`` matters only then.
+    """
     refuse_overwrite(unit, force)
     file = Path(file)
     _require_file(file)
+    duration = media_duration(file)
+    h = _embedded_track_into_unit(file, duration, unit)
+    if h is not None:
+        return h
     # Before the extraction, so a missing backend costs no audio work.
     backend, model = asr.resolve_backend()
     # Removed also when transcription fails or the command is stopped.
     with temp_dir() as tmp:
         wav = tmp / "audio.wav"
         extract_audio(file, wav)
-        return _transcribe_into_unit(wav, file, unit, profile, budget_minutes, backend, model)
+        return _transcribe_into_unit(wav, file, duration, unit, profile, budget_minutes, backend, model)
+
+
+def _embedded_track_into_unit(file: Path, duration: float | None, unit: Path) -> Health | None:
+    """Write the first healthy text subtitle track of ``file``, in file order; None when there is none.
+
+    Only a file with audio, or with a video stream that is not a cover picture, has its
+    tracks read: a bare subtitle file is one ``subrip`` stream to ffmpeg. A track ffmpeg
+    cannot convert, an empty one and an unhealthy one are skipped, and nothing is written
+    for them.
+    """
+    streams = media_streams(file)
+    if not any(s.kind == "audio" or (s.kind == "video" and not s.attached_pic) for s in streams):
+        return None
+    for stream in streams:
+        if stream.kind != "subtitle" or stream.codec not in TEXT_SUBTITLE_CODECS:
+            continue
+        text = subtitle_vtt(file, stream.index)
+        if text is None:
+            continue
+        segments = parse_vtt(text)
+        if not segments:
+            continue
+        h = health(segments, duration)
+        if not h.ok:
+            continue
+        paths = UnitPaths(unit).ensure()
+        # The track's language tag is not trusted as the lecture's language.
+        paths.transcript.write_text(Transcript(segments, None).to_json(), encoding="utf-8", newline="\n")
+        SourceInfo(
+            kind="local",
+            title=file.stem,
+            url=None,
+            platform=None,
+            duration=duration,
+            lecture_language=None,
+            acquisition="embedded",
+            health=dataclasses.asdict(h),
+            tool_versions={"tutor-any-lecture": __version__},
+            inputs_sha256={**slide_digests(paths.source), file.name: sha256_file(file)},
+        ).write(paths.source)
+        return h
+    return None
 
 
 def _transcribe_into_unit(
     audio: Path,
     origin: Path,
+    duration: float | None,
     unit: Path,
     profile: Profile,
     budget_minutes: float | None,
     backend: str | None,
     model: str | None,
 ) -> Health:
-    """Transcribe ``audio``; write transcript.json and source.json describing ``origin``."""
-    duration = media_duration(origin)
+    """Transcribe ``audio``; write transcript.json and source.json describing ``origin``, ``duration`` long."""
     language = None if profile.lecture_language == "auto" else profile.lecture_language
     prompt = slides.slide_terms(slides.load_pages(unit))
     budget = asr.default_budget_minutes(duration) if budget_minutes is None else budget_minutes
