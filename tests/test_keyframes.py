@@ -1,5 +1,7 @@
 import io
+import itertools
 import json
+import os
 import random
 import shutil
 import subprocess
@@ -8,10 +10,17 @@ from pathlib import Path
 import pytest
 from PIL import Image, ImageDraw
 
-from tutor_any_lecture import keyframes
+from tutor_any_lecture import ffmpeg, keyframes
 from tutor_any_lecture.cli import main
-from tutor_any_lecture.ffmpeg import Stream, ffmpeg_exe, sample_gray_frames
-from tutor_any_lecture.keyframes import DUPLICATE_BITS, extract_keyframes, frame_hash, hamming, select_frames
+from tutor_any_lecture.ffmpeg import Stream, sample_gray_frames
+from tutor_any_lecture.keyframes import (
+    DUPLICATE_BITS,
+    SAMPLE_SECONDS,
+    extract_keyframes,
+    frame_hash,
+    hamming,
+    select_frames,
+)
 from tutor_any_lecture.slides import load_pages
 from tutor_any_lecture.transcript import AcquireError
 from tutor_any_lecture.unit import UnitPaths
@@ -111,34 +120,80 @@ def test_at_most_120_frames_spread_over_the_lecture():
 
 # ---- K4 to K6: key frames become the unit's slide pages ---------------------------
 
-# 64 s at 5 fps: bars (0 s), the same bars with a small box (21 s, a near-duplicate), a colour
-# test picture (31 s), another (45 s), other bars (49 s).
-GRAPH = (
-    "smptebars=s=320x240:r=5:d=21[a];"
-    "smptebars=s=320x240:r=5:d=10,drawbox=x=20:y=20:w=40:h=20:c=white:t=fill[b];"
-    "rgbtestsrc=s=320x240:r=5:d=14[c];"
-    "yuvtestsrc=s=320x240:r=5:d=4[d];"
-    "pal75bars=s=320x240:r=5:d=15[e];"
-    "[a][b][c][d][e]concat=n=5:v=1:a=0[v]"
-)
-FRAMES = [f"frame-{n:03d}.jpg" for n in range(1, 5)]
-EXPECTED = [
-    (1, None, "", "../keyframes/frame-001.jpg", 0.0),
-    (2, None, "", "../keyframes/frame-002.jpg", 32.0),
-    (3, None, "", "../keyframes/frame-003.jpg", 46.0),
-    (4, None, "", "../keyframes/frame-004.jpg", 54.0),
+
+def picture(background, boxes, seconds):
+    # local helper: a lavfi source of filled boxes (x, y, w, h, colour) on a 320x240 background, 5 fps
+    fills = "".join(f",drawbox=x={x}:y={y}:w={w}:h={h}:c={c}:t=fill" for x, y, w, h, c in boxes)
+    return f"color=c={background}:s=320x240:r=5:d={seconds}{fills}"
+
+
+# Slide-like pictures of flat boxes. Unlike ffmpeg's test patterns (rgbtestsrc and pal75bars
+# have DCT coefficients exactly at the hash's median, so a few bits flip from one ffmpeg build
+# to the next), none is symmetric and every coefficient sits well away from the median.
+TITLE = (0, 0, 320, 50, "0x142878")
+TEXT = ("white", [TITLE, (20, 80, 250, 20, "gray"), (30, 135, 200, 20, "gray"), (20, 170, 230, 20, "gray")])
+FIGURE = ("white", [TITLE, (30, 90, 110, 90, "gray"), (170, 70, 130, 130, "0xC83C28")])
+# The synthetic lecture, (seconds, kind, background, boxes) in order: the text slide; the same
+# slide with a small box (a near-duplicate); a figure; a dark slide; a striped one. Every scene
+# lasts at least 12 s, so a frame kept up to 2 samples late is still 8 s from the next scene's,
+# and every cut falls at an odd second, between two samples.
+SCENES = [
+    (13, "distinct", *TEXT),
+    (14, "duplicate", TEXT[0], [*TEXT[1], (270, 210, 20, 10, "gray")]),
+    (14, "distinct", *FIGURE),
+    (14, "distinct", "0x1e1e1e", [(140, 120, 160, 110, "0xe6e6e6"), (10, 10, 100, 60, "0x808080")]),
+    (13, "distinct", "0x606060", [(0, 0, 60, 240, "0xf0f0f0"), (200, 0, 40, 240, "black"),
+                                  (100, 170, 220, 50, "0xb0b0b0")]),
 ]
+STARTS = list(itertools.accumulate([0, *(seconds for seconds, *_ in SCENES)]))  # the last is the end, 68 s
+SPANS = [(STARTS[i], STARTS[i + 1], kind) for i, (_, kind, *_) in enumerate(SCENES)]
+GRAPH = "".join(f"{picture(background, boxes, seconds)}[s{i}];"
+                for i, (seconds, _, background, boxes) in enumerate(SCENES))
+GRAPH += "".join(f"[s{i}]" for i in range(len(SCENES))) + f"concat=n={len(SCENES)}:v=1:a=0[v]"
+FRAMES = [f"frame-{n:03d}.jpg" for n in range(1, 5)]
+EXPECTED = [(n, None, "", f"../keyframes/{name}") for n, name in enumerate(FRAMES, start=1)]
+CANDIDATES = (34, 35)  # 68 s, one candidate every 2 s
 LINK_MESSAGE = (
     "keyframes reads a video file on this computer, not a link: "
     "from a video site the tool takes captions or audio only"
 )
 
 
+def bundled_ffmpeg():
+    # local helper: the binary bundled with imageio-ffmpeg, or None when it has none
+    try:
+        import imageio_ffmpeg
+
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except (ImportError, RuntimeError, OSError):
+        return None
+
+
+@pytest.fixture(scope="module", params=["path", "bundled"])
+def ffmpeg_build(request):
+    # local fixture: each ffmpeg build on this machine in turn, as the binary the package uses
+    on_path = shutil.which("ffmpeg")
+    if request.param == "path":
+        if on_path is None:
+            pytest.skip("no ffmpeg on PATH")
+        exe = on_path
+    else:
+        exe = bundled_ffmpeg()
+        if exe is None:
+            pytest.skip("imageio-ffmpeg has no ffmpeg binary here")
+        if on_path is not None and os.path.samefile(on_path, exe):
+            pytest.skip("the bundled ffmpeg is the one on PATH")
+    patch = pytest.MonkeyPatch()
+    patch.setattr(ffmpeg, "ffmpeg_exe", lambda: exe)
+    yield exe
+    patch.undo()
+
+
 @pytest.fixture(scope="module")
-def lecture_video(tmp_path_factory):
+def lecture_video(tmp_path_factory, ffmpeg_build):
     path = tmp_path_factory.mktemp("video") / "lecture.mkv"
     subprocess.run(
-        [ffmpeg_exe(), "-hide_banner", "-nostdin", "-filter_complex", GRAPH, "-map", "[v]",
+        [ffmpeg_build, "-hide_banner", "-nostdin", "-filter_complex", GRAPH, "-map", "[v]",
          "-c:v", "mpeg4", "-q:v", "2", str(path)],
         check=True, capture_output=True,
     )
@@ -146,7 +201,7 @@ def lecture_video(tmp_path_factory):
 
 
 @pytest.fixture
-def lecture(tmp_path, lecture_video):
+def lecture(tmp_path, ffmpeg_build, lecture_video):
     # local fixture: the encoded video copied beside a fresh unit, in a folder with a space and CJK
     folder = tmp_path / "课程 资料"
     folder.mkdir()
@@ -158,7 +213,7 @@ def lecture(tmp_path, lecture_video):
 def make_tone(path):
     # local helper: 2 s of sine from ffmpeg lavfi
     path.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run([ffmpeg_exe(), "-f", "lavfi", "-i", "sine=frequency=440:duration=2", str(path)],
+    subprocess.run([ffmpeg.ffmpeg_exe(), "-f", "lavfi", "-i", "sine=frequency=440:duration=2", str(path)],
                    check=True, capture_output=True)
     return path
 
@@ -170,6 +225,48 @@ def names(folder):
 
 def page_tuples(pages):
     return [(p.n, p.label, p.text, p.image, p.time) for p in pages]
+
+
+def assert_one_page_per_scene(pages):
+    # local helper: one page for each distinct scene, in order, taken at most 2 samples after the
+    # scene starts, and none for the near-duplicate; which source frame an ffmpeg build puts at a
+    # 2 s sample does not matter
+    assert [(p.n, p.label, p.text, p.image) for p in pages] == EXPECTED
+    distinct = [(start, end) for start, end, kind in SPANS if kind == "distinct"]
+    assert len(pages) == len(distinct)
+    for page, (start, _) in zip(pages, distinct):
+        assert start <= page.time <= start + 2 * SAMPLE_SECONDS
+    duplicates = [(start, end) for start, end, kind in SPANS if kind == "duplicate"]
+    assert [p.time for p in pages if any(start <= p.time < end for start, end in duplicates)] == []
+
+
+def sampled_hashes(video, index):
+    # local helper: the hash of each candidate frame the package samples, in time order
+    hashes = []
+    for frame in sample_gray_frames(video, index, SAMPLE_SECONDS):
+        with Image.frombytes("L", (64, 64), frame) as image:
+            hashes.append(frame_hash(image))
+    return hashes
+
+
+def scene_margins(video):
+    # local helper: for the ffmpeg build in use, the largest distance between two samples of one
+    # scene, the largest between the first scene and its near-duplicate, and the smallest
+    # between two distinct scenes
+    by_scene = [[] for _ in SCENES]
+    for k, h in enumerate(sampled_hashes(video, 0)):
+        for i, (start, end, _) in enumerate(SPANS):
+            if start <= k * SAMPLE_SECONDS < end:
+                by_scene[i].append(h)
+    assert all(by_scene), "every scene has a sample"
+    distinct = [i for i, (_, _, kind) in enumerate(SPANS) if kind == "distinct"]
+    duplicates = [i for i, (_, _, kind) in enumerate(SPANS) if kind == "duplicate"]
+    return {
+        "same": max(hamming(a, b) for hashes in by_scene for a in hashes for b in hashes),
+        "duplicate": max(hamming(a, b) for i in duplicates for a in by_scene[0] for b in by_scene[i]),
+        "distinct": min(hamming(a, b) for i, j in itertools.combinations(distinct, 2)
+                        for a in by_scene[i] for b in by_scene[j]),
+    }
 
 
 def assert_nothing_written(unit):
@@ -193,14 +290,21 @@ def failing_on_second_call(error):
     return save
 
 
-def test_keyframes_of_a_synthetic_lecture(lecture):
+def test_synthetic_scenes_keep_their_margins(ffmpeg_build, lecture_video):
+    margins = scene_margins(lecture_video)
+    assert margins["same"] <= 2
+    assert margins["duplicate"] <= DUPLICATE_BITS - 2
+    assert margins["distinct"] >= DUPLICATE_BITS + 6
+
+
+def test_keyframes_of_a_synthetic_lecture(ffmpeg_build, lecture):
     video, unit = lecture
     pages, candidates = extract_keyframes(video, unit)
-    assert page_tuples(pages) == EXPECTED
-    assert page_tuples(load_pages(unit)) == EXPECTED
+    assert_one_page_per_scene(pages)
+    assert page_tuples(load_pages(unit)) == page_tuples(pages)
     raw = json.loads(UnitPaths(unit).pages.read_text(encoding="utf-8"))
     assert [set(entry) for entry in raw] == [{"n", "label", "text", "image", "time"}] * 4
-    assert candidates in (32, 33)
+    assert candidates in CANDIDATES
     folder = unit / "sources" / "keyframes"
     assert names(folder) == FRAMES
     for name in FRAMES:
@@ -209,39 +313,44 @@ def test_keyframes_of_a_synthetic_lecture(lecture):
     assert not (unit / "sources" / "source.json").exists()
 
 
-def test_keyframe_times_follow_the_file_when_the_video_starts_late(tmp_path):
-    # 30 s of audio, and a video track that starts 6 s later: bars from 6 s on the file's
-    # timeline, other bars from 15 s. Frame k must be the picture at k * 2 s of the file, not
-    # of the video track, or the times (and the saved frames) would run 6 s early.
+def test_keyframe_times_follow_the_file_when_the_video_starts_late(tmp_path, ffmpeg_build):
+    # 30 s of audio, and a video track that starts 6 s later: the text slide from 6 s on the
+    # file's timeline, the figure from 15 s. Frame k must be the picture at k * 2 s of the file,
+    # not of the video track, or the times (and the saved frames) would run 6 s early. The
+    # samples before 6 s repeat the first picture, so on the sampled timeline the text slide
+    # starts at 0 s; the figure's page must come from 15 s on, not from 9 s.
     folder = tmp_path / "课程 资料"
     folder.mkdir()
     video = folder / "第1周 lecture.mkv"
     subprocess.run(
-        [ffmpeg_exe(), "-hide_banner", "-nostdin",
+        [ffmpeg_build, "-hide_banner", "-nostdin",
          "-f", "lavfi", "-i", "sine=frequency=440:duration=30",
          "-itsoffset", "6", "-f", "lavfi",
-         "-i", "smptebars=s=320x240:r=5:d=9[a];pal75bars=s=320x240:r=5:d=9[b];[a][b]concat=n=2:v=1:a=0",
+         "-i", f"{picture(*TEXT, 9)}[a];{picture(*FIGURE, 9)}[b];[a][b]concat=n=2:v=1:a=0",
          "-map", "0:a", "-map", "1:v", "-c:a", "flac", "-c:v", "mpeg4", "-q:v", "2", str(video)],
         check=True, capture_output=True,
     )
     unit = folder / "第1周"
     pages, candidates = extract_keyframes(video, unit)
-    assert [p.time for p in pages] == [0.0, 16.0]
+    starts = (0.0, 15.0)
+    assert len(pages) == len(starts)
+    for page, start in zip(pages, starts):
+        assert start <= page.time <= start + 2 * SAMPLE_SECONDS
     assert candidates in (12, 13)  # 0 s to the end of the video at 24 s, every 2 s
 
-    # Each saved frame shows the picture that was hashed for its time, and not the other one.
-    sampled = []
-    for frame in sample_gray_frames(video, 1, 2.0):
-        with Image.frombytes("L", (64, 64), frame) as image:
-            sampled.append(frame_hash(image))
+    # Each saved frame shows the picture that was hashed for its time, and not the other one:
+    # it is closer to its own sample than to the other page's, by at least 6 bits.
+    sampled = sampled_hashes(video, 1)
     for page, other in zip(pages, reversed(pages)):
         with Image.open(unit / "sources" / "slides" / page.image) as saved:
             h = frame_hash(saved)
-        assert hamming(h, sampled[round(page.time / 2.0)]) <= DUPLICATE_BITS
-        assert hamming(h, sampled[round(other.time / 2.0)]) > DUPLICATE_BITS
+        own = hamming(h, sampled[round(page.time / SAMPLE_SECONDS)])
+        elsewhere = hamming(h, sampled[round(other.time / SAMPLE_SECONDS)])
+        assert own < elsewhere
+        assert elsewhere - own >= 6
 
 
-def test_keyframes_errors_name_the_video(lecture, monkeypatch):
+def test_keyframes_errors_name_the_video(ffmpeg_build, lecture, monkeypatch):
     video, unit = lecture
     monkeypatch.setattr(keyframes, "media_streams", lambda path: [
         Stream(0, "video", "mjpeg", None, True), Stream(1, "audio", "aac", None, False),
@@ -269,7 +378,7 @@ def test_unit_paths_name_the_keyframes_folder(tmp_path):
     assert UnitPaths(tmp_path).keyframes == tmp_path / "sources" / "keyframes"
 
 
-def test_keyframes_replace_only_with_force(lecture):
+def test_keyframes_replace_only_with_force(ffmpeg_build, lecture):
     video, unit = lecture
     extract_keyframes(video, unit)
     pages_json = UnitPaths(unit).pages
@@ -281,7 +390,7 @@ def test_keyframes_replace_only_with_force(lecture):
     folder = unit / "sources" / "keyframes"
     (folder / "frame-099.jpg").write_bytes(b"stray")
     pages, _ = extract_keyframes(video, unit, force=True)
-    assert page_tuples(pages) == EXPECTED
+    assert_one_page_per_scene(pages)
     assert names(folder) == FRAMES
 
     partial = unit / "sources" / "keyframes.partial"
@@ -292,9 +401,10 @@ def test_keyframes_replace_only_with_force(lecture):
     assert names(folder) == FRAMES
 
 
-def test_a_failed_run_changes_nothing(lecture, monkeypatch):
+def test_a_failed_run_changes_nothing(ffmpeg_build, lecture, monkeypatch):
     video, unit = lecture
-    extract_keyframes(video, unit)
+    pages, _ = extract_keyframes(video, unit)
+    assert_one_page_per_scene(pages)
     pages_json = UnitPaths(unit).pages
     folder = unit / "sources" / "keyframes"
     before = pages_json.read_bytes()
@@ -317,7 +427,7 @@ def test_a_failed_run_changes_nothing(lecture, monkeypatch):
     assert not (fresh / "sources" / "keyframes.old").exists()
 
 
-def test_cli_keyframes_prints_the_pages_path(lecture, capsys):
+def test_cli_keyframes_prints_the_pages_path(ffmpeg_build, lecture, capsys):
     video, unit = lecture
     argv = ["keyframes", "--video", str(video), "--unit", str(unit)]
     assert main(argv) == 0
@@ -325,8 +435,9 @@ def test_cli_keyframes_prints_the_pages_path(lecture, capsys):
     assert len(lines) == 1
     out = json.loads(lines[0])
     path = unit / "sources" / "slides" / "pages.json"
-    assert out["status"] == "ok" and out["frames"] == 4 and out["candidates"] in (32, 33)
+    assert out["status"] == "ok" and out["frames"] == 4 and out["candidates"] in CANDIDATES
     assert out["path"] == str(path)
+    assert_one_page_per_scene(load_pages(unit))
     assert Path(out["path"]).is_absolute() and Path(out["path"]).is_file()
 
     assert main(argv) == 3
@@ -350,7 +461,7 @@ def test_cli_keyframes_refuses_a_link(tmp_path, capsys, link):
     assert not unit.exists()
 
 
-def test_cli_keyframes_input_errors_are_json_objects(tmp_path, capsys):
+def test_cli_keyframes_input_errors_are_json_objects(tmp_path, capsys, ffmpeg_build):
     folder = tmp_path / "课程 资料"
     unit = folder / "第1周"
     missing = folder / "nope.mp4"
