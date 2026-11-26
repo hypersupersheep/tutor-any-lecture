@@ -2,7 +2,7 @@ Adapter: Brightspace. Slides and other files in a Brightspace course's Content, 
 
 ## Platform
 
-Brightspace, D2L's learning platform, where courses post modules and topics in the Content tool: documents, slides, videos and links to recordings. Slide files go to `tutor-any-lecture slides --pdf F --unit DIR [--images]`, or a `.pptx` deck to `tutor-any-lecture slides --pptx F --unit DIR` (when the course posts both, use the PDF), then `tutor-any-lecture slides suspects --unit DIR`. A caption file from the Media player goes to `tutor-any-lecture acquire import --file F --unit DIR`. Recordings embedded from a capture or meeting platform go through its adapter: [panopto](panopto.md), [echo360](echo360.md), [kaltura](kaltura.md), [yuja](yuja.md) or [zoom](zoom.md).
+Brightspace, D2L's learning platform, where courses post modules and topics in the Content tool: documents, slides, videos and links to recordings. Slide files go to `tutor-any-lecture slides --pdf F --unit DIR [--images]`, or a `.pptx` deck to `tutor-any-lecture slides --pptx F --unit DIR` (when the course posts both, use the PDF), then `tutor-any-lecture slides suspects --unit DIR`. A caption file from the Media player goes to `tutor-any-lecture acquire import --file F --unit DIR`. Recordings embedded from a capture or meeting platform go through its adapter: [panopto](panopto.md), [echo360](echo360.md), [kaltura](kaltura.md) or [zoom](zoom.md).
 
 ## URL patterns
 

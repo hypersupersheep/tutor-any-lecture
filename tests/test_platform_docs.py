@@ -155,7 +155,7 @@ def test_profile_accepts_every_platform_key(tmp_cfg):
     from tutor_any_lecture.profile import set_value
 
     assert PLATFORM_KEYS == (
-        "blackboard", "brightspace", "canvas", "echo360", "kaltura", "moodle", "panopto", "teams", "yuja", "zoom"
+        "blackboard", "brightspace", "canvas", "echo360", "kaltura", "moodle", "panopto", "teams", "zoom"
     )
     profile = set_value("platforms", "{" + ", ".join(f"{k}: https://{k}.example.org" for k in PLATFORM_KEYS) + "}")
     assert profile.platforms == {k: f"https://{k}.example.org" for k in PLATFORM_KEYS}
@@ -172,7 +172,7 @@ def test_an_unknown_platform_names_the_allowed_keys(tmp_cfg):
 # ---- A7. each new adapter fills the template the same way ----
 
 LMS = {"canvas", "blackboard", "brightspace"}
-VIDEO = {"echo360", "kaltura", "yuja", "zoom"}
+VIDEO = {"echo360", "kaltura", "zoom"}
 MEETING = {"zoom", "teams"}
 DOES_NOT_DOWNLOAD = (
     "This adapter does not download the recording; it reads a caption or transcript file the platform lets the "
@@ -260,7 +260,7 @@ def test_learning_platforms_hand_over_slides_and_recordings():
     for stem in sorted(LMS):
         text = adapter(stem)
         assert "slides --pdf F --unit DIR" in text, stem
-        for link in ("panopto.md", "echo360.md", "kaltura.md", "yuja.md", "zoom.md"):
+        for link in ("panopto.md", "echo360.md", "kaltura.md", "zoom.md"):
             assert f"({link})" in text, (stem, link)
 
 
@@ -280,11 +280,11 @@ def test_documents_point_to_the_new_adapters():
     readme, readme_zh = read(ROOT / "README.md"), read(ROOT / "README.zh-CN.md")
     assert (
         "Experimental adapters, written from public documentation and not yet run on a real lecture, describe "
-        "Canvas, Blackboard, Brightspace, Echo360, Kaltura, YuJa, Zoom and Teams/Stream."
+        "Canvas, Blackboard, Brightspace, Echo360, Kaltura, Zoom and Teams/Stream."
     ) in faq_answer(readme, "Which sources can it read?")
     assert (
         "实验性的 adapter 按公开文档写成,还没在真实的课上跑过,覆盖 Canvas、Blackboard、Brightspace、Echo360、Kaltura、"
-        "YuJa、Zoom 和 Teams/Stream。"
+        "Zoom 和 Teams/Stream。"
     ) in faq_answer(readme_zh, "能读哪些材料?")
     agents = faq_answer(readme, "Which agents does it work with?")
     assert (
@@ -299,7 +299,7 @@ def test_documents_point_to_the_new_adapters():
     bullet = next(line for line in changelog.splitlines() if line.startswith("- Start from what you have:"))
     assert bullet.endswith(
         "Experimental adapters, written from public documentation, describe Canvas, Blackboard, Brightspace, "
-        "Echo360, Kaltura, YuJa, Zoom and Teams/Stream."
+        "Echo360, Kaltura, Zoom and Teams/Stream."
     )
     assert "their experimental adapters" in read(ADAPTERS / "url.md")
     contributing = read(ROOT / "CONTRIBUTING.md")

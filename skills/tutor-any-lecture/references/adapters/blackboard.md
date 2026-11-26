@@ -2,7 +2,7 @@ Adapter: Blackboard. Slides and other files on a Blackboard course, read in the 
 
 ## Platform
 
-Blackboard, Anthology's learning platform, where courses post documents, files and recordings on the Course Content page. Slide files go to `tutor-any-lecture slides --pdf F --unit DIR [--images]`, or a `.pptx` deck to `tutor-any-lecture slides --pptx F --unit DIR` (when the course posts both, use the PDF), then `tutor-any-lecture slides suspects --unit DIR`. A Video Studio transcript goes to `tutor-any-lecture acquire import --file F --unit DIR`. Recordings embedded from a capture or meeting platform go through its adapter: [panopto](panopto.md), [echo360](echo360.md), [kaltura](kaltura.md), [yuja](yuja.md) or [zoom](zoom.md).
+Blackboard, Anthology's learning platform, where courses post documents, files and recordings on the Course Content page. Slide files go to `tutor-any-lecture slides --pdf F --unit DIR [--images]`, or a `.pptx` deck to `tutor-any-lecture slides --pptx F --unit DIR` (when the course posts both, use the PDF), then `tutor-any-lecture slides suspects --unit DIR`. A Video Studio transcript goes to `tutor-any-lecture acquire import --file F --unit DIR`. Recordings embedded from a capture or meeting platform go through its adapter: [panopto](panopto.md), [echo360](echo360.md), [kaltura](kaltura.md) or [zoom](zoom.md).
 
 ## URL patterns
 

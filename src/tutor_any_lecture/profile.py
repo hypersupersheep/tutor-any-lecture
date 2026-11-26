@@ -33,7 +33,7 @@ OUTPUT_MEMBERS = ("explanation", "pretest", "quiz", "cards", "map")
 # The keys platforms may hold (each value a base URL): the platform adapters' file names, in
 # alphabetical order; tests/test_platform_docs.py checks that the two agree.
 PLATFORM_KEYS = (
-    "blackboard", "brightspace", "canvas", "echo360", "kaltura", "moodle", "panopto", "teams", "yuja", "zoom"
+    "blackboard", "brightspace", "canvas", "echo360", "kaltura", "moodle", "panopto", "teams", "zoom"
 )
 
 

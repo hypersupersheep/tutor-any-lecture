@@ -11,7 +11,7 @@ The same folder holds `cli-path`. A missing or empty file means every default. T
   - an unknown key;
   - for `goal`, `quote_density`, `terms`, `level`, `output_target`, `downloads`, `public_video_audio` and `naming`, a value outside the set in the table below;
   - for `outputs`, a value that is not a YAML list, a member other than explanation, pretest, quiz, cards, map, or a list without explanation;
-  - for `platforms`, a value that is not a YAML mapping, a key that is not the name of a platform adapter, or a value that is not text; the keys are `blackboard`, `brightspace`, `canvas`, `echo360`, `kaltura`, `moodle`, `panopto`, `teams`, `yuja`, `zoom`;
+  - for `platforms`, a value that is not a YAML mapping, a key that is not the name of a platform adapter, or a value that is not text; the keys are `blackboard`, `brightspace`, `canvas`, `echo360`, `kaltura`, `moodle`, `panopto`, `teams`, `zoom`;
   - `public_video_audio_consent`, which only the consent gate below writes.
 
   `note_language`, `lecture_language`, `workspace` and `obsidian_vault` take any text.
