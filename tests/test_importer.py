@@ -77,6 +77,16 @@ def test_sha256_file_matches_hashlib(tmp_path):
     assert sha256_file(p) == hashlib.sha256(data).hexdigest()
 
 
+def test_import_makes_no_slides_folder(tmp_path):
+    unit = tmp_path / "unit"
+    import_transcript(fx("transcripts", "cues.vtt"), unit, None, False)
+    assert (unit / "sources").is_dir()
+    assert not (unit / "sources" / "slides").exists()
+    # The slides command makes the folder itself when it writes into it.
+    extract_pdf(make_pdf(tmp_path, ["Compound interest\n1/1"]), unit)
+    assert (unit / "sources" / "slides" / "pages.json").is_file()
+
+
 def test_cli_import_spaced_cjk_path(tmp_path, capsys):
     folder = tmp_path / "课程 资料"
     folder.mkdir()

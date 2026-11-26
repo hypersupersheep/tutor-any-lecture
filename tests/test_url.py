@@ -734,6 +734,11 @@ def test_cleaner_keeps_the_recording_id_parameters():
     assert url_without_tokens("https://u:pw@x.example/p?auth=S#t=5") == "https://x.example/p"
 
 
+def test_cleaner_keeps_recording_ids_in_any_letter_case():
+    assert url_without_tokens("https://x.example/p?entryId=0_ab&ks=S&ID=4") == "https://x.example/p?entryId=0_ab&ID=4"
+    assert url_without_tokens("https://x.example/p?entryId=a&entryid=b") == "https://x.example/p?entryId=a"
+
+
 # ---- naming a unit before acquiring it (Task 29, L2) -------------------------
 
 

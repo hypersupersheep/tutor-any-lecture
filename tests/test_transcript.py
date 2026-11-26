@@ -11,6 +11,7 @@ from tutor_any_lecture.transcript import (
     Health,
     Segment,
     Transcript,
+    clock_seconds,
     health,
     parse_srt,
     parse_stamped_txt,
@@ -85,6 +86,31 @@ def test_health_fails_each_threshold(segs, failed):
 def test_health_empty_segments():
     assert health([], 600.0) == Health(0.0, 0.0, False, False, False, False, True, "lecture")
     assert health([], None) == Health(0.0, 0.0, False, False, False, False, False, "none")
+
+
+def test_clock_seconds():
+    assert clock_seconds("0:45") == 45.0
+    assert clock_seconds("12:05") == 725.0
+    assert clock_seconds("1:02:03") == 3723.0
+    assert clock_seconds("120:00") == 7200.0
+    with pytest.raises(ValueError):
+        clock_seconds("1:2:3:4")
+
+
+def test_clock_times_have_one_parser():
+    import ast
+
+    import tutor_any_lecture
+
+    package = Path(tutor_any_lecture.__file__).parent
+
+    def function_names(rel):
+        tree = ast.parse((package / rel).read_text(encoding="utf-8"))
+        return {n.name for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+
+    assert "_seconds" not in function_names("citations.py")
+    assert "_stamp_seconds" not in function_names("acquire/panopto.py")
+    assert "clock_seconds" in function_names("transcript.py")
 
 
 def test_health_names_its_length_basis():

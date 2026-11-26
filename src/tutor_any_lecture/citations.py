@@ -14,6 +14,7 @@ from typing import NamedTuple
 from urllib.parse import SplitResult, parse_qsl, urlsplit
 
 from .textstats import INLINE_CODE_RE, fenced_lines
+from .transcript import clock_seconds
 
 TIME = r"\d{1,2}:\d{2}(?::\d{2})?"
 TIME_RE = re.compile(TIME)
@@ -49,13 +50,6 @@ class Citation:
     line: int
 
 
-def _seconds(t: str) -> float:
-    parts = [int(p) for p in t.split(":")]
-    if len(parts) == 3:
-        return float(parts[0] * 3600 + parts[1] * 60 + parts[2])
-    return float(parts[0] * 60 + parts[1])
-
-
 def _parts(content: str) -> list[re.Match]:
     """The PART_RE matches of one group's content, or [] when it is not a citation list."""
     out: list[re.Match] = []
@@ -87,8 +81,8 @@ def _parse_group(content: str, raw: str, line: int) -> list[Citation]:
             out.append(
                 Citation(
                     "time",
-                    _seconds(start),
-                    _seconds(end) if end else None,
+                    clock_seconds(start),
+                    clock_seconds(end) if end else None,
                     m.group("tilde") is not None,
                     raw,
                     line,
@@ -119,7 +113,7 @@ def format_seconds(d: float) -> str:
 
 def _as_written(raw: str, seconds: float) -> str:
     for tok in TIME_RE.findall(raw):
-        if _seconds(tok) == seconds:
+        if clock_seconds(tok) == seconds:
             return tok
     return format_seconds(seconds)
 
@@ -282,7 +276,7 @@ def link_times(md: str, url: str) -> tuple[str, int]:
                     spans.append((offset + m.start("ab"), offset + m.end("ab")))
         for start, end in reversed(spans):
             token = line[start:end]
-            line = f"{line[:start]}[{token}]({time_url(url, _seconds(token))}){line[end:]}"
+            line = f"{line[:start]}[{token}]({time_url(url, clock_seconds(token))}){line[end:]}"
         lines[i] = line
         count += len(spans)
     return "\n".join(lines), count
@@ -330,7 +324,7 @@ def link_time_problems(md: str) -> list[str]:
                     at = _link_seconds(_encoded(url), row)
                     if at is None:
                         problems.append(f"time link {text} has no time in its address")
-                    elif at != int(_seconds(text)):
+                    elif at != int(clock_seconds(text)):
                         problems.append(f"time link {text} points at {format_seconds(at)}")
     return problems
 

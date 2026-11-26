@@ -166,7 +166,21 @@ def parse_vtt(text: str) -> list[Segment]:
     return _read_cues(text, _clean_vtt)
 
 
-_STAMP = re.compile(r"^\s*\[(\d+):(\d{2})(?::(\d{2}))?\]\s*(.*)$")
+def clock_seconds(text: str) -> float:
+    """A clock time to seconds: ``m:ss``, ``mm:ss`` or ``h:mm:ss`` (the first part may be longer).
+
+    The one parser of written clock times, for transcripts, Panopto stamps and citations.
+    Any other number of parts raises ``ValueError``, and so does a part that is not a number.
+    """
+    parts = [int(p) for p in text.split(":")]
+    if len(parts) == 2:
+        return float(parts[0] * 60 + parts[1])
+    if len(parts) == 3:
+        return float(parts[0] * 3600 + parts[1] * 60 + parts[2])
+    raise ValueError(f"not a clock time (m:ss or h:mm:ss): {text!r}")
+
+
+_STAMP = re.compile(r"^\s*\[(\d+:\d{2}(?::\d{2})?)\]\s*(.*)$")
 
 
 def parse_stamped_txt(text: str, duration: float | None) -> list[Segment]:
@@ -175,12 +189,8 @@ def parse_stamped_txt(text: str, duration: float | None) -> list[Segment]:
     for line in _normalise(text).split("\n"):
         m = _STAMP.match(line)
         if m:
-            a, b, c, rest = m.groups()
-            if c is None:
-                start = float(int(a) * 60 + int(b))
-            else:
-                start = float(int(a) * 3600 + int(b) * 60 + int(c))
-            stamped.append([start, rest])
+            stamp, rest = m.groups()
+            stamped.append([clock_seconds(stamp), rest])
         elif line.strip() and stamped:
             stamped[-1][1] += " " + line
     kept = [(start, _collapse(t)) for start, t in stamped if _collapse(t)]

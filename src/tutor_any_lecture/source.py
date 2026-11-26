@@ -125,17 +125,19 @@ def url_without_tokens(url) -> str | None:
     """A lecture-capture address without what could grant access to it, for source.json.
 
     Scheme, host and path stay, with the recording-id query parameters only
-    (``RECORDING_ID_PARAMS``, the first value of each, in address order): tokens, other
-    parameters, a user name in the host and the fragment are dropped. ``None`` for an
-    empty or non-text value.
+    (``RECORDING_ID_PARAMS``, compared without letter case, so Kaltura's ``entryId`` is
+    one; each kept name as written, with the first value of each name compared without
+    case, in address order): tokens, other parameters, a user name in the host and the
+    fragment are dropped. ``None`` for an empty or non-text value.
     """
     if not isinstance(url, str) or not url.strip():
         return None
     parts = urlsplit(url.strip())
-    kept: dict[str, str] = {}
+    kept: dict[str, tuple[str, str]] = {}  # lower-case name -> (name as written, value)
     for name, value in parse_qsl(parts.query):
-        if name in RECORDING_ID_PARAMS and name not in kept:
-            kept[name] = value
-    query = urlencode(kept)
+        key = name.lower()
+        if key in RECORDING_ID_PARAMS and key not in kept:
+            kept[key] = (name, value)
+    query = urlencode(list(kept.values()))
     host = parts.netloc.rpartition("@")[2]
     return urlunsplit((parts.scheme, host, parts.path, query, ""))

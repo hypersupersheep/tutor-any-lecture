@@ -75,6 +75,7 @@ def extract_pdf(pdf: Path, unit: Path, images: bool = False) -> list[Page]:
 
         paths = UnitPaths(unit).ensure()
         slides_dir = paths.pages.parent
+        slides_dir.mkdir(exist_ok=True)  # before the first page image or pages.json
         pages: list[Page] = []
         for n, (page, text) in enumerate(zip(doc.pages, texts), start=1):
             image = None

@@ -70,8 +70,12 @@ class UnitPaths:
         return self.root / "verify.json"
 
     def ensure(self) -> UnitPaths:
-        """Create ``sources/slides/`` (and its parents) and return ``self``."""
-        (self.root / "sources" / "slides").mkdir(parents=True, exist_ok=True)
+        """Create ``sources/`` (and its parents) and return ``self``.
+
+        ``sources/slides/`` is not made here: only ``slides.extract_pdf`` writes into it,
+        and it creates the folder itself.
+        """
+        (self.root / "sources").mkdir(parents=True, exist_ok=True)
         return self
 
 

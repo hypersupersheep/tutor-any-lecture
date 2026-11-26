@@ -9,21 +9,13 @@ from pathlib import Path
 
 from .. import __version__
 from ..source import SourceInfo, sha256_file, slide_digests, url_without_tokens
-from ..transcript import EmptyTranscript, Health, Transcript, health, parse_stamped_txt
+from ..transcript import EmptyTranscript, Health, Transcript, clock_seconds, health, parse_stamped_txt
 from ..unit import UnitPaths, refuse_overwrite
 
 _LINE_STAMP = re.compile(r"^\[(\d+:\d{2}(?::\d{2})?)\]", flags=re.M)
 _CHAPTER = re.compile(r"^(.*\S)\s+(\d+:\d{2}(?::\d{2})?)$")
 _LECTURE_DATE = re.compile(r"\((\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})")
 _RETRY_CANCEL = "Retry Cancel "
-
-
-def _stamp_seconds(stamp: str) -> float:
-    """``m:ss`` or ``h:mm:ss`` to seconds."""
-    parts = [int(p) for p in stamp.split(":")]
-    if len(parts) == 2:
-        return float(parts[0] * 60 + parts[1])
-    return float(parts[0] * 3600 + parts[1] * 60 + parts[2])
 
 
 def _decode_first(text: str):
@@ -57,7 +49,7 @@ def _duration(text: str) -> float | None:
     stamps = _LINE_STAMP.findall(text)
     if not stamps:
         return None
-    seconds = _stamp_seconds(stamps[-1])
+    seconds = clock_seconds(stamps[-1])
     return seconds or None
 
 
@@ -77,7 +69,7 @@ def _chapters(contents) -> list[dict]:
             continue
         m = _CHAPTER.match(s)
         if m:
-            chapters.append({"title": m.group(1), "start": _stamp_seconds(m.group(2))})
+            chapters.append({"title": m.group(1), "start": clock_seconds(m.group(2))})
         else:
             chapters.append({"title": s, "start": None})
     return chapters

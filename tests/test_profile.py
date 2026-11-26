@@ -119,7 +119,8 @@ def test_unit_paths_contract(tmp_path):
         assert getattr(u, name) == tmp_path / rel
     assert not (tmp_path / "sources").exists()
     u.ensure()
-    assert (tmp_path / "sources" / "slides").is_dir()
+    assert (tmp_path / "sources").is_dir()
+    assert not (tmp_path / "sources" / "slides").exists()
 
 
 def test_conftest_helpers():
