@@ -316,15 +316,20 @@ def faq_answer(text: str, question: str) -> str:
 def test_documents_point_to_the_new_adapters():
     skill = read(ROOT / "skills" / "tutor-any-lecture" / "SKILL.md")
     assert "`references/adapters/<platform>.md`" in skill
+    assert (
+        "a page on Canvas, Blackboard, Brightspace, Echo360, Kaltura, Zoom, Teams, Coursera, edX or a Chinese course "
+        "platform (icourse163, xuetangx, yuketang, chaoxing): its experimental adapter"
+    ) in skill
     assert "Pages read in a browser (Panopto, Moodle and the platforms above)" in skill
     readme, readme_zh = read(ROOT / "README.md"), read(ROOT / "README.zh-CN.md")
     assert (
         "Experimental adapters, written from public documentation and not yet run on a real lecture, describe "
-        "Canvas, Blackboard, Brightspace, Echo360, Kaltura, Zoom and Teams/Stream."
+        "Canvas, Blackboard, Brightspace, Echo360, Kaltura, Zoom, Teams/Stream, Coursera, edX, 中国大学MOOC, 学堂在线, "
+        "雨课堂 and 学习通."
     ) in faq_answer(readme, "Which sources can it read?")
     assert (
         "实验性的 adapter 按公开文档写成,还没在真实的课上跑过,覆盖 Canvas、Blackboard、Brightspace、Echo360、Kaltura、"
-        "Zoom 和 Teams/Stream。"
+        "Zoom、Teams/Stream、Coursera、edX、中国大学MOOC、学堂在线、雨课堂和学习通。"
     ) in faq_answer(readme_zh, "能读哪些材料?")
     agents = faq_answer(readme, "Which agents does it work with?")
     assert (
@@ -339,9 +344,12 @@ def test_documents_point_to_the_new_adapters():
     bullet = next(line for line in changelog.splitlines() if line.startswith("- Start from what you have:"))
     assert bullet.endswith(
         "Experimental adapters, written from public documentation, describe Canvas, Blackboard, Brightspace, "
-        "Echo360, Kaltura, Zoom and Teams/Stream."
+        "Echo360, Kaltura, Zoom, Teams/Stream, Coursera, edX, 中国大学MOOC, 学堂在线, 雨课堂 and 学习通."
     )
-    assert "their experimental adapters" in read(ADAPTERS / "url.md")
+    url_doc = read(ADAPTERS / "url.md")
+    assert "their experimental adapters" in url_doc
+    pitfall = next(line for line in url_doc.splitlines() if line.startswith("- A video that needs a login"))
+    assert pitfall.endswith("On Coursera, edX and the Chinese course platforms, follow their experimental adapters.")
     contributing = read(ROOT / "CONTRIBUTING.md")
     for s in ("PLATFORM_KEYS", "tests/test_platform_docs.py", "helper script"):
         assert s in contributing, s

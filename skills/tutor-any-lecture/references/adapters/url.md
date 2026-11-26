@@ -53,7 +53,7 @@ Caption files are always fetched; they are text. Audio is downloaded only then, 
 
 - An automatic track in another language may be a machine translation; it is never picked when an original exists. When the only tracks are translations, the run behaves as if there were no captions.
 - Automatic captions have no punctuation and mis-hear names: slides and `slides suspects` matter more here.
-- A video that needs a login, age check or membership cannot be read. Do not offer cookies or a login; use the platform's captions, or ask the learner for a file they downloaded themselves.
+- A video that needs a login, age check or membership cannot be read. Do not offer cookies or a login; use the platform's captions, or ask the learner for a file they downloaded themselves. On Coursera, edX and the Chinese course platforms, follow their experimental adapters.
 - Time links follow the platform's own time form (the table in [writing](../writing.md), Citations), and only `cite link` writes them: always run `tutor-any-lecture cite link --unit DIR`. On a site with no time form the times stay plain, and its output says so in `reason`.
 
 ## Verified by (name/date) or "experimental"
