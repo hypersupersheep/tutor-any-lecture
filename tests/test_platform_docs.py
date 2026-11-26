@@ -147,3 +147,108 @@ def test_the_password_check_catches_instructions():
         assert password_or_cookie_instructions(bad) == [bad]
     for good in ("Never type a password.", "The tool uses no cookies.", PWM):
         assert password_or_cookie_instructions(good) == []
+
+
+# ---- A3. the profile accepts every platform key ----
+
+def test_profile_accepts_every_platform_key(tmp_cfg):
+    from tutor_any_lecture.profile import set_value
+
+    assert PLATFORM_KEYS == ("echo360", "kaltura", "moodle", "panopto", "teams", "yuja", "zoom")
+    profile = set_value("platforms", "{" + ", ".join(f"{k}: https://{k}.example.org" for k in PLATFORM_KEYS) + "}")
+    assert profile.platforms == {k: f"https://{k}.example.org" for k in PLATFORM_KEYS}
+
+
+def test_an_unknown_platform_names_the_allowed_keys(tmp_cfg):
+    from tutor_any_lecture.profile import ProfileError, set_value
+
+    with pytest.raises(ProfileError) as caught:
+        set_value("platforms", "{videosite: https://example.org}")
+    assert str(caught.value) == "platforms: 'videosite' is not allowed; allowed keys: " + ", ".join(PLATFORM_KEYS)
+
+
+# ---- A7. each new adapter fills the template the same way ----
+
+LMS = {"canvas", "blackboard", "brightspace"}
+VIDEO = {"echo360", "kaltura", "yuja", "zoom"}
+MEETING = {"zoom", "teams"}
+DOES_NOT_DOWNLOAD = (
+    "This adapter does not download the recording; it reads a caption or transcript file the platform lets the "
+    "learner save."
+)
+AGENT_SPECIFIC = ["javascript_tool", "Claude in Chrome", "mcp__"]
+FENCE_LINE = re.compile(r"^\s*(`{3}|~{3})")
+
+
+def adapter(stem: str) -> str:
+    return read(ADAPTERS / f"{stem}.md")
+
+
+@pytest.mark.parametrize("path", new_adapters(), ids=lambda p: p.name)
+def test_new_adapters_fill_the_template(path):
+    text = read(path)
+    lines = text.splitlines()
+    assert lines[0].startswith("Adapter: ") and "../agents/" in lines[0]
+    assert re.search(r"`tutor-any-lecture [^`]+`", h2_section(text, "Platform"))
+    where = h2_section(text, "Where transcripts/captions live")
+    assert any(line.startswith("When there is none:") for line in where.splitlines())
+    assert "[import](import.md)" in where and "acquire import --file F --unit DIR" in where
+    steps = h2_section(text, "Read-only steps")
+    assert any(line.startswith("1. ") for line in steps.splitlines())
+    assert "stop and ask the learner to sign in" in steps
+    downloads = h2_section(text, 'Downloads offered?')
+    for s in ("`downloads`", "DRM", DOES_NOT_DOWNLOAD):
+        assert s in downloads, s
+    if path.stem not in LMS:
+        assert "public_video_audio" in downloads and "url.md" in downloads
+    pitfalls = h2_section(text, "Known pitfalls")
+    assert len([line for line in pitfalls.splitlines() if line.startswith("- ")]) >= 2
+    assert len(lines) <= 60
+    assert "![" not in text
+    assert not any(FENCE_LINE.match(line) for line in lines)
+    for word in AGENT_SPECIFIC + ["downloads are disabled"]:
+        assert word not in text, word
+
+
+# ---- A8. experimental, and the pages it was written from ----
+
+CITATION = re.compile(r"^- \[[^\]]+\]\((https://[^)\s]+)\)$")
+INSTITUTION_ENDINGS = (".edu", ".ac.uk", ".edu.cn", ".edu.au", ".ac.jp", ".edu.hk", ".ac.nz", ".edu.sg")
+
+
+def verified_section(text: str) -> list[str]:
+    return [line for line in h2_section(text, 'Verified by (name/date) or "experimental"').splitlines() if line.strip()]
+
+
+@pytest.mark.parametrize("path", new_adapters(), ids=lambda p: p.name)
+def test_new_adapters_are_experimental_and_cite_their_sources(path):
+    lines = verified_section(read(path))
+    assert lines[0] == "experimental"
+    assert re.fullmatch(
+        r"Written from public documentation read on [0-9]{4}-[0-9]{2}-[0-9]{2}; not yet run on a real lecture:", lines[1]
+    )
+    assert [line for line in lines[2:] if CITATION.match(line)]
+
+
+@pytest.mark.parametrize("path", new_adapters(), ids=lambda p: p.name)
+def test_cited_pages_are_not_institution_pages(path):
+    hosts = [re.match(r"https://([^/?#]+)", m.group(1)).group(1).lower()
+             for m in map(CITATION.match, verified_section(read(path))) if m]
+    assert hosts
+    assert [h for h in hosts if h.endswith(INSTITUTION_ENDINGS)] == []
+
+
+# ---- A10. a public link is tried with acquire url --info first ----
+
+def test_video_adapters_try_the_link_first():
+    for stem in sorted(VIDEO):
+        text = adapter(stem)
+        assert "acquire url --url U --info" in text and "(url.md)" in text, stem
+
+
+# ---- A11. where each kind of platform hands over ----
+
+def test_meeting_players_hand_over_transcript_files():
+    for stem in sorted(MEETING):
+        text = adapter(stem)
+        assert "acquire import --file F --unit DIR" in text and "(import.md)" in text, stem

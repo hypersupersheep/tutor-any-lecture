@@ -207,7 +207,7 @@ def test_bool_hint_names_no_invented_word(tmp_path):
     ("naming", "fancy", "naming: fancy\n"),
     ("outputs", "[explanation, slides]", "outputs: [explanation, slides]\n"),
     ("outputs", "[explanation, 3]", "outputs: [explanation, 3]\n"),
-    ("platforms", "{blackboard: https://example.org}", "platforms: {blackboard: https://example.org}\n"),
+    ("platforms", "{videosite: https://example.org}", "platforms: {videosite: https://example.org}\n"),
     ("platforms", "{moodle: [a, b]}", "platforms: {moodle: [a, b]}\n"),
 ])
 def test_profile_rejects_unknown_naming_and_members(tmp_cfg, tmp_path, key, value, text):

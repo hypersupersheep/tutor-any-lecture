@@ -28,9 +28,11 @@ ALLOWED_VALUES: dict[str, tuple[str, ...]] = {
     "naming": ("default",),
     "quote_density": QUOTE_DENSITIES,
 }
-# The members outputs may list, and the keys platforms may hold (each value a base URL).
+# The members outputs may list.
 OUTPUT_MEMBERS = ("explanation", "pretest", "quiz", "cards", "map")
-PLATFORM_KEYS = ("moodle", "panopto")
+# The keys platforms may hold (each value a base URL): the platform adapters' file names, in
+# alphabetical order; tests/test_platform_docs.py checks that the two agree.
+PLATFORM_KEYS = ("echo360", "kaltura", "moodle", "panopto", "teams", "yuja", "zoom")
 
 
 class ProfileError(Exception):
