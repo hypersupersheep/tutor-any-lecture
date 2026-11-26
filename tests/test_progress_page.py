@@ -1,10 +1,12 @@
 import json
 import re
 import string
+import xml.etree.ElementTree as ET
 from datetime import date
 from importlib import resources
 from types import SimpleNamespace
 
+from tutor_any_lecture.palette import load_palette
 from tutor_any_lecture.progress import Attempt, log_attempt, page_language, render_progress
 from tutor_any_lecture.unit import find_unit
 
@@ -166,6 +168,11 @@ def test_chinese_page_has_no_english(tmp_path):
     assert any(line.startswith("- 第1周") and line.endswith("，已答 1/2") for line in lines)
     shown = [line for line in lines if not line.startswith("![")]
     assert [line for line in shown if re.search(r"[A-Za-z]", line)] == []
+    root = svg_root(page_path.with_suffix(".svg"))
+    words = [el.text or "" for el in root.iter() if el.tag in (f"{SVG}text", f"{SVG}title")]
+    words += [child.tail or "" for el in root.iter() for child in el if el.tag == f"{SVG}text"]
+    assert len(words) > 10
+    assert [w for w in words if re.search(r"[A-Za-z]", w)] == []
 
 
 # ---- N1 --------------------------------------------------------------------
@@ -213,6 +220,9 @@ def test_rows_show_concept_names(tmp_path):
         "| c9 | 100 | — | — |",
     ]
     assert "- U1: c1-B (Concept one), post quiz, (slide 2, 01:00)" in lines
+    rows = chart_rows(tmp_path / "ws" / "progress" / "C.svg")
+    after = rows[rows.index(("section", "U1")) + 1:]
+    assert [r[1] for r in after] == ["Second idea", "Concept one", "c9"]
 
 
 def test_concept_name_with_a_pipe_is_escaped_in_the_table(tmp_path):
@@ -266,6 +276,7 @@ def test_image_line_survives_spaces(tmp_path):
     page = render_progress("CS 101 - Intro", tmp_path, date(2026, 11, 20))
     (image,) = [x for x in page.read_text(encoding="utf-8").splitlines() if x.startswith("![")]
     assert image.endswith("](<CS 101 - Intro.svg>)")
+    assert (page.parent / "CS 101 - Intro.svg").is_file()
 
 
 def test_notices_collect_the_fallback(tmp_path):
@@ -274,3 +285,159 @@ def test_notices_collect_the_fallback(tmp_path):
     lines = render_lines(tmp_path, date(2026, 11, 27), lang="ja", notices=notices)
     assert lines[0] == "# Progress — C"
     assert notices == ["no progress page text for language 'ja'; the page is in English"]
+
+
+# ---- G1, G2: the chart -------------------------------------------------------
+
+SVG = "{http://www.w3.org/2000/svg}"
+FORBIDDEN = ("<script", "<style", "@font-face", "url(", "href")
+
+
+def svg_root(path):
+    return ET.parse(path).getroot()
+
+
+def own_text(el):
+    """The text of `el` itself, without the text of a <title> child."""
+    return (el.text or "") + "".join(child.tail or "" for child in el)
+
+
+def mark_x(el):
+    if el.tag == f"{SVG}circle":
+        return float(el.get("cx"))
+    return float(el.get("points").split()[0].split(",")[0])
+
+
+def chart_rows(path):
+    """The chart's rows, top to bottom: ("section", label) or ("row", label, {phase: [x, ...]})."""
+    out = []
+    for el in svg_root(path):
+        if el.tag == f"{SVG}text" and el.get("class") == "section":
+            out.append(("section", own_text(el)))
+        elif el.tag == f"{SVG}g" and el.get("class") == "row":
+            (label,) = el.findall(f"{SVG}text")
+            marks = {}
+            for mark in el:
+                if mark.get("class") in ("pre", "post", "d7"):
+                    marks.setdefault(mark.get("class"), []).append(mark_x(mark))
+            out.append(("row", own_text(label), marks))
+    return out
+
+
+def row_titles(path):
+    """The <title> of each data row and section row that has one, by its shown label."""
+    out = {}
+    for el in svg_root(path):
+        if el.get("class") in ("row", "section"):
+            title = el.find(f"{SVG}title")
+            if title is not None:
+                label = el if el.get("class") == "section" else el.find(f"{SVG}text")
+                out[own_text(label)] = title.text
+    return out
+
+
+def colours(path):
+    return [v for el in svg_root(path).iter() for k, v in el.attrib.items() if k in ("fill", "stroke")]
+
+
+def test_svg_is_well_formed_and_self_contained(tmp_path):
+    write_attempts(tmp_path)
+    page = render_progress("C", tmp_path, date(2026, 11, 27))
+    chart = page.with_suffix(".svg")
+    root = svg_root(chart)
+    assert root.tag == f"{SVG}svg"
+    assert (root.get("width"), root.get("height"), root.get("viewBox")) == ("720", "304", "0 0 720 304")
+    assert root.get("role") == "img"
+    first, second = list(root)[:2]
+    assert first.tag == f"{SVG}title" and first.text == "Progress — C"
+    assert second.tag == f"{SVG}rect" and second.get("fill") == load_palette()["paper"]
+    text = chart.read_text(encoding="utf-8")
+    assert [s for s in FORBIDDEN if s in text] == []
+    assert [k for el in root.iter() for k in el.attrib if k.lower().startswith("on")] == []
+    assert "\r" not in chart.read_bytes().decode("utf-8")
+
+
+def test_svg_takes_its_colours_from_the_palette(tmp_path, monkeypatch):
+    write_attempts(tmp_path)
+    chart = render_progress("C", tmp_path, date(2026, 11, 27)).with_suffix(".svg")
+    allowed = set(load_palette().values()) | {"none"}
+    assert colours(chart) and set(colours(chart)) <= allowed
+    other = {role: f"#0{n}0{n}0{n}" for n, role in enumerate(load_palette(), start=1)}
+    monkeypatch.setattr("tutor_any_lecture.palette.load_palette", lambda path=None: dict(other))
+    render_progress("C", tmp_path, date(2026, 11, 27))
+    assert set(colours(chart)) <= set(other.values()) | {"none"}
+    assert {other["paper"], other["progress_pre"], other["progress_post"], other["progress_d7"]} <= set(colours(chart))
+    assert "#121212" not in chart.read_text(encoding="utf-8")
+
+
+def test_svg_written_without_attempts(tmp_path):
+    write_attempts(tmp_path, [attempt(item_id="p1", variant=None, phase="practice", score=1)])
+    chart = render_progress("C", tmp_path, date(2026, 11, 20)).with_suffix(".svg")
+    root = svg_root(chart)
+    assert root.get("height") == "80"
+    assert root.find(f"{SVG}g[@class='row']") is None
+    assert root.find(f"{SVG}text[@class='section']") is None
+
+
+def test_svg_rows_follow_the_tables(tmp_path):
+    write_attempts(tmp_path / "a")
+    rows = chart_rows(render_progress("C", tmp_path / "a", date(2026, 11, 27)).with_suffix(".svg"))
+    assert [r[:2] for r in rows] == [
+        ("section", "Units"), ("row", "u1"), ("section", "u1"),
+        ("row", "c1"), ("row", "c2"), ("row", "c3"), ("row", "c4"), ("row", "c5"),
+    ]
+    assert rows[1][2] == {"pre": [348], "post": [656], "d7": [568]}
+    # gain pairs c2 only, retention c3 only; the chart's unit row shows unit_scores means 50, 75, 50
+    write_attempts(tmp_path / "b", [
+        attempt(item_id="c1-A", variant="A", concept="c1", phase="pre", score=1),
+        attempt(item_id="c2-A", variant="A", concept="c2", phase="pre", score=0),
+        attempt(item_id="c2-B", variant="B", concept="c2", phase="post", score=0.5),
+        attempt(item_id="c3-B", variant="B", concept="c3", phase="post", score=1),
+        attempt(ts="2026-11-27T10:00:00+00:00", item_id="c3-C", variant="C", concept="c3", phase="d7", score=0.5),
+    ])
+    rows = chart_rows(render_progress("C", tmp_path / "b", date(2026, 11, 27)).with_suffix(".svg"))
+    assert rows[1] == ("row", "u1", {"pre": [474], "post": [590], "d7": [486]})
+
+
+def test_rows_y_and_marks_follow_the_layout(tmp_path):
+    write_attempts(tmp_path, mk(unit="u1", pre=[0.5]))
+    root = svg_root(render_progress("C", tmp_path, date(2026, 11, 20)).with_suffix(".svg"))
+    section = root.find(f"{SVG}text[@class='section']")
+    assert (section.get("x"), section.get("y"), section.get("font-weight")) == ("16", "83", "bold")
+    rows = root.findall(f"{SVG}g[@class='row']")
+    label = rows[0].find(f"{SVG}text")
+    assert (label.get("x"), label.get("y")) == ("28", "111")
+    pre = rows[0].find(f"{SVG}circle[@class='pre']")
+    assert (pre.get("cx"), pre.get("cy"), pre.get("r"), pre.get("stroke-width")) == ("480", "106", "6", "2")
+    palette = load_palette()
+    assert (pre.get("fill"), pre.get("stroke")) == (palette["paper"], palette["progress_pre"])
+    root2 = svg_root(render_progress_d7(tmp_path / "d7"))
+    d7 = root2.find(f"{SVG}g[@class='row']/{SVG}polygon[@class='d7']")
+    assert d7.get("points") == "480,100 486,106 480,112 474,106"
+    assert d7.get("fill") == palette["progress_d7"]
+    post = root2.find(f"{SVG}g[@class='row']/{SVG}circle[@class='post']")
+    assert (post.get("r"), post.get("fill")) == ("5", palette["progress_post"])
+
+
+def render_progress_d7(ws):
+    write_attempts(ws, mk(unit="u1", post=[1], d7=[0.5]))
+    return render_progress("C", ws, date(2026, 11, 27)).with_suffix(".svg")
+
+
+def test_long_and_cjk_labels_are_cut(tmp_path):
+    ws = tmp_path / "ws"
+    latin = "A very long concept name that runs past it ok"
+    cjk = "一二三四五六七八九十一二三四五六七八九十"
+    unit = "A unit name far longer than thirty columns"
+    assert (len(latin), len(cjk)) == (45, 20)
+    write_plan(ws / "courses" / "C" / "u", "C", unit, [("c1", latin), ("c2", cjk), ("c3", "R&D <基础>")])
+    write_attempts(ws, [attempt(unit=unit, item_id=f"{c}-A", variant="A", concept=c, phase="pre", score=0)
+                        for c in ("c1", "c2", "c3")])
+    chart = render_progress("C", ws, date(2026, 11, 20)).with_suffix(".svg")
+    labels = [r[1] for r in chart_rows(chart)]
+    assert labels == ["Units", unit[:29] + "…", unit[:29] + "…", latin[:29] + "…", cjk[:14] + "…", "R&D <基础>"]
+    titles = row_titles(chart)
+    assert titles[latin[:29] + "…"] == latin
+    assert titles[cjk[:14] + "…"] == cjk
+    assert titles[unit[:29] + "…"] == unit
+    assert "R&D <基础>" not in titles

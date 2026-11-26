@@ -542,15 +542,34 @@ def test_page_means_agree_with_the_gain(tmp_path):
 # ---- the progress page after a live run (Task 29, L13) -------------------------
 
 
+SVG = "{http://www.w3.org/2000/svg}"
+
+
+def chart_marks(chart):
+    """Each data row of the chart: its label and its marks' x, in drawing order, as (class, x)."""
+    import xml.etree.ElementTree as ET
+
+    out = []
+    for row in ET.parse(chart).getroot().iter(f"{SVG}g"):
+        if row.get("class") != "row":
+            continue
+        marks = []
+        for el in row:
+            if el.tag == f"{SVG}circle":
+                marks.append((el.get("class"), float(el.get("cx"))))
+            elif el.tag == f"{SVG}polygon":
+                marks.append((el.get("class"), float(el.get("points").split()[0].split(",")[0])))
+        out.append((row.find(f"{SVG}text").text, marks))
+    return out
+
+
 def test_equal_scores_show_both_marks(tmp_path):
     write_attempts(tmp_path, mk(unit="u1", pre=[1, 0, 0.5], post=[1, 0, 1], d7=[1, 0.5, 1]))
-    lines = render_progress("C", tmp_path, date(2026, 11, 27)).read_text(encoding="utf-8").splitlines()
-    by_concept = lines[lines.index("## By concept"):lines.index("## Due today")]
-    assert [x for x in by_concept if x.startswith("| c") and not x.startswith("| concept |")] == [
-        "| c1 | 100 | 100 | 100 |",
-        "| c2 | 0 | 0 | 50 |",
-        "| c3 | 50 | 100 | 100 |",
-    ]
+    chart = render_progress("C", tmp_path, date(2026, 11, 27)).with_suffix(".svg")
+    rows = dict(chart_marks(chart)[1:])
+    assert rows["c1"] == [("pre", 688), ("post", 700), ("d7", 712)]
+    assert rows["c2"] == [("pre", 254), ("post", 266), ("d7", 480)]
+    assert rows["c3"] == [("pre", 480), ("post", 694), ("d7", 706)]
 
 
 def test_confident_wrong_shows_the_prompt(tmp_path):
@@ -892,6 +911,9 @@ def test_interrupted_day_7_review_is_offered_again(tmp_path, capsys):
     assert "| U5 | 20 → 90 | 88% | 90 → 2 of 5 | — |" in lines
     assert lines[lines.index(SCALE_NOTE) + 2] == PARTIAL_NOTE
     assert "- U5: day-7 review, due 2026-11-08, 2 of 5 answered" in lines
+    (unit_row, *_) = chart_marks(ws / "progress" / "C.svg")
+    assert unit_row[0] == "U5"
+    assert sorted({cls for cls, _ in unit_row[1]}) == ["post", "pre"]
 
     log_scores(u, ws, "d7", [1, 0.5, 0.5], "2026-11-10", concepts=FIVE[2:])
     capsys.readouterr()

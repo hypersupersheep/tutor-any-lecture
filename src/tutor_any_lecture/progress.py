@@ -15,6 +15,7 @@ from pathlib import Path
 from . import items as itembank
 from .items import ASSIGNED_PHASES, OPTIONAL_PHASES, find_item, load_items
 from .plan import load_plan, safe_name
+from .progress_svg import ChartRow, write_chart
 from .unit import UnitPaths, find_unit
 
 PHASES = ("pre", "post", "d1", "d7", "d21", "practice")
@@ -704,9 +705,26 @@ def _due_line(t: _Text, e: dict) -> str:
     return line
 
 
+def _chart_rows(t: _Text, tracked: list[str], scores, rows_by_unit) -> list[ChartRow]:
+    """The chart's rows: the units with their ``unit_scores`` means, then each unit's concepts."""
+    if not tracked:
+        return []
+
+    def whole(means: dict[str, float]) -> dict[str, int]:
+        return {p: _whole(means[p]) for p in TRACKED_PHASES if p in means}
+
+    rows = [ChartRow(t("units_heading"))]
+    rows += [ChartRow(u, whole(scores.get(u, {}))) for u in tracked]
+    for u in tracked:
+        rows.append(ChartRow(u))
+        rows += [ChartRow(label, whole(means)) for label, means in rows_by_unit[u]]
+    return rows
+
+
 def render_progress(course: str, workspace: Path, today: date, lang: str | None = None,
                     notices: list[str] | None = None) -> Path:
-    """Write the progress page ``<workspace>/progress/<course>.md`` and return its path.
+    """Write the progress page ``<workspace>/progress/<course>.md`` and, beside it, the chart
+    ``<course>.svg`` it embeds; return the page's path.
 
     The page's language is ``lang``, else the newest unit's note language, else English
     (``page_language``); with ``notices`` a list, the fallback notice is appended to it.
@@ -755,4 +773,6 @@ def render_progress(course: str, workspace: Path, today: date, lang: str | None 
 
     page.parent.mkdir(parents=True, exist_ok=True)
     page.write_text("\n\n".join(blocks) + "\n", encoding="utf-8", newline="\n")
+    legend = [t.phase(p) for p in TRACKED_PHASES]
+    write_chart(chart, t("title", course=course), legend, _chart_rows(t, tracked, scores, rows_by_unit))
     return page
