@@ -719,6 +719,27 @@ def test_local_reads_an_ass_track_without_hard_spaces_or_drawings(monkeypatch, t
     assert json.loads(UnitPaths(unit).source.read_text(encoding="utf-8"))["acquisition"] == "embedded"
 
 
+_ASS_CHECK = """
+from tutor_any_lecture.acquire.local import _clean_ass
+from tutor_any_lecture.transcript import Segment
+texts = [
+    "m 0 0 l " + " ".join(["100"] * 40) + " Hello",
+    "m 0 0 l " + "100" * 40 + " Hello",
+    " ".join(["1234"] * 40) + " apples",
+    "m 0 0 l 100 0 100 100 b 10.5 -3 20 0 30 0 c",
+    "m0 0l100 0 100 100",
+]
+kept = [s.text for s in _clean_ass([Segment(0.0, 1.0, t) for t in texts])]
+assert kept == texts[:3], kept
+"""
+
+
+def test_clean_ass_is_fast_on_long_number_runs():
+    # A cue mixing a drawing with text must not make the drawing check backtrack
+    # exponentially. Run in a child so a regression fails on the timeout, not by hanging.
+    subprocess.run([sys.executable, "-c", _ASS_CHECK], check=True, timeout=20)
+
+
 def test_local_reads_no_track_from_a_file_without_audio_or_video(monkeypatch, tmp_path):
     src = make_tone(tmp_path / "课程 资料")
     unit = tmp_path / "课程 资料" / "第1周"

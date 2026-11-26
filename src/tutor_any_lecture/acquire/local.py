@@ -229,7 +229,11 @@ def _embedded_track_into_unit(file: Path, duration: float | None, unit: Path) ->
 
 
 # An ASS vector drawing ({\p1}m 0 0 l 100 0 …): its command letters and numbers only.
-_ASS_DRAWING = re.compile(r"(?:[mnlbspc]|-?\d+(?:\.\d+)?)(?:\s*(?:[mnlbspc]|-?\d+(?:\.\d+)?))*")
+# A number must end where its digits end ((?![.\d])), so a text splits into tokens in
+# one way only; without that, a failed match retries every split of every digit run
+# (exponential time on a cue such as "m 0 0 l 100 100 … Hello").
+_ASS_TOKEN = r"(?:[mnlbspc]|-?\d+(?:\.\d+)?(?![.\d]))"
+_ASS_DRAWING = re.compile(rf"{_ASS_TOKEN}(?:\s*{_ASS_TOKEN})*")
 
 
 def _clean_ass(segments: list[Segment]) -> list[Segment]:
