@@ -141,12 +141,23 @@ def _cmd_doctor(args) -> int:
     return EXIT_OK if report["ready"] else EXIT_ACTION
 
 
+# The one sentence an ``ok`` or ``unhealthy`` object carries as ``warning`` when its health
+# was not measured against a length from outside the transcript; keyed by ``length_basis``.
+_PARTLY_CHECKED = {
+    "none": "health partly checked: the lecture length is unknown, "
+    "so coverage, spot checks and overrun were not measured",
+    "transcript": "health partly checked: the lecture length is the transcript's last time stamp, "
+    "so coverage and overrun were not measured against the recording",
+}
+
+
 def _run_acquire(call, extra=None) -> int:
     """Run one acquisition and print its one-line JSON result.
 
     ``call`` takes no arguments and returns a ``Health``; a command that needs the profile
     loads it inside ``call``. ``extra``, when given, takes no arguments and returns more
-    keys for the ``ok`` or ``unhealthy`` object. A ``ValueError`` (an empty transcript, malformed or non-UTF-8
+    keys for the ``ok`` or ``unhealthy`` object, which also carries ``warning`` when its
+    health was only partly checked (``_PARTLY_CHECKED``). A ``ValueError`` (an empty transcript, malformed or non-UTF-8
     input), an ``AcquireError`` (a failed tool or ASR backend), a ``ProfileError`` (a
     malformed profile.yaml) or an ``OSError`` (a missing or unreadable input, a folder
     given as a file) becomes ``{"status": "error", ...}`` with exit 1. ``FileExistsError``
@@ -164,7 +175,13 @@ def _run_acquire(call, extra=None) -> int:
         _print_json({"status": "error", "message": str(e)})
         return EXIT_FAIL
     status = "ok" if h.ok else "unhealthy"
-    _print_json({"status": status, "health": dataclasses.asdict(h), **(extra() if extra else {})})
+    warning = _PARTLY_CHECKED.get(h.length_basis)
+    _print_json({
+        "status": status,
+        "health": dataclasses.asdict(h),
+        **({"warning": warning} if warning else {}),
+        **(extra() if extra else {}),
+    })
     return EXIT_OK if h.ok else EXIT_FAIL
 
 

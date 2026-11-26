@@ -87,8 +87,28 @@ def test_cli_import_spaced_cjk_path(tmp_path, capsys):
     assert UnitPaths(unit).transcript.exists()
     out = capsys.readouterr().out
     obj = json.loads(out)
-    assert len(out.splitlines()) == 1 and set(obj) == {"status", "health"}
+    assert len(out.splitlines()) == 1 and set(obj) == {"status", "health", "warning"}
     assert obj["status"] == "ok" and obj["health"]["ok"] is True and obj["health"]["duration_known"] is False
+
+
+NO_LENGTH_WARNING = (
+    "health partly checked: the lecture length is unknown, so coverage, spot checks and overrun were not measured"
+)
+
+
+def test_import_without_a_length_warns(tmp_path, capsys):
+    argv = ["acquire", "import", "--file", str(fx("transcripts", "cues.vtt")), "--unit", str(tmp_path / "a")]
+    assert main(argv) == 0
+    obj = json.loads(capsys.readouterr().out)
+    assert obj["status"] == "ok" and obj["health"]["length_basis"] == "none"
+    assert obj["warning"] == NO_LENGTH_WARNING
+
+    argv = ["acquire", "import", "--file", str(fx("transcripts", "cues.vtt")), "--unit", str(tmp_path / "b"),
+            "--duration", "600"]
+    assert main(argv) == 1
+    obj = json.loads(capsys.readouterr().out)
+    assert obj["status"] == "unhealthy" and obj["health"]["length_basis"] == "lecture"
+    assert "warning" not in obj
 
 
 def test_cli_import_unhealthy_exit_1(tmp_path, capsys):

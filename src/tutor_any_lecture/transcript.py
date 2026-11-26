@@ -233,13 +233,23 @@ class Health:
     loop: bool
     ok: bool
     duration_known: bool
+    # What coverage, spot checks and overrun were measured against: "lecture" (a length from
+    # outside the transcript: the recording, the video page, --duration), "transcript" (the
+    # transcript's own last stamp, so coverage and overrun hold by construction) or "none" (no length).
+    length_basis: str
 
 
-def health(segments: list[Segment], duration: float | None) -> Health:
+def health(segments: list[Segment], duration: float | None, from_transcript: bool = False) -> Health:
+    """The health of ``segments`` against the lecture length ``duration``.
+
+    ``from_transcript`` says that ``duration`` was read from the transcript itself.
+    """
+    has_length = duration is not None and duration > 0
+    length_basis = ("transcript" if from_transcript else "lecture") if has_length else "none"
     if not segments:
         return Health(
             coverage=0.0, repetition=0.0, spots_ok=False, overrun=False, loop=False, ok=False,
-            duration_known=duration is not None,
+            duration_known=duration is not None, length_basis=length_basis,
         )
 
     norm = [" ".join(s.text.casefold().split()) for s in segments]
@@ -255,7 +265,7 @@ def health(segments: list[Segment], duration: float | None) -> Health:
     repetition = repeats / len(segments)
     loop = longest >= 5
 
-    duration_known = duration is not None and duration > 0
+    duration_known = has_length
     if duration_known:
         coverage = (max(s.end for s in segments) - min(s.start for s in segments)) / duration
         spots_ok = all(
@@ -266,4 +276,4 @@ def health(segments: list[Segment], duration: float | None) -> Health:
         coverage, spots_ok, overrun = 1.0, True, False
 
     ok = coverage >= 0.9 and repetition <= 0.5 and spots_ok and not overrun and not loop
-    return Health(coverage, repetition, spots_ok, overrun, loop, ok, duration_known)
+    return Health(coverage, repetition, spots_ok, overrun, loop, ok, duration_known, length_basis)

@@ -103,7 +103,8 @@ def import_panopto(extract: Path, unit: Path, force: bool) -> Health:
     if not segments:
         raise EmptyTranscript("no timed segments found")
 
-    h = health(segments, duration)
+    # The length is the transcript's own last stamp, and health says so.
+    h = health(segments, duration, from_transcript=True)
     paths.ensure()
     paths.transcript.write_text(Transcript(segments, None).to_json(), encoding="utf-8", newline="\n")
     chapters = _chapters(d.get("contents", []))

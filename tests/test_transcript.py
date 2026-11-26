@@ -83,8 +83,17 @@ def test_health_fails_each_threshold(segs, failed):
 
 
 def test_health_empty_segments():
-    assert health([], 600.0) == Health(0.0, 0.0, False, False, False, False, True)
-    assert health([], None) == Health(0.0, 0.0, False, False, False, False, False)
+    assert health([], 600.0) == Health(0.0, 0.0, False, False, False, False, True, "lecture")
+    assert health([], None) == Health(0.0, 0.0, False, False, False, False, False, "none")
+
+
+def test_health_names_its_length_basis():
+    segments = [Segment(0, 5, "a")]
+    assert health(segments, 600.0).length_basis == "lecture"
+    assert health(segments, None).length_basis == "none"
+    assert health(segments, 0.0).length_basis == "none"
+    assert health(segments, 600.0, from_transcript=True).length_basis == "transcript"
+    assert health([], None).length_basis == "none"
 
 
 def test_variants_parse_identically():

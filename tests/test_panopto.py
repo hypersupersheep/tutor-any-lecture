@@ -69,6 +69,27 @@ def test_single_stamp_at_zero_has_unknown_duration(tmp_path):
     assert Transcript.from_json(UnitPaths(unit).transcript).segments[0].end == 5
 
 
+TRANSCRIPT_LENGTH_WARNING = (
+    "health partly checked: the lecture length is the transcript's last time stamp, "
+    "so coverage and overrun were not measured against the recording"
+)
+
+
+def test_panopto_health_is_measured_against_itself(tmp_path, capsys):
+    h = import_panopto(fx("panopto", "plain.json"), tmp_path / "a", False)
+    assert h.length_basis == "transcript" and h.duration_known
+
+    argv = ["acquire", "panopto", "--extract", str(fx("panopto", "plain.json")), "--unit", str(tmp_path / "b")]
+    assert main(argv) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["status"] == "ok" and out["health"]["length_basis"] == "transcript"
+    assert out["warning"] == TRANSCRIPT_LENGTH_WARNING
+
+    # A single stamp at 0:00 gives no length at all.
+    extract = write_extract(tmp_path, "one.json", {"transcript": "[0:00] only line"})
+    assert import_panopto(extract, tmp_path / "c", False).length_basis == "none"
+
+
 def test_chapters_title_and_start(tmp_path):
     import_panopto(fx("panopto", "plain.json"), tmp_path, False)
     chapters = json.loads(UnitPaths(tmp_path).chapters.read_text(encoding="utf-8"))
