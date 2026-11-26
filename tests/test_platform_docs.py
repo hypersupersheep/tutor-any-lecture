@@ -156,7 +156,7 @@ def test_profile_accepts_every_platform_key(tmp_cfg):
 
     assert PLATFORM_KEYS == (
         "blackboard", "brightspace", "canvas", "chaoxing", "coursera", "echo360", "edx", "icourse163", "kaltura",
-        "moodle", "panopto", "teams", "xuetangx", "yuketang", "zoom"
+        "moodle", "panopto", "teams", "xuetangx", "yuja", "yuketang", "zoom"
     )
     profile = set_value("platforms", "{" + ", ".join(f"{k}: https://{k}.example.org" for k in PLATFORM_KEYS) + "}")
     assert profile.platforms == {k: f"https://{k}.example.org" for k in PLATFORM_KEYS}
@@ -174,7 +174,7 @@ def test_an_unknown_platform_names_the_allowed_keys(tmp_cfg):
 
 LMS = {"canvas", "blackboard", "brightspace"}
 COURSE_SITES = ("coursera", "edx", "icourse163", "xuetangx", "yuketang", "chaoxing")
-VIDEO = {"echo360", "kaltura", "zoom"} | set(COURSE_SITES)
+VIDEO = {"echo360", "kaltura", "yuja", "zoom"} | set(COURSE_SITES)
 MEETING = {"zoom", "teams"}
 DOES_NOT_DOWNLOAD = (
     "This adapter does not download the recording; it reads a caption or transcript file the platform lets the "
@@ -242,6 +242,27 @@ def test_cited_pages_are_not_institution_pages(path):
     assert [h for h in hosts if h.endswith(INSTITUTION_ENDINGS)] == []
 
 
+EXTRACTS = "These pages could be read only through search-engine extracts, because they could not be opened directly: "
+# adapter -> the host whose cited pages were read only through search-engine extracts
+EXTRACT_HOSTS = {
+    "coursera": "www.coursera.support",
+    "edx": "support.edx.org",
+    "xuetangx": "www.xuetangx.com",
+    "yuja": "support.yuja.com",
+}
+
+
+def test_pages_read_through_search_extracts_are_named():
+    for stem, host in EXTRACT_HOSTS.items():
+        lines = verified_section(adapter(stem))
+        cited = [m.group(1) for m in map(CITATION.match, lines) if m]
+        sentence = next(line for line in lines if line.startswith(EXTRACTS))
+        assert sentence.endswith("."), stem
+        named = sentence[len(EXTRACTS):-1].split(", ")
+        # every cited page of that host is named, and only pages the adapter cites
+        assert named == [u for u in cited if u.startswith(f"https://{host}/")], stem
+
+
 # ---- A10. a public link is tried with acquire url --info first ----
 
 def test_video_adapters_try_the_link_first():
@@ -262,7 +283,7 @@ def test_learning_platforms_hand_over_slides_and_recordings():
     for stem in sorted(LMS):
         text = adapter(stem)
         assert "slides --pdf F --unit DIR" in text, stem
-        for link in ("panopto.md", "echo360.md", "kaltura.md", "zoom.md"):
+        for link in ("panopto.md", "echo360.md", "kaltura.md", "yuja.md", "zoom.md"):
             assert f"({link})" in text, (stem, link)
 
 
@@ -317,19 +338,19 @@ def test_documents_point_to_the_new_adapters():
     skill = read(ROOT / "skills" / "tutor-any-lecture" / "SKILL.md")
     assert "`references/adapters/<platform>.md`" in skill
     assert (
-        "a page on Canvas, Blackboard, Brightspace, Echo360, Kaltura, Zoom, Teams, Coursera, edX or a Chinese course "
-        "platform (icourse163, xuetangx, yuketang, chaoxing): its experimental adapter"
+        "a page on Canvas, Blackboard, Brightspace, Echo360, Kaltura, YuJa, Zoom, Teams, Coursera, edX or a Chinese "
+        "course platform (icourse163, xuetangx, yuketang, chaoxing): its experimental adapter"
     ) in skill
     assert "Pages read in a browser (Panopto, Moodle and the platforms above)" in skill
     readme, readme_zh = read(ROOT / "README.md"), read(ROOT / "README.zh-CN.md")
     assert (
         "Experimental adapters, written from public documentation and not yet run on a real lecture, describe "
-        "Canvas, Blackboard, Brightspace, Echo360, Kaltura, Zoom, Teams/Stream, Coursera, edX, 中国大学MOOC, 学堂在线, "
-        "雨课堂 and 学习通."
+        "Canvas, Blackboard, Brightspace, Echo360, Kaltura, YuJa, Zoom, Teams/Stream, Coursera, edX, 中国大学MOOC, "
+        "学堂在线, 雨课堂 and 学习通."
     ) in faq_answer(readme, "Which sources can it read?")
     assert (
         "实验性的 adapter 按公开文档写成,还没在真实的课上跑过,覆盖 Canvas、Blackboard、Brightspace、Echo360、Kaltura、"
-        "Zoom、Teams/Stream、Coursera、edX、中国大学MOOC、学堂在线、雨课堂和学习通。"
+        "YuJa、Zoom、Teams/Stream、Coursera、edX、中国大学MOOC、学堂在线、雨课堂和学习通。"
     ) in faq_answer(readme_zh, "能读哪些材料?")
     agents = faq_answer(readme, "Which agents does it work with?")
     assert (
@@ -344,7 +365,7 @@ def test_documents_point_to_the_new_adapters():
     bullet = next(line for line in changelog.splitlines() if line.startswith("- Start from what you have:"))
     assert bullet.endswith(
         "Experimental adapters, written from public documentation, describe Canvas, Blackboard, Brightspace, "
-        "Echo360, Kaltura, Zoom, Teams/Stream, Coursera, edX, 中国大学MOOC, 学堂在线, 雨课堂 and 学习通."
+        "Echo360, Kaltura, YuJa, Zoom, Teams/Stream, Coursera, edX, 中国大学MOOC, 学堂在线, 雨课堂 and 学习通."
     )
     url_doc = read(ADAPTERS / "url.md")
     assert "their experimental adapters" in url_doc

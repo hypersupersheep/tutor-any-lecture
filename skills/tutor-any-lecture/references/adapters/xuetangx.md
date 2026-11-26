@@ -43,3 +43,5 @@ experimental
 Written from public documentation read on 2026-11-26; not yet run on a real lecture:
 - [About XuetangX](https://www.xuetangx.com/about)
 - [Why can't XuetangX videos be downloaded? 为什么学堂在线的视频不能下载？](https://www.xuetangx.com/community/post/3630)
+
+These pages could be read only through search-engine extracts, because they could not be opened directly: https://www.xuetangx.com/about, https://www.xuetangx.com/community/post/3630.

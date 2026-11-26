@@ -142,7 +142,7 @@ tutor-any-lecture selftest
 
 ### 能读哪些材料?
 
-本地的视频和音频文件、整个材料文件夹、YouTube 和 B 站链接、转写文件(SRT、VTT、Whisper 格式的 JSON、带时间戳的 TXT、Zoom 的 TXT 转写,或 Teams 导出的 DOCX)、课件 PDF、PowerPoint(.pptx)课件,以及通过带浏览器工具的 agent 读取的 Panopto 录像。课件照片(三张以上,JPEG 或 PNG)在 agent 能看图时也能用;skill 会先检查这一点。实验性的 adapter 按公开文档写成,还没在真实的课上跑过,覆盖 Canvas、Blackboard、Brightspace、Echo360、Kaltura、Zoom、Teams/Stream、Coursera、edX、中国大学MOOC、学堂在线、雨课堂和学习通。
+本地的视频和音频文件、整个材料文件夹、YouTube 和 B 站链接、转写文件(SRT、VTT、Whisper 格式的 JSON、带时间戳的 TXT、Zoom 的 TXT 转写,或 Teams 导出的 DOCX)、课件 PDF、PowerPoint(.pptx)课件,以及通过带浏览器工具的 agent 读取的 Panopto 录像。课件照片(三张以上,JPEG 或 PNG)在 agent 能看图时也能用;skill 会先检查这一点。实验性的 adapter 按公开文档写成,还没在真实的课上跑过,覆盖 Canvas、Blackboard、Brightspace、Echo360、Kaltura、YuJa、Zoom、Teams/Stream、Coursera、edX、中国大学MOOC、学堂在线、雨课堂和学习通。
 
 ### 有什么会离开我的电脑?
 

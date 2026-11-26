@@ -34,7 +34,7 @@ OUTPUT_MEMBERS = ("explanation", "pretest", "quiz", "cards", "map")
 # alphabetical order; tests/test_platform_docs.py checks that the two agree.
 PLATFORM_KEYS = (
     "blackboard", "brightspace", "canvas", "chaoxing", "coursera", "echo360", "edx", "icourse163", "kaltura",
-    "moodle", "panopto", "teams", "xuetangx", "yuketang", "zoom"
+    "moodle", "panopto", "teams", "xuetangx", "yuja", "yuketang", "zoom"
 )
 
 

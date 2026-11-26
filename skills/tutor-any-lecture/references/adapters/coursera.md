@@ -49,3 +49,5 @@ Written from public documentation read on 2026-11-26; not yet run on a real lect
 - [Change video settings](https://www.coursera.support/s/article/learner-000001308?language=en_US)
 - [Accommodations for learners with disabilities](https://www.coursera.support/s/article/learner-000001416?language=en_US)
 - [Translations for course content](https://www.coursera.support/s/article/learner-000002049?language=en_US)
+
+These pages could be read only through search-engine extracts, because they could not be opened directly: https://www.coursera.support/s/article/learner-000001476?language=en_US, https://www.coursera.support/s/article/209818643-Watch-video-lectures, https://www.coursera.support/s/article/learner-000001308?language=en_US, https://www.coursera.support/s/article/learner-000001416?language=en_US, https://www.coursera.support/s/article/learner-000002049?language=en_US.

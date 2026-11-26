@@ -48,3 +48,5 @@ Written from public documentation read on 2026-11-26; not yet run on a real lect
 - [Do edX course videos have transcripts or captions?](https://support.edx.org/hc/en-us/articles/207205917-Do-edX-course-videos-have-transcripts-or-captions)
 - [Manage Video Transcripts](https://docs.openedx.org/en/latest/educators/how-tos/course_development/manage_video_transcripts.html)
 - [edX.org Learner's Guide: General Information](https://edx.readthedocs.io/projects/open-edx-learner-guide/en/latest/front_matter/index.html)
+
+These pages could be read only through search-engine extracts, because they could not be opened directly: https://support.edx.org/hc/en-us/articles/207205917-Do-edX-course-videos-have-transcripts-or-captions.
