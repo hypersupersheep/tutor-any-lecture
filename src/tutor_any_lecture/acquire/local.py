@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import importlib.metadata
 import os
+import re
 import shutil
 import stat
 import sys
@@ -18,7 +19,7 @@ from tutor_any_lecture import __version__, asr, slides
 from ..ffmpeg import TEXT_SUBTITLE_CODECS, extract_audio, media_duration, media_streams, subtitle_vtt
 from ..profile import Profile
 from ..source import SourceInfo, sha256_file, slide_digests
-from ..transcript import AcquireError, EmptyTranscript, Health, Transcript, health, parse_vtt
+from ..transcript import AcquireError, EmptyTranscript, Health, Segment, Transcript, health, parse_vtt
 from ..unit import UnitPaths, refuse_overwrite
 
 # The tool's temporary folders sit under one parent in the system temp folder: on POSIX
@@ -201,6 +202,8 @@ def _embedded_track_into_unit(file: Path, duration: float | None, unit: Path) ->
         if text is None:
             continue
         segments = parse_vtt(text)
+        if stream.codec in ("ass", "ssa"):
+            segments = _clean_ass(segments)
         if not segments:
             continue
         h = health(segments, duration)
@@ -223,6 +226,24 @@ def _embedded_track_into_unit(file: Path, duration: float | None, unit: Path) ->
         ).write(paths.source)
         return h
     return None
+
+
+# An ASS vector drawing ({\p1}m 0 0 l 100 0 …): its command letters and numbers only.
+_ASS_DRAWING = re.compile(r"(?:[mnlbspc]|-?\d+(?:\.\d+)?)(?:\s*(?:[mnlbspc]|-?\d+(?:\.\d+)?))*")
+
+
+def _clean_ass(segments: list[Segment]) -> list[Segment]:
+    """An ASS/SSA track's cues as text: ``\\h`` (a hard space) becomes a space, and a cue
+    that is only a vector drawing is dropped. ffmpeg keeps both in its WebVTT output."""
+    cleaned = []
+    for s in segments:
+        text = " ".join(s.text.replace("\\h", " ").split())
+        if not text:
+            continue
+        if _ASS_DRAWING.fullmatch(text) and any(c.isdigit() for c in text):
+            continue
+        cleaned.append(dataclasses.replace(s, text=text))
+    return cleaned
 
 
 def _transcribe_into_unit(

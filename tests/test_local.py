@@ -690,6 +690,35 @@ def test_local_skips_a_track_ffmpeg_cannot_convert(monkeypatch, tmp_path):
     assert json.loads(UnitPaths(unit).source.read_text(encoding="utf-8"))["acquisition"] == "embedded"
 
 
+def test_local_reads_an_ass_track_without_hard_spaces_or_drawings(monkeypatch, tmp_path):
+    src = make_tone(tmp_path / "课程 资料")
+    unit = tmp_path / "课程 资料" / "第1周"
+    monkeypatch.setattr(local, "media_streams", lambda path: [
+        Stream(0, "audio", "pcm_s16le", None, False),
+        Stream(1, "subtitle", "ass", None, False),
+        Stream(2, "subtitle", "ssa", None, False),
+    ])
+    calls = record_vtt(monkeypatch, {
+        # Drawings only: nothing is left, so the track is skipped.
+        1: "WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nm 0 0 l 100 0 100 100 0 100\n",
+        2: "WEBVTT\n\n"
+           "00:00:00.000 --> 00:00:00.900\nm 0 0 l 100 0 100 100 b 10.5 -3 20 0 30 0 c\n\n"
+           "00:00:00.000 --> 00:00:01.000\nHello\\hthere\n\n"
+           "00:00:01.000 --> 00:00:02.000\ngood\\h\\hmorning\\h\n",
+    })
+    fake = install_fake_asr(monkeypatch)
+    h = acquire_local(src, unit, Profile(), False)
+    assert h.ok
+    assert calls == [1, 2]
+    assert fake.calls == []
+    data = json.loads(UnitPaths(unit).transcript.read_text(encoding="utf-8"))
+    assert [(s["start"], s["end"], s["text"]) for s in data["segments"]] == [
+        (0.0, 1.0, "Hello there"),
+        (1.0, 2.0, "good morning"),
+    ]
+    assert json.loads(UnitPaths(unit).source.read_text(encoding="utf-8"))["acquisition"] == "embedded"
+
+
 def test_local_reads_no_track_from_a_file_without_audio_or_video(monkeypatch, tmp_path):
     src = make_tone(tmp_path / "课程 资料")
     unit = tmp_path / "课程 资料" / "第1周"
