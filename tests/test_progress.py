@@ -558,3 +558,117 @@ def test_confident_wrong_shows_the_prompt(tmp_path):
         '- U1: c1-B (c1) "A loan charges half a percent a month; what is its effective…", post, (slide 2, 01:00)',
         "- U1: p1 (c1), practice, (01:00)",
     ]
+
+
+# ---- old logs and malformed lines (M2a Task 5) ------------------------------
+
+REQUIRED = dict(
+    ts="2026-11-20T10:00:00+00:00", course="C", unit="u1", item_id="c1-B", variant="B",
+    concept="c1", phase="post", score=1, confidence=2, citation="(01:00)", exposure="unknown",
+)
+
+
+def write_raw(path, lines):
+    """Write `lines` (strings) to `path`, one per line, creating its folder."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(line + "\n" for line in lines), encoding="utf-8", newline="\n")
+
+
+def test_old_log_lines_load(tmp_path):
+    write_raw(tmp_path / "progress" / "C.jsonl", [
+        json.dumps(REQUIRED),
+        json.dumps({**REQUIRED, "prompt": "Q?"}),
+        json.dumps({**REQUIRED, "future": 1}),
+    ])
+    first, second, third = load_attempts("C", tmp_path)
+    assert (first.prompt, first.answer, first.assigned) == (None, None, None)
+    assert second.prompt == "Q?"
+    assert third == first
+
+
+def malformed_lines(**fields):
+    """Eight log lines: 1 and 8 valid, 2 to 7 malformed or blank, as the warning tests expect."""
+    valid = {**REQUIRED, **fields}
+    no_score = {k: v for k, v in valid.items() if k != "score"}
+    return [
+        json.dumps(valid),
+        "{bad",
+        "[1, 2]",
+        json.dumps(no_score),
+        json.dumps({**valid, "score": 0.7}),
+        "",
+        json.dumps({**valid, "ts": "yesterday"}),
+        json.dumps({**valid, "ts": "2026-11-21T10:00:00+00:00"}),
+    ]
+
+
+def warnings_for(path):
+    return "".join(
+        f"warning: {path}: line {n} skipped: {reason}\n"
+        for n, reason in (
+            (2, "not valid JSON"),
+            (3, "not a JSON object"),
+            (4, "missing score"),
+            (5, "bad value for score: 0.7"),
+            (7, "bad value for ts: 'yesterday'"),
+        )
+    )
+
+
+def test_malformed_lines_are_skipped_with_a_warning(tmp_path, capsys):
+    path = tmp_path / "progress" / "C.jsonl"
+    write_raw(path, malformed_lines())
+    att = load_attempts("C", tmp_path)
+    assert att == [Attempt(**REQUIRED), Attempt(**{**REQUIRED, "ts": "2026-11-21T10:00:00+00:00"})]
+    captured = capsys.readouterr()
+    assert captured.err == warnings_for(str(path))
+    assert captured.out == ""
+
+
+@pytest.mark.parametrize("field, value, shown", [
+    ("ts", 5, "5"),
+    ("course", None, "None"),
+    ("variant", "F", "'F'"),
+    ("phase", "d3", "'d3'"),
+    ("score", True, "True"),
+    ("confidence", 2.0, "2.0"),
+    ("exposure", "seen", "'seen'"),
+    ("prompt", 3, "3"),
+    ("answer", ["x"], "['x']"),
+    ("assigned", ["c1", 2], "['c1', 2]"),
+    ("assigned", "c1", "'c1'"),
+])
+def test_each_bad_value_is_named(tmp_path, capsys, field, value, shown):
+    path = tmp_path / "progress" / "C.jsonl"
+    write_raw(path, [json.dumps({**REQUIRED, field: value})])
+    assert load_attempts("C", tmp_path) == []
+    assert capsys.readouterr().err == f"warning: {path}: line 1 skipped: bad value for {field}: {shown}\n"
+
+
+def test_missing_keys_are_named_in_field_order(tmp_path, capsys):
+    path = tmp_path / "progress" / "C.jsonl"
+    write_raw(path, [json.dumps({k: v for k, v in REQUIRED.items() if k not in ("unit", "exposure")})])
+    assert load_attempts("C", tmp_path) == []
+    assert capsys.readouterr().err == f"warning: {path}: line 1 skipped: missing unit, exposure\n"
+
+
+def test_cli_commands_survive_a_malformed_line(tmp_path, capsys):
+    import shutil
+
+    from conftest import fx
+
+    u = tmp_path / "unit"
+    shutil.copytree(fx("units", "ok"), u)
+    ws = tmp_path / "ws"
+    path = ws / "progress" / "demo-course.jsonl"
+    write_raw(path, malformed_lines(course="demo-course", unit="unit-01", item_id="ci-B", concept="compound-interest"))
+    expected = warnings_for(str(path))
+    for argv in (
+        ["progress", "due", "--course", "demo-course", "--workspace", str(ws)],
+        ["progress", "render", "--course", "demo-course", "--workspace", str(ws)],
+        ["cards", "add-misses", "--unit", str(u), "--workspace", str(ws)],
+    ):
+        assert main(argv) == 0, argv
+        captured = capsys.readouterr()
+        assert captured.out.count("\n") == 1 and isinstance(json.loads(captured.out), (list, dict))
+        assert captured.err == expected

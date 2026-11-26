@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import sys
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
@@ -51,6 +52,16 @@ class Attempt:
     exposure: str
     # The item's prompt when it was asked; None in lines logged before prompts were kept.
     prompt: str | None = None
+    # The learner's answer as given, when the agent passed one.
+    answer: str | None = None
+    # The concepts this attempt's phase holds, sorted; None for practice and in lines
+    # logged before it was kept (then one attempt completes a phase, as it did then).
+    assigned: list[str] | None = None
+
+
+ATTEMPT_FIELDS = tuple(f.name for f in dataclasses.fields(Attempt))
+# The keys every log line has; the later ones may be absent from lines written before them.
+REQUIRED_KEYS = ATTEMPT_FIELDS[: ATTEMPT_FIELDS.index("prompt")]
 
 
 def _progress_dir(workspace: Path) -> Path:
@@ -93,11 +104,80 @@ def load_attempts(course: str, workspace: Path) -> list[Attempt]:
         return []
     # Split on "\n" only: str.splitlines() also breaks at U+2028/U+2029/U+0085, which
     # json.dumps(ensure_ascii=False) leaves raw inside string values.
-    return [
-        Attempt(**json.loads(line))
-        for line in path.read_text(encoding="utf-8").split("\n")
-        if line.strip()
-    ]
+    out = []
+    for n, line in enumerate(path.read_text(encoding="utf-8").split("\n"), start=1):
+        if not line.strip():
+            continue
+        parsed = _parse_line(line)
+        if isinstance(parsed, Attempt):
+            out.append(parsed)
+        else:
+            # Not the warnings module: a skipped line must not stop a command run with -W error.
+            print(f"warning: {path}: line {n} skipped: {parsed}", file=sys.stderr)
+    return out
+
+
+def _is_string(v) -> bool:
+    return isinstance(v, str)
+
+
+def _is_iso_time(v) -> bool:
+    if not isinstance(v, str):
+        return False
+    try:
+        datetime.fromisoformat(v)
+    except ValueError:
+        return False
+    return True
+
+
+def _is_number_in(allowed):
+    # bool is a subclass of int (True == 1), so it is refused by name.
+    return lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and v in allowed
+
+
+def _is_optional_string(v) -> bool:
+    return v is None or isinstance(v, str)
+
+
+# The test each field's value must pass, in field order.
+_FIELD_TESTS = {
+    "ts": _is_iso_time,
+    "course": _is_string,
+    "unit": _is_string,
+    "item_id": _is_string,
+    "variant": lambda v: v is None or v in ("A", "B", "C", "D", "E"),
+    "concept": _is_string,
+    "phase": lambda v: isinstance(v, str) and v in PHASES,
+    "score": _is_number_in(SCORES),
+    "confidence": lambda v: isinstance(v, int) and not isinstance(v, bool) and v in CONFIDENCES,
+    "citation": _is_string,
+    "exposure": lambda v: isinstance(v, str) and v in EXPOSURES,
+    "prompt": _is_optional_string,
+    "answer": _is_optional_string,
+    "assigned": lambda v: v is None or (isinstance(v, list) and all(isinstance(x, str) for x in v)),
+}
+
+
+def _parse_line(line: str) -> Attempt | str:
+    """The attempt one log line holds, or the reason it cannot be read.
+
+    Keys the dataclass does not know are ignored, so a log written by a later version loads.
+    """
+    try:
+        obj = json.loads(line)
+    except ValueError:
+        return "not valid JSON"
+    if not isinstance(obj, dict):
+        return "not a JSON object"
+    missing = [k for k in REQUIRED_KEYS if k not in obj]
+    if missing:
+        return f"missing {', '.join(missing)}"
+    values = {k: obj.get(k) for k in ATTEMPT_FIELDS}
+    for field in ATTEMPT_FIELDS:
+        if not _FIELD_TESTS[field](values[field]):
+            return f"bad value for {field}: {values[field]!r}"
+    return Attempt(**values)
 
 
 def _stamp(day: date | None) -> str:
