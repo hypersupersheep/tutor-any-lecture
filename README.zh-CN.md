@@ -187,7 +187,7 @@ x64 的 Windows;用 Windows PowerShell 5.1 或 PowerShell 7 运行 `install.ps1`
 
 ## 参与贡献
 
-欢迎参与贡献,建议从一个平台适配说明开始。安全问题请私下报告,不要发在公开的 issue 里。
+[CONTRIBUTING.md](CONTRIBUTING.md) 写了怎么搭建测试环境、每个改动要遵守哪些规则,并建议从一个平台适配说明开始贡献。安全问题请按 [SECURITY.md](SECURITY.md) 的说明私下报告,不要发在公开的 issue 里。
 
 ## 致谢
 

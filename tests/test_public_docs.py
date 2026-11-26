@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 import pytest
+import yaml
 
 from tutor_any_lecture.config import config_dir
 
@@ -11,7 +12,14 @@ ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
 README_ZH = ROOT / "README.zh-CN.md"
 READMES = [README, README_ZH]
-PUBLIC_DOCS = READMES
+CONTRIBUTING = ROOT / "CONTRIBUTING.md"
+SECURITY = ROOT / "SECURITY.md"
+BUG_TEMPLATE = ROOT / ".github" / "ISSUE_TEMPLATE" / "bug_report.md"
+ADAPTER_TEMPLATE = ROOT / ".github" / "ISSUE_TEMPLATE" / "platform_adapter.md"
+PR_TEMPLATE = ROOT / ".github" / "pull_request_template.md"
+GOVERNANCE = [CONTRIBUTING, SECURITY, BUG_TEMPLATE, ADAPTER_TEMPLATE, PR_TEMPLATE]
+PUBLIC_DOCS = READMES + GOVERNANCE
+ADAPTER_TEMPLATE_DOC = "skills/tutor-any-lecture/references/adapters/TEMPLATE.md"
 SAMPLE_NOTE = ROOT / "src" / "tutor_any_lecture" / "data" / "sample" / "explanation.md"
 
 POSITION = {
@@ -209,6 +217,14 @@ def all_caps_heading(line: str) -> bool:
     return len(words) >= 2 and all(w == w.upper() for w in words)
 
 
+def front_matter(path: Path) -> dict:
+    """The YAML between the opening and closing --- lines."""
+    lines = read(path).splitlines()
+    assert lines[0] == "---", path
+    end = lines.index("---", 1)
+    return yaml.safe_load("\n".join(lines[1:end])) or {}
+
+
 def denylist_terms() -> list[str]:
     denylist = config_dir() / "denylist.txt"
     if not denylist.exists():
@@ -395,3 +411,27 @@ def test_template_trace_helpers_catch_what_they_must():
     assert not all_caps_heading("## 一节课会变成什么")
     assert blockquote_lines("> one\n>\n> two\ntext") == ["one", "two"]
     assert commands("```text\nrun `bash install.sh --yes` now\n```") == {"bash install.sh --yes"}
+
+
+# ---- G1. governance files ----
+
+def test_governance_files_say_what_they_must():
+    assert [p.name for p in GOVERNANCE if not p.is_file()] == []
+    contributing = read(CONTRIBUTING)
+    assert ADAPTER_TEMPLATE_DOC in relative_links(contributing)
+    assert "pytest" in contributing
+    security = read(SECURITY)
+    assert "Report a vulnerability" in security and "public issue" in security
+    for template in (BUG_TEMPLATE, ADAPTER_TEMPLATE):
+        meta = front_matter(template)
+        assert meta.get("name") and meta.get("about"), template.name
+    assert "doctor --json" in read(BUG_TEMPLATE)
+    adapter = read(ADAPTER_TEMPLATE)
+    headings = [line for line in read(ROOT / ADAPTER_TEMPLATE_DOC).splitlines() if line.startswith("## ")]
+    assert len(headings) == 7
+    assert [h for h in headings if h not in adapter.splitlines()] == []
+    assert f"`{ADAPTER_TEMPLATE_DOC}`" in adapter
+    assert len([line for line in read(PR_TEMPLATE).splitlines() if line.startswith("- [ ]")]) >= 4
+    for readme in READMES:
+        links = relative_links(section(readme, "Contributing"))
+        assert "CONTRIBUTING.md" in links and "SECURITY.md" in links, readme.name

@@ -187,7 +187,7 @@ Route C: run `git pull` in the checkout, then the installer again (`bash install
 
 ## Contributing
 
-Contributions are welcome, and a platform adapter is the suggested first one. Please report a security problem privately, never in a public issue.
+[CONTRIBUTING.md](CONTRIBUTING.md) says how to set up the tests and what every change follows, and suggests a platform adapter as a first contribution. Report a security problem privately, as [SECURITY.md](SECURITY.md) explains, never in a public issue.
 
 ## Acknowledgements
 
