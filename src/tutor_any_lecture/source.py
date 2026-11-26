@@ -72,15 +72,17 @@ class SourceInfo:
 
 # The suffixes of the slide decks the ``slides`` command reads (--pdf, --pptx).
 SLIDE_DECK_SUFFIXES = (".pdf", ".pptx")
+# The suffixes of the photos of slides ``slides --photos`` reads, and of its copies.
+SLIDE_PHOTO_SUFFIXES = (".jpg", ".jpeg", ".png")
 
 
 def _is_slide_deck(name) -> bool:
-    """An ``inputs_sha256`` key that names the slide deck: the PDF or PPTX ``slides`` read.
+    """An ``inputs_sha256`` key that names the slides: the PDF, the PPTX or a photo ``slides`` read.
 
-    No acquisition reads a PDF or a PPTX, so the suffix tells the deck's entry from the
-    transcript's.
+    No acquisition reads a PDF, a PPTX or a photo, so the suffix tells the deck's entries
+    from the transcript's.
     """
-    return isinstance(name, str) and name.lower().endswith(SLIDE_DECK_SUFFIXES)
+    return isinstance(name, str) and name.lower().endswith(SLIDE_DECK_SUFFIXES + SLIDE_PHOTO_SUFFIXES)
 
 
 def slide_digests(path: Path) -> dict[str, str]:
@@ -105,10 +107,19 @@ def add_slide_digest(path: Path, name: str, digest: str) -> None:
     An earlier deck's entry is replaced. A malformed file raises ``ValueError("source.json: …")``
     and is left as it is.
     """
+    set_slide_digests(path, {name: digest})
+
+
+def set_slide_digests(path: Path, digests: dict[str, str]) -> None:
+    """Put ``digests`` (name -> sha256) in place of every slide entry of an existing source.json.
+
+    The other entries and keys stay as they are. A malformed file raises
+    ``ValueError("source.json: …")`` and is left as it is.
+    """
     SourceInfo.read(path)  # validates; raises before anything is written
     data = read_json(path, "source.json")
     inputs = {k: v for k, v in data["inputs_sha256"].items() if not _is_slide_deck(k)}
-    inputs[name] = digest
+    inputs.update(digests)
     data["inputs_sha256"] = inputs
     Path(path).write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
 

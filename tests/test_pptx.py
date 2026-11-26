@@ -223,8 +223,8 @@ def test_cli_slides_names_what_it_reads(tmp_path, capsys, flag, name):
     assert main(["slides", flag, str(path), "--unit", str(unit)]) == 1
     captured = capsys.readouterr()
     assert json.loads(captured.out) == {"status": "error", "message": (
-        f"{name} cannot be read with {flag}: slides reads a .pdf file with --pdf and a .pptx file with --pptx "
-        "(save .ppt, .key and .odp decks as PDF first)"
+        f"{name} cannot be read with {flag}: slides reads a .pdf file with --pdf, a .pptx file with --pptx "
+        "and three or more .jpg, .jpeg or .png photos with --photos (save .ppt, .key and .odp decks as PDF first)"
     )}
     assert captured.err == ""
     assert not unit.exists()

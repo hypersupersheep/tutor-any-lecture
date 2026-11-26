@@ -1,8 +1,10 @@
-"""Slides: PDF pages or PowerPoint slides → sources/slides/pages.json, footer labels, and slide terms."""
+"""Slides: PDF pages, PowerPoint slides or photos of slides → sources/slides/pages.json, footer labels, and slide terms."""
 
 from __future__ import annotations
 
 import dataclasses
+import hashlib
+import io
 import json
 import math
 import re
@@ -12,7 +14,7 @@ from pathlib import Path
 from . import __version__
 from .office import OfficePackage, child, children, local_name, namespace, namespaced_attribute
 from .plan import read_json
-from .source import SourceInfo, add_slide_digest, sha256_file
+from .source import SLIDE_PHOTO_SUFFIXES, SourceInfo, add_slide_digest, set_slide_digests, sha256_file
 from .textstats import cjk_runs, cjk_script
 from .transcript import AcquireError
 from .unit import UnitPaths
@@ -268,6 +270,152 @@ def extract_pptx(pptx: Path, unit: Path) -> list[Page]:
     paths.ensure()
     write_pages(paths.pages, pages)
     _record_deck(paths, pptx, {"tutor-any-lecture": __version__})
+    return pages
+
+
+# The copy of a photo of a slide in sources/slides/, as ``extract_photos`` names it.
+PHOTO_COPY_RE = re.compile(r"photo-[0-9]{3,}\.(?:jpg|png)")
+# The longest side, in pixels, of a copy an agent is asked to read.
+_LONGEST_SIDE = 2000
+# EXIF orientations 2 to 8 mean the camera stored the picture mirrored or turned.
+_ORIENTATION_TAG = 0x0112
+_SUFFIX_OF_FORMAT = {"JPEG": "jpg", "PNG": "png"}
+
+
+def _natural_key(name: str) -> list:
+    """``IMG_2`` before ``IMG_10``: digit runs compare as numbers, the rest without letter case.
+
+    ``re.split`` with a group gives text at even places and digits at odd ones, so two keys
+    never compare a number with text.
+    """
+    return [int(part) if i % 2 else part.casefold() for i, part in enumerate(re.split(r"([0-9]+)", name))]
+
+
+def photo_order(paths) -> list[Path]:
+    """``paths`` in natural file-name order; equal keys are ordered by the whole path."""
+    return sorted((Path(p) for p in paths), key=lambda p: (_natural_key(p.name), str(p)))
+
+
+def _check_photo_names(photos: list[Path]) -> None:
+    """The checks that need no image read: count, suffix, existence, a photo given twice."""
+    if len(photos) < 3:
+        raise ValueError(f"slides --photos needs at least 3 photos, got {len(photos)}")
+    for photo in photos:
+        suffix = photo.suffix.lower()
+        if suffix == ".heic":
+            raise ValueError(f"{photo.name}: HEIC photos are not read; export them as JPEG or PNG")
+        if suffix not in SLIDE_PHOTO_SUFFIXES:
+            raise ValueError(f"{photo.name}: photos must be JPEG or PNG (.jpg, .jpeg, .png)")
+        if not photo.is_file():
+            raise FileNotFoundError(f"photo not found: {photo}")
+    seen: set[Path] = set()
+    for photo in photos:
+        resolved = photo.resolve()
+        if resolved in seen:
+            raise ValueError(f"the same photo is given twice: {photo.name}")
+        seen.add(resolved)
+
+
+def _photo_copy(photo: Path, data: bytes) -> tuple[bytes, str]:
+    """The bytes of the copy of one photo and its suffix (``jpg`` or ``png``, from its format).
+
+    A photo stored turned (EXIF orientation 2 to 8) or longer than 2000 px is re-encoded:
+    upright, scaled to 2000 px on its longer side, JPEG at quality 90 or PNG. Any other photo
+    is copied byte for byte. A file Pillow cannot open or verify, or one that is neither a
+    JPEG nor a PNG, raises ``AcquireError``.
+    """
+    from PIL import Image, ImageOps
+
+    unreadable = f"{photo.name} is not a readable JPEG or PNG image"
+    # Pillow raises many unrelated types on a bad file (UnidentifiedImageError, SyntaxError,
+    # OSError, struct.error, ...); these tries hold only Pillow calls.
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            fmt = image.format
+            image.verify()
+    except Exception as e:
+        raise AcquireError(unreadable) from e
+    if fmt not in _SUFFIX_OF_FORMAT:
+        raise AcquireError(unreadable)
+    suffix = _SUFFIX_OF_FORMAT[fmt]
+    try:
+        with Image.open(io.BytesIO(data)) as image:  # verify() leaves the image unusable: open it again
+            turned = image.getexif().get(_ORIENTATION_TAG) in range(2, 9)
+            if not turned and max(image.size) <= _LONGEST_SIDE:
+                return data, suffix
+            upright = ImageOps.exif_transpose(image)
+        if max(upright.size) > _LONGEST_SIDE:
+            scale = _LONGEST_SIDE / max(upright.size)
+            size = (max(1, round(upright.width * scale)), max(1, round(upright.height * scale)))
+            upright = upright.resize(size, Image.Resampling.LANCZOS)
+        out = io.BytesIO()
+        if fmt == "JPEG":
+            upright.save(out, "JPEG", quality=90)
+        else:
+            upright.save(out, "PNG")
+    except Exception as e:
+        raise AcquireError(unreadable) from e
+    return out.getvalue(), suffix
+
+
+def extract_photos(photos, unit: Path, force: bool = False) -> list[Page]:
+    """Copy three or more photos of slides into the unit's sources/slides/ and write pages.json.
+
+    Page k is the k-th photo in natural file-name order (``photo_order``), copied to
+    ``photo-<k:03d>.jpg`` or ``.png``; its text stays empty until ``set_page_text`` gives it.
+    Every photo is checked and read into memory before the unit changes, so an error
+    (``ValueError``, ``FileNotFoundError``, ``AcquireError``) writes nothing, and a photo that
+    lives in sources/slides/ survives the removal of the old copies. Page text already given
+    stops the run (``FileExistsError``) unless ``force``. source.json records the sha256 of
+    each original photo under its copy's name: a new slides-only one when the unit has none,
+    else in place of the slide entries of the existing one.
+    """
+    import PIL
+
+    given = [Path(p) for p in photos]
+    _check_photo_names(given)
+    ordered = photo_order(given)
+    copies = []
+    for k, photo in enumerate(ordered, start=1):
+        data = photo.read_bytes()
+        copy, suffix = _photo_copy(photo, data)
+        copies.append((f"photo-{k:03d}.{suffix}", copy, hashlib.sha256(data).hexdigest()))
+
+    paths = UnitPaths(unit)
+    if paths.source.exists():
+        SourceInfo.read(paths.source)  # a malformed source.json stops the run here, unchanged
+    existing = load_pages(unit)  # a malformed pages.json stops the run here, unchanged
+    if not force and any(p.text.strip() for p in existing):
+        raise FileExistsError(f"{paths.pages} already holds page text; rerun with --force to replace it")
+
+    paths.ensure()
+    slides_dir = paths.pages.parent
+    slides_dir.mkdir(exist_ok=True)  # before the first copy
+    for old in slides_dir.iterdir():
+        if PHOTO_COPY_RE.fullmatch(old.name) and old.is_file():
+            old.unlink()
+    pages: list[Page] = []
+    for k, (name, copy, _) in enumerate(copies, start=1):
+        (slides_dir / name).write_bytes(copy)
+        pages.append(Page(k, None, "", name))
+    write_pages(paths.pages, pages)
+
+    digests = {name: digest for name, _, digest in copies}
+    if paths.source.exists():
+        set_slide_digests(paths.source, digests)
+    else:
+        SourceInfo(
+            kind="slides-only",
+            title=ordered[0].absolute().parent.name,
+            url=None,
+            platform=None,
+            duration=None,
+            lecture_language=None,
+            acquisition="slides",
+            health={},
+            tool_versions={"Pillow": PIL.__version__},
+            inputs_sha256=digests,
+        ).write(paths.source)
     return pages
 
 

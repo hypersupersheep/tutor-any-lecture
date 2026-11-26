@@ -336,6 +336,16 @@ def setup_slides_pptx(tmp_path):
     return ["slides", "--pptx", str(deck), "--unit", str(tmp_path / "unit")]
 
 
+def setup_slides_photos(tmp_path):
+    from PIL import Image
+
+    photos = []
+    for name in ("1.jpg", "2.jpg", "3.png"):
+        photos.append(tmp_path / name)
+        Image.new("RGB", (40, 30), (200, 40, 40)).save(photos[-1])
+    return ["slides", "--photos", *map(str, photos), "--unit", str(tmp_path / "unit")]
+
+
 def setup_slides_suspects(tmp_path):
     return ["slides", "suspects", "--unit", str(ok_unit(tmp_path))]
 
@@ -361,6 +371,7 @@ WRITERS = {
     "items-assign": setup_items_assign,
     "slides-pdf": setup_slides_pdf,
     "slides-pptx": setup_slides_pptx,
+    "slides-photos": setup_slides_photos,
     "slides-suspects": setup_slides_suspects,
     "progress-render": setup_progress_render,
 }

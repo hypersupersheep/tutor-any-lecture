@@ -290,32 +290,43 @@ def _cmd_transcribe(args) -> int:
 _SLIDES_USAGE = (
     "usage: tutor-any-lecture slides --pdf F --unit DIR [--images]"
     " | tutor-any-lecture slides --pptx F --unit DIR"
+    " | tutor-any-lecture slides --photos <photo files> --unit DIR [--force]"
+    " | tutor-any-lecture slides text --unit DIR --page N --file F [--time S] [--force]"
     " | tutor-any-lecture slides suspects --unit DIR"
 )
 # The suffix each deck flag reads.
 _SLIDE_FLAGS = {"--pdf": ".pdf", "--pptx": ".pptx"}
 
 
-def _input_error(call):
+def _input_error(call, needs_force=False):
     """Run ``call``; an input error becomes the error object of ``_run_acquire``.
 
     Returns ``(result, None)``, or ``(None, EXIT_FAIL)`` after printing
     ``{"status": "error", "message": ...}`` for a ``ValueError`` (a malformed pages.json,
-    transcript.json or source.json), an ``AcquireError`` (an unreadable PDF or PPTX) or
-    an ``OSError`` (a missing deck or transcript).
+    transcript.json or source.json), an ``AcquireError`` (an unreadable PDF, PPTX or photo)
+    or an ``OSError`` (a missing deck, photo or transcript). With ``needs_force``, a
+    ``FileExistsError`` (rerun with ``--force``) propagates to ``main``, as in ``_run_acquire``.
     """
     from .transcript import AcquireError
 
     try:
         return call(), None
     except (ValueError, AcquireError, OSError) as e:
+        if needs_force and isinstance(e, FileExistsError):
+            raise
         _print_json({"status": "error", "message": str(e)})
         return None, EXIT_FAIL
 
 
 def _cmd_slides(args) -> int:
-    # Exactly one deck (--pdf or --pptx) and a unit.
-    if args.unit is None or (args.pdf is None) == (args.pptx is None):
+    if args.photos is not None:
+        # Photos and a unit; no deck, and no page images: the photos are the images.
+        if args.unit is None or args.pdf is not None or args.pptx is not None or args.images:
+            print(_SLIDES_USAGE, file=sys.stderr)
+            return EXIT_USAGE
+        return _slides_photos(args)
+    # Exactly one deck (--pdf or --pptx) and a unit; --force belongs to --photos.
+    if args.unit is None or (args.pdf is None) == (args.pptx is None) or args.force:
         print(_SLIDES_USAGE, file=sys.stderr)
         return EXIT_USAGE
     if args.pptx is not None and args.images:
@@ -326,8 +337,9 @@ def _cmd_slides(args) -> int:
     if deck.suffix.lower() != _SLIDE_FLAGS[flag]:
         # Before anything is read: a deck given to the other flag, or a format slides does not read.
         _print_json({"status": "error", "message": (
-            f"{deck.name} cannot be read with {flag}: slides reads a .pdf file with --pdf and a .pptx file "
-            "with --pptx (save .ppt, .key and .odp decks as PDF first)"
+            f"{deck.name} cannot be read with {flag}: slides reads a .pdf file with --pdf, a .pptx file "
+            "with --pptx and three or more .jpg, .jpeg or .png photos with --photos "
+            "(save .ppt, .key and .odp decks as PDF first)"
         )})
         return EXIT_FAIL
 
@@ -350,8 +362,20 @@ def _cmd_slides(args) -> int:
     return EXIT_OK
 
 
+def _slides_photos(args) -> int:
+    from .slides import extract_photos
+    from .unit import UnitPaths
+
+    # Page text already given (FileExistsError) propagates to main: exit 3, one stderr line.
+    pages, failed = _input_error(lambda: extract_photos(args.photos, Path(args.unit), args.force), needs_force=True)
+    if failed is not None:
+        return failed
+    _print_json({"status": "ok", "pages": len(pages), "path": str(UnitPaths(args.unit).pages)})
+    return EXIT_OK
+
+
 def _cmd_slides_suspects(args) -> int:
-    if args.pdf is not None or args.pptx is not None:
+    if args.pdf is not None or args.pptx is not None or args.photos is not None:
         # "slides --pdf F suspects" or "slides --pptx F suspects": two commands in one; run neither.
         print(_SLIDES_USAGE, file=sys.stderr)
         return EXIT_USAGE
@@ -670,13 +694,19 @@ def build_parser() -> argparse.ArgumentParser:
     tr.add_argument("--force", action="store_true", help="replace an existing transcript")
     tr.set_defaults(func=_cmd_transcribe)
     slides = sub.add_parser(
-        "slides", help="read a slide PDF (--pdf) or a PowerPoint deck (--pptx) into the unit, or flag ASR suspects"
+        "slides",
+        help="read a slide PDF (--pdf), a PowerPoint deck (--pptx) or three or more photos of slides (--photos) "
+        "into the unit, or flag ASR suspects",
     )
     slides.add_argument("--pdf", type=_path, default=None, help="the slide PDF")
     slides.add_argument("--pptx", type=_path, default=None,
                         help="the slide deck as a .pptx file: text and speaker notes, no images")
+    slides.add_argument("--photos", type=_path, nargs="+", default=None, metavar="PHOTO",
+                        help="three or more photos of slides (.jpg, .jpeg, .png), one page each in file-name order")
     slides.add_argument("--unit", type=_path, default=None, help="the unit folder")
     slides.add_argument("--images", action="store_true", help="also save one PNG per page")
+    slides.add_argument("--force", action="store_true",
+                        help="with --photos: replace pages whose text was already given")
     slides.set_defaults(func=_cmd_slides)
     slides_sub = slides.add_subparsers(dest="slides_command")
     suspects = slides_sub.add_parser("suspects", help="flag transcript words that look like misheard slide terms")
