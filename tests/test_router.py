@@ -84,7 +84,7 @@ def test_slide_source_precedence(tmp_path):
     touch(tmp_path / "d", "a.mp3")
     assert route(tmp_path / "a")["slide_source"] == "pptx"
     assert route(tmp_path / "b")["slide_source"] == "photos"
-    assert route(tmp_path / "c")["slide_source"] == "keyframes-deferred"
+    assert route(tmp_path / "c")["slide_source"] == "keyframes"
     assert route(tmp_path / "d")["slide_source"] == "none"
 
 
@@ -343,19 +343,22 @@ def test_deferred_steps_read_their_files(tmp_path):
     photos = route(tmp_path / "photos")
     frames = route(tmp_path / "frames")
     p_root, f_root = (tmp_path / "photos").resolve(), (tmp_path / "frames").resolve()
-    assert photos["slide_source"] == "photos-deferred" and frames["slide_source"] == "keyframes-deferred"
+    assert photos["slide_source"] == "photos-deferred" and frames["slide_source"] == "keyframes"
     p_deferred = [s for s in photos["steps"] if not s["runnable"]]
-    f_deferred = [s for s in frames["steps"] if not s["runnable"]]
-    assert len(p_deferred) == 1 and len(f_deferred) == 1
+    assert len(p_deferred) == 1
     assert p_deferred[0]["reads"] == [str(p_root / n) for n in ("1.jpg", "2.png", "3.heic")]
-    # Keyframes come from video files only, never from audio.
-    assert f_deferred[0]["reads"] == [str(f_root / "a.mp4"), str(f_root / "b.mkv")]
+    # Key frames come from video files only, never from audio: two videos ask which one.
+    assert [q["about"] for q in frames["questions"]] == ["video"]
+    assert frames["questions"][0]["candidates"] == [str(f_root / "a.mp4"), str(f_root / "b.mkv")]
+    assert all(s["runnable"] for s in frames["steps"])
 
 
 def test_no_media_question_when_transcript_exists(tmp_path):
     touch(tmp_path, "a.mp4", "b.mp4", "c.mp3", "x.srt")
     plan = route(tmp_path)
-    assert plan["questions"] == []
+    root = tmp_path.resolve()
+    assert [q["about"] for q in plan["questions"]] == ["video"]
+    assert plan["questions"][0]["candidates"] == [str(root / "a.mp4"), str(root / "b.mp4")]
     assert kinds(plan["steps"])[0] == ["acquire", "import"]
     assert not any(s["argv"][1:3] == ["acquire", "local"] for s in plan["steps"])
 
@@ -498,3 +501,54 @@ def test_docx_is_a_transcript_only_with_time_stamps(tmp_path):
         ["tutor-any-lecture", "acquire", "import", "--file", lecture, "--unit", "<unit>"],
     ]
     assert plan["questions"] == []
+
+
+# ---- Task 13: key frames for a video without slides -------------------------------
+
+
+def test_video_without_slides_plans_keyframes(tmp_path):
+    touch(tmp_path / "a", "v.mp4")
+    plan = route(tmp_path / "a")
+    video = str((tmp_path / "a").resolve() / "v.mp4")
+    assert plan["slide_source"] == "keyframes"
+    assert kinds(plan["steps"]) == [["keyframes", "--video"], ["acquire", "local"]]
+    assert plan["steps"][0] == {
+        "argv": ["tutor-any-lecture", "keyframes", "--video", video, "--unit", "<unit>"],
+        "network": False, "gpu": False, "reads": [video],
+        "writes": ["<unit>/sources/slides/pages.json", "<unit>/sources/keyframes"], "runnable": True,
+    }
+    assert plan["questions"] == []
+
+    unit = tmp_path / "unit"
+    step = route(tmp_path / "a", unit)["steps"][0]
+    paths = UnitPaths(unit.resolve())
+    assert step["argv"][-1] == str(unit.resolve())
+    assert step["writes"] == [str(paths.pages), str(paths.keyframes)]
+    assert not unit.exists()
+
+    touch(tmp_path / "b", "v.mp4", "v.srt")
+    assert kinds(route(tmp_path / "b")["steps"]) == [["acquire", "import"], ["keyframes", "--video"]]
+    touch(tmp_path / "c", "v.mp4", "a.pdf")
+    plan = route(tmp_path / "c")
+    assert plan["slide_source"] == "pdf"
+    assert not any(s["argv"][1:2] == ["keyframes"] for s in plan["steps"])
+
+
+def test_several_videos_ask_which_shows_the_slides(tmp_path):
+    touch(tmp_path, "a.mp4", "b.mkv", "c.mp3", "x.srt")
+    plan = route(tmp_path)
+    root = tmp_path.resolve()
+    videos = [str(root / "a.mp4"), str(root / "b.mkv")]
+    assert plan["slide_source"] == "keyframes"
+    assert [q["about"] for q in plan["questions"]] == ["video"]
+    q = plan["questions"][0]
+    assert q["text"] == "More than one video file. Which one shows the lecture's slides or board?"
+    assert q["candidates"] == videos
+    assert q["argv"] == [["tutor-any-lecture", "keyframes", "--video", v, "--unit", "<unit>"] for v in videos]
+    assert not any(s["argv"][1:2] == ["keyframes"] for s in plan["steps"])
+    assert all(s["runnable"] for s in plan["steps"])
+
+    # No transcript: the media question comes first, then the video question.
+    touch(tmp_path / "no-transcript", "a.mp4", "b.mkv")
+    plan = route(tmp_path / "no-transcript")
+    assert [q["about"] for q in plan["questions"]] == ["media", "video"]
