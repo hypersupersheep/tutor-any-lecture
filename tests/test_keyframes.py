@@ -1,9 +1,20 @@
 import io
+import json
 import random
+import shutil
+import subprocess
+from pathlib import Path
 
+import pytest
 from PIL import Image, ImageDraw
 
-from tutor_any_lecture.keyframes import DUPLICATE_BITS, frame_hash, hamming, select_frames
+from tutor_any_lecture import keyframes
+from tutor_any_lecture.cli import main
+from tutor_any_lecture.ffmpeg import Stream, ffmpeg_exe
+from tutor_any_lecture.keyframes import DUPLICATE_BITS, extract_keyframes, frame_hash, hamming, select_frames
+from tutor_any_lecture.slides import load_pages
+from tutor_any_lecture.transcript import AcquireError
+from tutor_any_lecture.unit import UnitPaths
 
 # ---- K2: a perceptual hash written with Pillow ------------------------------------
 
@@ -96,3 +107,231 @@ def test_at_most_120_frames_spread_over_the_lecture():
     kept = select_frames(candidates)
     assert kept == [round(i * 199 / 119) for i in range(120)]
     assert kept[0] == 0 and kept[-1] == 199
+
+
+# ---- K4 to K6: key frames become the unit's slide pages ---------------------------
+
+# 64 s at 5 fps: bars (0 s), the same bars with a small box (21 s, a near-duplicate), a colour
+# test picture (31 s), another (45 s), other bars (49 s).
+GRAPH = (
+    "smptebars=s=320x240:r=5:d=21[a];"
+    "smptebars=s=320x240:r=5:d=10,drawbox=x=20:y=20:w=40:h=20:c=white:t=fill[b];"
+    "rgbtestsrc=s=320x240:r=5:d=14[c];"
+    "yuvtestsrc=s=320x240:r=5:d=4[d];"
+    "pal75bars=s=320x240:r=5:d=15[e];"
+    "[a][b][c][d][e]concat=n=5:v=1:a=0[v]"
+)
+FRAMES = [f"frame-{n:03d}.jpg" for n in range(1, 5)]
+EXPECTED = [
+    (1, None, "", "../keyframes/frame-001.jpg", 0.0),
+    (2, None, "", "../keyframes/frame-002.jpg", 32.0),
+    (3, None, "", "../keyframes/frame-003.jpg", 46.0),
+    (4, None, "", "../keyframes/frame-004.jpg", 54.0),
+]
+LINK_MESSAGE = (
+    "keyframes reads a video file on this computer, not a link: "
+    "from a video site the tool takes captions or audio only"
+)
+
+
+@pytest.fixture(scope="module")
+def lecture_video(tmp_path_factory):
+    path = tmp_path_factory.mktemp("video") / "lecture.mkv"
+    subprocess.run(
+        [ffmpeg_exe(), "-hide_banner", "-nostdin", "-filter_complex", GRAPH, "-map", "[v]",
+         "-c:v", "mpeg4", "-q:v", "2", str(path)],
+        check=True, capture_output=True,
+    )
+    return path
+
+
+@pytest.fixture
+def lecture(tmp_path, lecture_video):
+    # local fixture: the encoded video copied beside a fresh unit, in a folder with a space and CJK
+    folder = tmp_path / "课程 资料"
+    folder.mkdir()
+    video = folder / "第1周 lecture.mkv"
+    shutil.copyfile(lecture_video, video)
+    return video, folder / "第1周"
+
+
+def make_tone(path):
+    # local helper: 2 s of sine from ffmpeg lavfi
+    path.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run([ffmpeg_exe(), "-f", "lavfi", "-i", "sine=frequency=440:duration=2", str(path)],
+                   check=True, capture_output=True)
+    return path
+
+
+def names(folder):
+    # local helper: the file names in a folder, sorted
+    return sorted(p.name for p in folder.iterdir())
+
+
+def page_tuples(pages):
+    return [(p.n, p.label, p.text, p.image, p.time) for p in pages]
+
+
+def assert_nothing_written(unit):
+    sources = unit / "sources"
+    assert not UnitPaths(unit).pages.exists()
+    assert not (sources / "keyframes").exists()
+    assert not (sources / "keyframes.partial").exists()
+
+
+def failing_on_second_call(error):
+    # local helper: the real save_frame, except that its second call raises ``error``
+    real = keyframes.save_frame
+    calls = []
+
+    def save(*args, **kwargs):
+        calls.append(args)
+        if len(calls) == 2:
+            raise error
+        return real(*args, **kwargs)
+
+    return save
+
+
+def test_keyframes_of_a_synthetic_lecture(lecture):
+    video, unit = lecture
+    pages, candidates = extract_keyframes(video, unit)
+    assert page_tuples(pages) == EXPECTED
+    assert page_tuples(load_pages(unit)) == EXPECTED
+    raw = json.loads(UnitPaths(unit).pages.read_text(encoding="utf-8"))
+    assert [set(entry) for entry in raw] == [{"n", "label", "text", "image", "time"}] * 4
+    assert candidates in (32, 33)
+    folder = unit / "sources" / "keyframes"
+    assert names(folder) == FRAMES
+    for name in FRAMES:
+        with Image.open(folder / name) as image:
+            assert (image.format, image.size) == ("JPEG", (320, 240))
+    assert not (unit / "sources" / "source.json").exists()
+
+
+def test_keyframes_errors_name_the_video(lecture, monkeypatch):
+    video, unit = lecture
+    monkeypatch.setattr(keyframes, "media_streams", lambda path: [
+        Stream(0, "video", "mjpeg", None, True), Stream(1, "audio", "aac", None, False),
+    ])
+    with pytest.raises(AcquireError) as e:
+        extract_keyframes(video, unit)
+    assert str(e.value) == "第1周 lecture.mkv has no video stream to take key frames from"
+    assert_nothing_written(unit)
+
+    monkeypatch.undo()
+    monkeypatch.setattr(keyframes, "sample_gray_frames", lambda *args, **kwargs: [])
+    with pytest.raises(AcquireError) as e:
+        extract_keyframes(video, unit)
+    assert str(e.value) == "no frames could be read from 第1周 lecture.mkv"
+    assert_nothing_written(unit)
+
+    monkeypatch.setattr(keyframes, "sample_gray_frames", lambda *args, **kwargs: [bytes(4096)] * 3)
+    with pytest.raises(AcquireError) as e:
+        extract_keyframes(video, unit)
+    assert str(e.value) == "every frame of 第1周 lecture.mkv is blank: no key frames to keep"
+    assert_nothing_written(unit)
+
+
+def test_unit_paths_name_the_keyframes_folder(tmp_path):
+    assert UnitPaths(tmp_path).keyframes == tmp_path / "sources" / "keyframes"
+
+
+def test_keyframes_replace_only_with_force(lecture):
+    video, unit = lecture
+    extract_keyframes(video, unit)
+    pages_json = UnitPaths(unit).pages
+    before = pages_json.read_bytes()
+    with pytest.raises(FileExistsError):
+        extract_keyframes(video, unit)
+    assert pages_json.read_bytes() == before
+
+    folder = unit / "sources" / "keyframes"
+    (folder / "frame-099.jpg").write_bytes(b"stray")
+    pages, _ = extract_keyframes(video, unit, force=True)
+    assert page_tuples(pages) == EXPECTED
+    assert names(folder) == FRAMES
+
+    partial = unit / "sources" / "keyframes.partial"
+    partial.mkdir()
+    (partial / "x.jpg").write_bytes(b"stray")
+    extract_keyframes(video, unit, force=True)
+    assert not partial.exists()
+    assert names(folder) == FRAMES
+
+
+def test_a_failed_run_changes_nothing(lecture, monkeypatch):
+    video, unit = lecture
+    extract_keyframes(video, unit)
+    pages_json = UnitPaths(unit).pages
+    folder = unit / "sources" / "keyframes"
+    before = pages_json.read_bytes()
+    for error in (AcquireError("boom"), KeyboardInterrupt()):
+        monkeypatch.setattr(keyframes, "save_frame", failing_on_second_call(error))
+        with pytest.raises(type(error)):
+            extract_keyframes(video, unit, force=True)
+        assert pages_json.read_bytes() == before
+        assert names(folder) == FRAMES
+        assert not (unit / "sources" / "keyframes.partial").exists()
+        assert not (unit / "sources" / "keyframes.old").exists()
+        monkeypatch.undo()
+
+    # A fresh unit: the failure leaves no pages and no key frames.
+    fresh = unit.parent / "第2周"
+    monkeypatch.setattr(keyframes, "save_frame", failing_on_second_call(AcquireError("boom")))
+    with pytest.raises(AcquireError):
+        extract_keyframes(video, fresh)
+    assert_nothing_written(fresh)
+    assert not (fresh / "sources" / "keyframes.old").exists()
+
+
+def test_cli_keyframes_prints_the_pages_path(lecture, capsys):
+    video, unit = lecture
+    argv = ["keyframes", "--video", str(video), "--unit", str(unit)]
+    assert main(argv) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 1
+    out = json.loads(lines[0])
+    path = unit / "sources" / "slides" / "pages.json"
+    assert out["status"] == "ok" and out["frames"] == 4 and out["candidates"] in (32, 33)
+    assert out["path"] == str(path)
+    assert Path(out["path"]).is_absolute() and Path(out["path"]).is_file()
+
+    assert main(argv) == 3
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    err = captured.err.splitlines()
+    assert len(err) == 1 and err[0].endswith("rerun with --force to replace it")
+
+    assert main([*argv, "--force"]) == 0
+    assert json.loads(capsys.readouterr().out)["frames"] == 4
+
+
+@pytest.mark.parametrize("link", ["https://www.youtube.com/watch?v=abc", "HTTP://video.example/lecture.mp4"])
+def test_cli_keyframes_refuses_a_link(tmp_path, capsys, link):
+    unit = tmp_path / "unit"
+    assert main(["keyframes", "--video", link, "--unit", str(unit)]) == 1
+    captured = capsys.readouterr()
+    assert json.loads(captured.out) == {"status": "error", "message": LINK_MESSAGE}
+    assert len(captured.out.splitlines()) == 1
+    assert captured.err == ""
+    assert not unit.exists()
+
+
+def test_cli_keyframes_input_errors_are_json_objects(tmp_path, capsys):
+    folder = tmp_path / "课程 资料"
+    unit = folder / "第1周"
+    missing = folder / "nope.mp4"
+    tone = make_tone(folder / "tone.wav")
+
+    def run(video):
+        assert main(["keyframes", "--video", str(video), "--unit", str(unit)]) == 1
+        captured = capsys.readouterr()
+        assert captured.err == "" and len(captured.out.splitlines()) == 1
+        out = json.loads(captured.out)
+        assert out["status"] == "error"
+        return out["message"]
+
+    assert run(missing) == f"{missing.absolute()} does not exist or is not a file"
+    assert run(tone) == "tone.wav has no video stream to take key frames from"
+    assert run("C:\\x\\lecture.mp4").endswith("does not exist or is not a file")

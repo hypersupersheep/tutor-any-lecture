@@ -34,6 +34,10 @@ class UnitPaths:
         return self.root / "sources" / "slides" / "pages.json"
 
     @property
+    def keyframes(self) -> Path:
+        return self.root / "sources" / "keyframes"
+
+    @property
     def plan(self) -> Path:
         return self.root / "plan.json"
 

@@ -411,6 +411,35 @@ def _cmd_slides_suspects(args) -> int:
     return EXIT_OK
 
 
+# A value that starts like a link (https://, HTTP://, ftp://): keyframes reads local files only.
+_LINK_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]+://")
+
+
+def _cmd_keyframes(args) -> int:
+    if _LINK_RE.match(args.video):
+        # Before the value is made a path or anything is read: no video is fetched from a site.
+        _print_json({"status": "error", "message": (
+            "keyframes reads a video file on this computer, not a link: "
+            "from a video site the tool takes captions or audio only"
+        )})
+        return EXIT_FAIL
+
+    from .keyframes import extract_keyframes
+    from .unit import UnitPaths
+
+    # An existing pages.json (FileExistsError) propagates to main: exit 3, one stderr line.
+    result, failed = _input_error(
+        lambda: extract_keyframes(_path(args.video), Path(args.unit), args.force), needs_force=True
+    )
+    if failed is not None:
+        return failed
+    pages, candidates = result
+    _print_json({
+        "status": "ok", "frames": len(pages), "candidates": candidates, "path": str(UnitPaths(args.unit).pages),
+    })
+    return EXIT_OK
+
+
 def _cmd_items_validate(args) -> int:
     from .items import validate_unit
 
@@ -754,6 +783,12 @@ def build_parser() -> argparse.ArgumentParser:
     suspects = slides_sub.add_parser("suspects", help="flag transcript words that look like misheard slide terms")
     suspects.add_argument("--unit", type=_path, required=True, help="the unit folder")
     suspects.set_defaults(func=_cmd_slides_suspects)
+    kf = sub.add_parser("keyframes", help="take key frames from a local video that has no slides, as slide pages")
+    # Read as text: a link is refused before the value is made a path.
+    kf.add_argument("--video", required=True, metavar="F", help="the video file on this computer (not a link)")
+    kf.add_argument("--unit", type=_path, required=True, metavar="DIR", help="the unit folder")
+    kf.add_argument("--force", action="store_true", help="replace the unit's slide pages and key frames")
+    kf.set_defaults(func=_cmd_keyframes)
     items = sub.add_parser("items", help="check the item bank, assign variants, pick items to ask")
     items_sub = items.add_subparsers(dest="items_command", required=True)
     iv = items_sub.add_parser("validate", help="check items.json against plan.json and explanation.md")

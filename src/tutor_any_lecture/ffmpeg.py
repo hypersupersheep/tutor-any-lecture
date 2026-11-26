@@ -1,4 +1,5 @@
-"""The ffmpeg binary: find it, read a media file's duration and streams, extract 16 kHz mono audio."""
+"""The ffmpeg binary: find it, read a media file's duration and streams, extract 16 kHz mono
+audio, sample small gray frames of a video and save one full-size frame."""
 
 from __future__ import annotations
 
@@ -99,3 +100,34 @@ def extract_audio(src: Path, dst_wav: Path) -> None:
     )
     if proc.returncode != 0:
         raise AcquireError(f"ffmpeg could not extract audio from {src}:\n{stderr_tail(proc.stderr)}")
+
+
+def sample_gray_frames(path: Path, index: int, every_s: float, size: int = 64) -> list[bytes]:
+    """One ``size`` x ``size`` gray frame of stream ``index`` every ``every_s`` seconds, as raw bytes.
+
+    The frames come in time order, frame k at ``k * every_s`` seconds; a shorter tail is dropped.
+    """
+    proc = subprocess.run(
+        [ffmpeg_exe(), "-hide_banner", "-nostdin", "-i", str(path), "-map", f"0:{index}",
+         "-vf", f"fps=1/{every_s:g},scale={size}:{size}:flags=area,format=gray",
+         "-f", "rawvideo", "pipe:1"],
+        capture_output=True,
+    )
+    if proc.returncode != 0:
+        raise AcquireError(f"ffmpeg could not read frames from {path.name}:\n{stderr_tail(proc.stderr)}")
+    step = size * size
+    data = proc.stdout
+    return [data[i:i + step] for i in range(0, len(data) - step + 1, step)]
+
+
+def save_frame(path: Path, index: int, seconds: float, dst: Path) -> None:
+    """Save the frame of stream ``index`` at ``seconds`` to ``dst`` as a full-size JPEG."""
+    proc = subprocess.run(
+        [ffmpeg_exe(), "-hide_banner", "-nostdin", "-y", "-ss", f"{seconds:.3f}", "-i", str(path),
+         "-map", f"0:{index}", "-frames:v", "1", "-update", "1", "-q:v", "3", str(dst)],
+        capture_output=True,
+    )
+    if proc.returncode != 0 or not Path(dst).is_file():
+        raise AcquireError(
+            f"ffmpeg could not save the frame at {seconds:g} s of {path.name}:\n{stderr_tail(proc.stderr)}"
+        )

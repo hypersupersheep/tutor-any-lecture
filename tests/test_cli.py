@@ -37,9 +37,9 @@ def test_acquire_url_help_does_not_say_public(capsys):
     assert "public video" not in out
 
 
-def test_parser_registers_twelve_groups():
+def test_parser_registers_the_command_groups():
     assert top_level_commands() == {
-        "profile", "doctor", "acquire", "transcribe", "slides", "items",
+        "profile", "doctor", "acquire", "transcribe", "slides", "keyframes", "items",
         "cards", "cite", "progress", "map", "verify", "selftest",
     }
 

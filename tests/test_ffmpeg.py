@@ -1,6 +1,19 @@
+import importlib.metadata
 import subprocess
 
-from tutor_any_lecture.ffmpeg import Stream, extract_audio, ffmpeg_exe, media_duration, media_streams, parse_streams
+import pytest
+
+from tutor_any_lecture.ffmpeg import (
+    Stream,
+    extract_audio,
+    ffmpeg_exe,
+    media_duration,
+    media_streams,
+    parse_streams,
+    sample_gray_frames,
+    save_frame,
+)
+from tutor_any_lecture.transcript import AcquireError
 
 
 def make_tone(path):
@@ -55,3 +68,19 @@ def test_media_streams_of_a_tone(tmp_path):
     text = tmp_path / "课程 资料" / "x.mp4"
     text.write_text("not a video\n", encoding="utf-8", newline="\n")
     assert media_streams(text) == []
+
+
+def test_frame_helpers_name_the_file(tmp_path):
+    tone = make_tone(tmp_path / "课程 资料" / "tone.wav")
+    with pytest.raises(AcquireError) as e:
+        sample_gray_frames(tone, 5, 2.0)
+    assert str(e.value).startswith("ffmpeg could not read frames from tone.wav")
+    dst = tmp_path / "课程 资料" / "frame-001.jpg"
+    with pytest.raises(AcquireError) as e:
+        save_frame(tone, 0, 0.0, dst)
+    assert str(e.value).startswith("ffmpeg could not save the frame at 0 s of tone.wav")
+
+
+def test_pillow_comes_with_pdfplumber():
+    requires = importlib.metadata.requires("pdfplumber") or []
+    assert any(r.lower().startswith("pillow") for r in requires)

@@ -1,8 +1,23 @@
-"""Key frames of a local video with no slides: a perceptual hash and which frames to keep."""
+"""Key frames of a local video with no slides, as the unit's slide pages.
+
+The video is sampled every ``SAMPLE_SECONDS`` as small gray frames; each is hashed
+(``frame_hash``), and ``select_frames`` keeps those that are neither blank nor
+near-duplicates and are far enough apart. The kept frames are saved full size to
+``sources/keyframes/frame-NNN.jpg`` and become the pages of ``sources/slides/pages.json``,
+each with its time, so the note cites them as ``(slide N)``.
+"""
 
 from __future__ import annotations
 
 import math
+import os
+import shutil
+from pathlib import Path
+
+from .ffmpeg import media_streams, sample_gray_frames, save_frame
+from .slides import Page, write_pages
+from .transcript import AcquireError
+from .unit import UnitPaths
 
 # A frame whose 32x32 gray pixels span less than this is blank (a black or white screen).
 BLANK_RANGE = 16
@@ -12,6 +27,9 @@ DUPLICATE_BITS = 6
 MIN_GAP_SECONDS = 8.0
 # At most this many key frames per video.
 MAX_FRAMES = 120
+# One candidate frame every this many seconds, read at this many pixels a side.
+SAMPLE_SECONDS = 2.0
+_SAMPLE_SIZE = 64
 
 _SIDE = 32  # the hash reads the frame at 32x32 pixels
 _LOW = 8  # and keeps the 8x8 lowest frequencies of its DCT
@@ -79,3 +97,84 @@ def select_frames(candidates) -> list[int]:
     if m > MAX_FRAMES:
         kept = [kept[round(i * (m - 1) / (MAX_FRAMES - 1))] for i in range(MAX_FRAMES)]
     return kept
+
+
+def _put_right(folder: Path, partial: Path, old: Path) -> None:
+    """Undo what a killed run left: its partial folder goes; its old folder comes back, or goes."""
+    shutil.rmtree(partial, ignore_errors=True)
+    if old.exists():
+        if folder.exists():
+            shutil.rmtree(old, ignore_errors=True)
+        else:
+            old.rename(folder)
+
+
+def extract_keyframes(video: Path, unit: Path, force: bool = False) -> tuple[list[Page], int]:
+    """Save the key frames of ``video`` into the unit and write them as its slide pages.
+
+    Returns the pages and the number of candidate frames read. Page n shows
+    ``sources/keyframes/frame-<n:03d>.jpg`` (its ``image`` relative to ``sources/slides/``)
+    and carries the second it was taken at; its text stays empty. An existing pages.json
+    stops the run (``FileExistsError``) unless ``force``, before the video is read. A
+    missing video, one with no video stream, or one with no frame to keep raises before
+    the unit changes. The frames are saved to ``sources/keyframes.partial/`` and swapped in
+    with pages.json at the end; any exception up to then, ``KeyboardInterrupt`` and
+    ``SystemExit`` included, leaves the old key frames and pages.json as they were.
+    source.json is neither read nor written.
+    """
+    from PIL import Image
+
+    video = Path(video)
+    paths = UnitPaths(unit)
+    if paths.pages.exists() and not force:
+        raise FileExistsError(f"{paths.pages} already exists; rerun with --force to replace it")
+    if not video.is_file():
+        raise FileNotFoundError(f"{video} does not exist or is not a file")
+    stream = next((s for s in media_streams(video) if s.kind == "video" and not s.attached_pic), None)
+    if stream is None:
+        raise AcquireError(f"{video.name} has no video stream to take key frames from")
+    frames = sample_gray_frames(video, stream.index, SAMPLE_SECONDS, _SAMPLE_SIZE)
+    if not frames:
+        raise AcquireError(f"no frames could be read from {video.name}")
+    candidates = []
+    for k, frame in enumerate(frames):
+        with Image.frombytes("L", (_SAMPLE_SIZE, _SAMPLE_SIZE), frame) as image:
+            candidates.append((k * SAMPLE_SECONDS, frame_hash(image)))
+    kept = select_frames(candidates)
+    if not kept:
+        raise AcquireError(f"every frame of {video.name} is blank: no key frames to keep")
+
+    folder = paths.keyframes
+    partial = folder.with_name("keyframes.partial")
+    old = folder.with_name("keyframes.old")
+    _put_right(folder, partial, old)
+    had_folder = folder.exists()
+    temporary = paths.pages.with_name("pages.json.partial")
+    pages: list[Page] = []
+    try:
+        partial.mkdir(parents=True)
+        for n, i in enumerate(kept, start=1):
+            seconds = candidates[i][0]
+            name = f"frame-{n:03d}.jpg"
+            save_frame(video, stream.index, seconds, partial / name)
+            pages.append(Page(n, None, "", f"../keyframes/{name}", time=seconds))
+        if had_folder:
+            folder.rename(old)
+        partial.rename(folder)
+        write_pages(temporary, pages)
+        os.replace(temporary, paths.pages)
+    except BaseException:
+        # An error, Ctrl+C or a stop signal: put the unit back as it was, then raise again.
+        shutil.rmtree(partial, ignore_errors=True)
+        if old.exists():  # the old frames were moved aside; whatever is in their place is new
+            shutil.rmtree(folder, ignore_errors=True)
+            old.rename(folder)
+        elif not had_folder:
+            shutil.rmtree(folder, ignore_errors=True)
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+    shutil.rmtree(old, ignore_errors=True)  # a leftover is removed by the next run
+    return pages, len(candidates)
