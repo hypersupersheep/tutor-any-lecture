@@ -1,7 +1,7 @@
 """The delivery gate: nine checks over one unit folder, written to verify.json.
 
 ``run_verify(unit)`` reads only files inside the unit and the packaged
-``data/banned_phrases.txt``. The checks always come in the same order and under the
+``data/banned_phrases/<language>.txt``. The checks always come in the same order and under the
 same names; a check whose output is not in plan.json is a PASS entry marked skipped.
 """
 
@@ -20,7 +20,9 @@ from .citations import format_seconds, link_time_problems, link_times, parse, re
 from .conceptmap import load_map, validate_map
 from .items import load_items, validate_items
 from .notecheck import (
+    CALLOUT_START_RE,
     CALLOUT_TYPES,
+    INLINE_QUOTE_RE,
     THRESHOLDS,
     check_note,
     cited_quote_contexts,
@@ -35,6 +37,8 @@ from .source import SourceInfo
 
 # verify removes code exactly as check_note and units() do.
 from .textstats import (
+    ANGLE_URL_RE,
+    BARE_URL_RE,
     BRACKET_MATH_RE,
     CJK_RE,
     DISPLAY_MATH_RE,
@@ -100,6 +104,12 @@ SPEECH_WORDS = (
     ("说", "问", "答", "提出", "指出"),
 )
 LECTURER_WORDS = (("lecturer", "professor", "teacher", "instructor"), ("讲师", "老师", "教授"))
+
+# banned_phrases: a list file is named by a language's primary subtag; a space between two
+# CJK characters is dropped, and a phrase end in a letter or digit outside CJK needs a word edge.
+BANNED_LANG_RE = re.compile(r"[a-z]{2,8}")
+CJK_PAIR_SPACE_RE = re.compile(rf"(?<={CJK_RE.pattern}) (?={CJK_RE.pattern})")
+ALNUM_CHAR_RE = re.compile(r"[^\W_]")
 
 # numbers, read after NFKC: ASCII digits with an optional decimal part, optional spaces or
 # tabs, then a unit; or 百分之 before the number (a percent); or a currency sign and the
@@ -636,14 +646,72 @@ def _check_map(p: UnitPaths, plan) -> dict:
     return _fold("map", validate_map(m))
 
 
-def _banned_phrases() -> list[str]:
-    text = resources.files("tutor_any_lecture").joinpath("data", "banned_phrases.txt").read_text(encoding="utf-8")
+def _banned_phrases(lang: str) -> list[str] | None:
+    """The stock phrases listed for the note language's primary subtag, or None when it has no list."""
+    subtag = _primary_subtag(lang)
+    if not BANNED_LANG_RE.fullmatch(subtag):
+        return None
+    path = resources.files("tutor_any_lecture").joinpath("data", "banned_phrases", f"{subtag}.txt")
+    if not path.is_file():
+        return None
+    text = path.read_text(encoding="utf-8")
     return [line.strip() for line in text.split("\n") if line.strip()]
 
 
-def _check_banned(md: str) -> dict:
-    low = md.casefold()
-    details = [f"banned phrase: {phrase}" for phrase in _banned_phrases() if phrase.casefold() in low]
+def _without_lecture_blockquotes(text: str) -> str:
+    """``text`` without the lines of each blockquote that does not start as a callout."""
+    kept: list[str] = []
+    in_quote = keep = False
+    for line in text.split("\n"):
+        if line.lstrip().startswith(">"):
+            if not in_quote:
+                keep = bool(CALLOUT_START_RE.match(line))
+            in_quote = True
+            if keep:
+                kept.append(line)
+        else:
+            in_quote = False
+            kept.append(line)
+    return "\n".join(kept)
+
+
+def _phrase_norm(text: str) -> str:
+    """NFKC, casefold, ’ read as ', every run of whitespace one space; no space between two CJK characters."""
+    text = unicodedata.normalize("NFKC", text).casefold().replace("’", "'")
+    return CJK_PAIR_SPACE_RE.sub("", " ".join(text.split()))
+
+
+def _banned_text(md: str) -> str:
+    """The agent's own words: the note without code, HTML comments, link targets and URLs,
+    quoted spans (as the gate pairs quotation marks) and blockquotes that are not callouts."""
+    text = HTML_COMMENT_RE.sub(" ", strip_code(md))
+    text = MD_LINK_URL_RE.sub(r"\1", text)
+    text = BARE_URL_RE.sub(" ", ANGLE_URL_RE.sub(" ", text))
+    text = _without_lecture_blockquotes(text)
+    text = "\n".join(INLINE_QUOTE_RE.sub(" ", line) for line in text.split("\n"))
+    return _phrase_norm(text)
+
+
+def _phrase_re(phrase: str) -> re.Pattern:
+    """``phrase`` normalised; an end in a letter or digit outside CJK sits at a word edge."""
+    norm = _phrase_norm(phrase)
+
+    def needs_edge(ch: str) -> bool:
+        return bool(ALNUM_CHAR_RE.match(ch)) and not CJK_RE.match(ch)
+
+    before = r"(?<![^\W_])" if needs_edge(norm[0]) else ""
+    after = r"(?![^\W_])" if needs_edge(norm[-1]) else ""
+    return re.compile(before + re.escape(norm) + after)
+
+
+def _check_banned(md: str, lang: str) -> dict:
+    """WARN: stock phrases of the note language's list in the agent's own words, matched as
+    whole words; PASS, not applied, for a language with no list."""
+    phrases = _banned_phrases(lang)
+    if phrases is None:
+        return _entry("banned_phrases", "PASS", [f"{NOT_APPLIED}: {lang}"])
+    text = _banned_text(md)
+    details = [f"banned phrase: {phrase}" for phrase in phrases if _phrase_re(phrase).search(text)]
     return _entry("banned_phrases", "WARN" if details else "PASS", details)
 
 
@@ -729,7 +797,7 @@ def run_verify(unit: Path) -> dict:
         _check_items(p, plan, md, lang),
         _check_cards(p, plan, lang),
         _check_map(p, plan),
-        _check_banned(md),
+        _check_banned(md, lang),
     ]
     overall = "FAIL" if any(c["status"] == "FAIL" for c in checks) else "PASS"
     minutes = duration / 60 if duration is not None else None

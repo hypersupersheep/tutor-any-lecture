@@ -192,7 +192,7 @@ Over the top of the window, first check for content the lecturer did not give; u
 - TOC links must match H2s: `[[#Heading]]` for obsidian, `[text](#slug)` for markdown (FAIL).
 - Callout types and `<details>` answers as above; marker problems (FAIL).
 
-Besides structure, verify checks citations and quotes (above), slide coverage (every slide is cited or listed in `tal:not-covered`), terms, numbers with units, the items, cards and map, and a list of stock phrases ("delve", "it's worth noting", "in conclusion", "in summary" and similar); see [gate](gate.md). The terms and numbers checks read the lecture prose only: the marker sections, NOTE callouts, code and math are left out, so a number that appears only in the pretest or an answer does not count as in the note.
+Besides structure, verify checks citations and quotes (above), slide coverage (every slide is cited or listed in `tal:not-covered`), terms, numbers with units, the items, cards and map, and the stock phrases listed for the note language ("delve", "it's worth noting", "in conclusion", "in summary", 综上所述 and similar; English and Chinese have lists), found as whole words in your own words only: quotations, blockquotes that are not callouts, code and links are not read, while callouts, marker sections, headings and answers are; see [gate](gate.md). The terms and numbers checks read the lecture prose only: the marker sections, NOTE callouts, code and math are left out, so a number that appears only in the pretest or an answer does not count as in the note.
 
 ## Exercises, formula table and v1 structures
 

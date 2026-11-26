@@ -802,3 +802,88 @@ def test_english_units_ignore_ascii_case_only(tmp_path):
     add_segment(u, 170.0, 175.0, "It took 5 MINUTES.")
     append_to_note(u, "\n\nIt took 5 Minutes, then 7 mınutes and 9 MİNUTES (2:52).\n")
     assert entry(run_verify(u), "numbers") == {"name": "numbers", "status": "PASS", "details": []}
+
+
+# ---------------------------------------------------------------- stock phrases
+
+EN_PHRASES = [
+    "delve", "it's worth noting", "in conclusion", "in summary", "navigate the complexities", "tapestry",
+    "a testament to", "delves", "delved", "delving", "it is worth noting", "it's important to note",
+    "it is important to note", "it's important to remember", "to summarize", "to sum up", "let's dive in",
+    "let's dive into", "deep dive", "dive deep", "in today's fast-paced world", "in the realm of",
+    "plays a crucial role", "plays a pivotal role", "unlock the power", "harness the power", "game-changer",
+    "game changer", "embark on a journey", "ever-evolving", "I hope this helps", "great question",
+]
+ZH_PHRASES = [
+    "值得注意的是", "总而言之", "综上所述", "不难发现", "让我们一起",
+    "值得一提的是", "需要注意的是", "总的来说", "不言而喻", "毋庸置疑", "至关重要", "扮演着重要的角色",
+    "深入探讨", "让我们来看看", "希望对你有所帮助", "在当今社会", "随着科技的发展", "一言以蔽之",
+]
+
+
+def set_note_language(u, lang):
+    path = UnitPaths(u).plan
+    plan = _read_json(path)
+    plan["note_language"] = lang
+    _write_json(path, plan)
+
+
+def test_stock_phrase_lists_per_language():
+    from importlib import resources
+
+    data = resources.files("tutor_any_lecture").joinpath("data")
+    for name, expected in (("en.txt", EN_PHRASES), ("zh.txt", ZH_PHRASES)):
+        text = data.joinpath("banned_phrases", name).read_text(encoding="utf-8")
+        lines = text.split("\n")
+        if lines[-1] == "":
+            lines = lines[:-1]
+        assert lines == expected
+        assert all(line and line == line.strip() for line in lines)
+        assert len({line.casefold() for line in lines}) == len(lines)
+    assert len(EN_PHRASES) == 32 and len(ZH_PHRASES) == 18
+    assert not data.joinpath("banned_phrases.txt").is_file()
+
+
+def test_stock_phrases_follow_the_note_language(tmp_path):
+    u = copy_fixture("ok", tmp_path / "a")
+    set_note_language(u, "zh")
+    append_to_note(u, "\n\n让我们一起看 delve 的例子 (slide 1)。\n")
+    assert entry(run_verify(u), "banned_phrases") == {
+        "name": "banned_phrases", "status": "WARN", "details": ["banned phrase: 让我们一起"]}
+
+    u = copy_fixture("ok", tmp_path / "b")
+    set_note_language(u, "zh")
+    append_to_note(u, "\n\n让我们\n一起看 (slide 1)。\n")
+    assert entry(run_verify(u), "banned_phrases")["details"] == ["banned phrase: 让我们一起"]
+
+    u = copy_fixture("ok", tmp_path / "c")
+    set_note_language(u, "ja")
+    append_to_note(u, "\n\n让我们一起看 delve 的例子 (slide 1)。\n")
+    assert entry(run_verify(u), "banned_phrases") == {
+        "name": "banned_phrases", "status": "PASS", "details": ["not applied for this language: ja"]}
+
+
+def test_stock_phrases_match_whole_words(tmp_path):
+    u = copy_fixture("ok", tmp_path)
+    append_to_note(u, "\n\nThe result was a testament towards care, and the tapestrylike grid helped (slide 1).\n")
+    assert entry(run_verify(u), "banned_phrases") == {"name": "banned_phrases", "status": "PASS", "details": []}
+    append_to_note(u, "\n\nDelve into it. It’s worth noting the rate, in\nsummary, compounds (slide 1).\n")
+    assert entry(run_verify(u), "banned_phrases")["details"] == [
+        "banned phrase: delve", "banned phrase: it's worth noting", "banned phrase: in summary"]
+
+
+def test_stock_phrases_skip_quotations_code_and_links(tmp_path):
+    u = copy_fixture("ok", tmp_path)
+    append_to_note(u, "\n\n".join([
+        "",
+        'He said "in summary" twice (0:10).',
+        "The slide says “in conclusion” (slide 1).",
+        "> It is a tapestry of ideas. (0:10)",
+        "The word `delve` is code (slide 1).",
+        "```\ndelve\n```",
+        "See [rates](https://example.org/delve) (slide 1).",
+    ]) + "\n")
+    assert entry(run_verify(u), "banned_phrases") == {"name": "banned_phrases", "status": "PASS", "details": []}
+    append_to_note(u, "\n> [!NOTE]\n> In summary, the rate compounds.\n")
+    assert entry(run_verify(u), "banned_phrases") == {
+        "name": "banned_phrases", "status": "WARN", "details": ["banned phrase: in summary"]}
