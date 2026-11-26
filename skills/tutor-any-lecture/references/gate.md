@@ -10,6 +10,8 @@ Each check is PASS, WARN or FAIL. **Overall is PASS iff no check is FAIL**; warn
 
 Exit 0 on PASS, 1 on FAIL.
 
+**After a visual check.** After a visual check (below), and only then, say in chat `Automated checks passed; reviewed once visually.` in place of the printed PASS line. Say it only when you rendered the note and walked the eight points yourself in this session. verify still prints and records its own line; never edit verify.json.
+
 **What was measured.** `measures` records, whether the checks passed or not: `minutes`; `length` (`unit`, `total`, `per_min` and its `window`); `time_citations` and `quotes` (`per_min` and the `min` for the goal); `quote_share` or `quote_ratio` (`value` and `window`; the other is null); `h2` (`count` and `max`). Per-minute values and limits are null when the duration is unknown. `length`'s `total`, `per_min` and `window` are null when the length rules are not applied for the note's language. After its table, verify prints them on one line before the report line, for example `measures: length 52.3 words/min (26-53); time citations 0.8/min (>= 0.67); quotes 0.31/min (>= 0.22); quote share 0.18 (0.1-0.4); H2 12 (<= 16)`. Read it on PASS too: it shows how close the note is to each limit.
 
 **Languages.** English and Chinese are first-class. Other languages written with spaces between words are checked like English. Where most letters of the note are in a script the checks cannot split into words (Thai, Lao, Khmer, Burmese, Devanagari and other Indic scripts), `length`, `thin_section` and `long_paragraph` (under `structure`) and `terms` report `not applied for this language` as a WARN, never a FAIL, and so does the lookup of each cited quote written in such a script (`quote '…': not applied for this language`, under `citations`). `terms` is also not applied to German (or Luxembourgish), which capitalises every noun. That WARN cannot be fixed: mention it at delivery. `banned_phrases` has lists for English and Chinese only; for a note in any other language it is a PASS with the detail `not applied for this language: <language>` (for example `not applied for this language: ja`), not a WARN, because a missing list is not a defect in the note.
@@ -41,11 +43,39 @@ Exit 0 on PASS, 1 on FAIL.
 1. Always run `tutor-any-lecture cite link --unit DIR` (it links the plain time citations where the video's address allows; see [writing](writing.md), Citations). Run `tutor-any-lecture cards export --unit DIR` when "cards" is in plan.outputs and `tutor-any-lecture map mermaid --unit DIR` when "map" is.
 2. Run `tutor-any-lecture verify --unit DIR`.
 3. For each FAIL, read its details, fix the file they name (usually explanation.md, items.json, cards.json or map.json) and rerun. After any change to explanation.md, run `tutor-any-lecture cite link --unit DIR` again before verify. After an items.json change, keep assignment.json unless a tracked concept changed; then rerun `tutor-any-lecture items assign --unit DIR --force` and rewrite the pretest section.
-4. Stop at PASS. Fix WARNs that point at a real problem; leave the rest and mention them.
+4. If three verify runs in a row end in FAIL with the same check and the same details, stop fixing. Tell the learner in plain words which check failed and what its details say, and that the note did not pass. Leave the files in the unit folder and never present them as passed.
+5. Stop at PASS. Fix WARNs that point at a real problem; leave the rest and explain them at delivery.
 
-**Visual check.** Only for showcase samples, or when a check reported a problem that only rendering can confirm: render once, look, fix one round, stop.
+**Honest reporting.** At delivery, give the `report` line exactly as printed (or the visual line above, after a visual check), then one plain sentence per WARN left, in the note language, saying what it means for the learner. For `numbers: in the sources, not in the note: 20 years`, an English note says "The recording mentions 20 years, which the note does not."; a Chinese note says "录音里提到了 20 年，笔记里没有写。". Never say the note was reviewed visually, read by a person or checked against the recording when it was not.
 
-**Honest reporting.** Report the `report` line exactly as printed. Never say the note was reviewed visually, read by a person or checked against the recording when it was not. Name any WARN you left.
+## The visual check
+
+### When
+
+Only for a showcase unit (one made to be shown to others), or when a check or the learner reported a problem that only rendering can confirm. Never otherwise.
+
+### How to render
+
+- A markdown note: a Markdown preview that shows GitHub alerts, `<details>` and `$` math. For a showcase unit that is GitHub's own file view; for a learner's unit it is a local preview, and the unit is never uploaded to a site to be rendered.
+- An obsidian note: Obsidian's reading view of the vault copy.
+- Each map file (`overview.mmd`, or `overview-<view>.mmd` for each view): inside a `mermaid` code fence of a scratch note, shown the same way; the scratch note is not delivered.
+
+An agent that cannot see the rendered page does not do the check, and its report line stays the printed one.
+
+### The eight points
+
+1. Callouts render as boxes of their type; no `[!NOTE]` or stray `>` shows as text.
+2. Every `<details>` shows only its summary until opened, opens to its answer, and the text after it is visible.
+3. Every formula renders, numbered equations show their numbers, no raw `\tag` or lone `$` shows, and a `\$` shows as a currency sign.
+4. Every table of contents entry jumps to its section.
+5. Citations read as plain parentheses and, where `cite link` linked the times, one time link per section opens the video at the cited second.
+6. The errata table and any formula table show as tables with a header row.
+7. The prose reads as paragraphs, not walls of bullets or bold; headings are in sentence case; no template traces show (headings in capitals, middle-dot separators, an arrow after a link).
+8. Each map view renders as a diagram, every label reads whole, and no view shows more than 12 nodes.
+
+### One round
+
+Render once, walk the eight points, and fix what they show in one round. Then run `tutor-any-lecture cite link --unit DIR` (when explanation.md changed) and `tutor-any-lecture verify --unit DIR` again, and stop: there is no second visual round.
 
 ## Exit codes
 

@@ -229,3 +229,76 @@ def test_teaching_grades_by_rubric_line_and_interleaves_quiz_units():
     assert "name the rubric line you applied" in teaching
     assert 'whose plan.json lists "quiz"' in teaching
     assert 'whose plan.json lists "quiz"' in read("SKILL.md")
+
+
+# ---------------------------------------------------------------- the gate
+
+VISUAL_POINT_WORDS = ("callout", "<details>", "formula", "table of contents", "time link", "table", "prose", "map")
+NUMBERED_RE = re.compile(r"^(\d+)\. ")
+
+
+def test_gate_lists_the_eight_visual_points():
+    gate = read("references/gate.md")
+    visual = section(gate, "## The visual check")
+    for sub in ("### When", "### How to render", "### The eight points", "### One round"):
+        assert sub in visual.split("\n"), sub
+        section(visual, sub)
+    points = [line for line in section(visual, "### The eight points").split("\n") if NUMBERED_RE.match(line)]
+    assert [int(NUMBERED_RE.match(line).group(1)) for line in points] == list(range(1, 9))
+    for line, word in zip(points, VISUAL_POINT_WORDS):
+        assert word in line.lower(), (word, line)
+    for s in (
+        "a showcase unit",
+        "only rendering can confirm",
+        "never uploaded",
+        "cannot see the rendered page",
+        "there is no second visual round",
+    ):
+        assert s in visual, s
+    assert "**Visual check.**" not in gate
+
+
+def test_gate_has_the_second_report_line():
+    from tutor_any_lecture import verify
+
+    assert verify.REPORT_PASS == "Automated checks passed; not visually reviewed."
+    assert verify.REPORT_FAIL == "Automated checks failed."
+    gate = read("references/gate.md")
+    for s in (
+        verify.REPORT_PASS,
+        verify.REPORT_FAIL,
+        "Automated checks passed; reviewed once visually.",
+        "Say it only when you rendered the note and walked the eight points yourself in this session",
+    ):
+        assert s in gate, s
+
+
+def test_gate_loop_stops_and_explains_warnings():
+    gate = read("references/gate.md")
+    for s in (
+        "If three verify runs in a row end in FAIL with the same check and the same details, stop fixing",
+        "one plain sentence per WARN left, in the note language",
+    ):
+        assert s in gate, s
+    assert CJK_RE.search(paragraph_starting(gate, "**Honest reporting.**"))
+
+
+def skill_body() -> str:
+    """SKILL.md after its front matter."""
+    text = read("SKILL.md")
+    return text.split("\n---\n", 1)[1]
+
+
+def test_skill_points_to_the_new_rules():
+    body = skill_body()
+    gate = section(body, "## Gate")
+    for s in (
+        "three verify runs in a row",
+        "one plain sentence per WARN left, in the note language",
+        "`Automated checks passed; reviewed once visually.`",
+        "[gate](references/gate.md)",
+    ):
+        assert s in gate, s
+    assert "which sections to read closely" in section(body, "## Pretest, then deliver")
+    assert "with the note closed" in section(body, "## Post quiz")
+    assert not CJK_RE.search(body)

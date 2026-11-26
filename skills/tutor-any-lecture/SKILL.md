@@ -74,18 +74,18 @@ A command that finds plan.json, items.json, assignment.json, cards.json or map.j
 
 ## Gate
 
-Run `tutor-any-lecture cite link --unit DIR` first, then `tutor-any-lecture cards export --unit DIR` when "cards" is in plan.outputs and `tutor-any-lecture map mermaid --unit DIR` when "map" is; then `tutor-any-lecture verify --unit DIR`. Fix and rerun until overall is PASS (exit 0). Report the `report` line exactly as printed; never claim a visual review that did not happen. The `measures:` line shows how close the note is to each limit. Exit codes and check names: [gate](references/gate.md).
+Run `tutor-any-lecture cite link --unit DIR` first, then `tutor-any-lecture cards export --unit DIR` when "cards" is in plan.outputs and `tutor-any-lecture map mermaid --unit DIR` when "map" is; then `tutor-any-lecture verify --unit DIR`. Fix and rerun until overall is PASS (exit 0); after three verify runs in a row that FAIL with the same details, stop and tell the learner the note did not pass. Report the `report` line exactly as printed, with one plain sentence per WARN left, in the note language. Say `Automated checks passed; reviewed once visually.` only after the visual check in [gate](references/gate.md); never claim a visual review that did not happen. The `measures:` line shows how close the note is to each limit. Exit codes and check names: [gate](references/gate.md).
 
 ## Pretest, then deliver
 
-After the gate passes, when "quiz" and "pretest" are in plan.outputs, run the pretest in chat before the learner sees the note: the `items` of `tutor-any-lecture items next --unit DIR --phase pre`, one at a time. Ask how sure the learner is before you say whether the answer was right; then grade; then log both with `tutor-any-lecture progress log --unit DIR --item ID --phase pre --score S --confidence K`. Say that a low pretest score is normal.
+After the gate passes, when "quiz" and "pretest" are in plan.outputs, run the pretest in chat before the learner sees the note: the `items` of `tutor-any-lecture items next --unit DIR --phase pre`, one at a time. Ask how sure the learner is before you say whether the answer was right; then grade; then log both with `tutor-any-lecture progress log --unit DIR --item ID --phase pre --score S --confidence K`. Say that a low pretest score is normal. After the last item, tell the learner which sections to read closely ([teaching](references/teaching.md), Pretest).
 
 Only then deliver the files: explanation.md, cards.tsv and the map files (`overview-<view>.mmd` for each view, or `overview.mmd`); where they go per `output_target` is in [markdown](references/output-targets/markdown.md) and [obsidian](references/output-targets/obsidian.md). With "quiz" listed, ask the learner to read the note and to tell you when they have.
 
 ## Post quiz
 
 When the learner says they have read the note (only with "quiz" in plan.outputs):
-1. run `tutor-any-lecture items next --unit DIR --phase post` and ask its `items` one at a time: confidence first, then grade, then log each with `tutor-any-lecture progress log --unit DIR --item ID --phase post --score S --confidence K`;
+1. run `tutor-any-lecture items next --unit DIR --phase post` and ask its `items` one at a time, with the note closed: confidence first, then grade, then log each with `tutor-any-lecture progress log --unit DIR --item ID --phase post --score S --confidence K`;
 2. run `tutor-any-lecture cards add-misses --unit DIR` (when "cards" is in plan.outputs).
 
 Reviews are counted from the day the post quiz is complete, that is, when every item it printed has an attempt. Until then nothing else is due. For an answer given on another day, pass that day to `progress log` as `--date YYYY-MM-DD`; `progress due --date YYYY-MM-DD` shows what is due on a given day.
