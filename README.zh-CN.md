@@ -108,7 +108,7 @@ tutor-any-lecture selftest
 | "把这节课讲给我:week4.mp4" | 本地的视频或音频文件,用语音识别附加组件在你的电脑上转写。旁边放着字幕或转写文件时,改为导入那个文件。 |
 | "把这个文件夹里的课讲给我" | `acquire route` 整理文件夹里的文件、规划步骤;agent 只问它判断不了的事。 |
 | "把这个视频讲给我:<YouTube 或 B 站链接>" | 先用字幕。只有打开了音频开关,才会下载音频(见"安全和隐私")。 |
-| "用这份转写:lecture.vtt" | 导入 SRT、VTT、JSON 或带时间戳的 TXT 转写。 |
+| "用这份转写:lecture.vtt" | 导入 SRT、VTT、JSON 或带时间戳的 TXT 转写、Zoom 的 TXT 转写,或 Teams 导出的 DOCX 转写。 |
 | "根据这份课件做笔记:slides.pdf" | 只有课件 PDF 或 PowerPoint(.pptx)课件时,做成只有课件的单元,笔记只标课件页,不标时间。 |
 | "把这段 Panopto 录像讲给我" | 从 Panopto 播放页读转写。需要带浏览器工具的 agent。 |
 | "考考我 <课程>" | agent 先问到期的题;没有到期的,就出练习题。 |
@@ -142,7 +142,7 @@ tutor-any-lecture selftest
 
 ### 能读哪些材料?
 
-本地的视频和音频文件、整个材料文件夹、YouTube 和 B 站链接、转写文件(SRT、VTT、JSON 或带时间戳的 TXT)、课件 PDF、PowerPoint(.pptx)课件,以及通过带浏览器工具的 agent 读取的 Panopto 录像。课件照片要先导出成 PDF。
+本地的视频和音频文件、整个材料文件夹、YouTube 和 B 站链接、转写文件(SRT、VTT、Whisper 格式的 JSON、带时间戳的 TXT、Zoom 的 TXT 转写,或 Teams 导出的 DOCX)、课件 PDF、PowerPoint(.pptx)课件,以及通过带浏览器工具的 agent 读取的 Panopto 录像。课件照片要先导出成 PDF。
 
 ### 有什么会离开我的电脑?
 

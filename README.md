@@ -108,7 +108,7 @@ Ask your agent in plain words; it picks the commands.
 | "Teach me this lecture: week4.mp4" | A local video or audio file is transcribed on your computer with the speech-recognition add-on. With a caption or transcript file beside it, that file is imported instead. |
 | "Teach me the lecture in this folder" | `acquire route` sorts the folder's files and plans the steps; the agent asks you only what it cannot tell. |
 | "Teach me this video: <YouTube or Bilibili link>" | Captions are used first. The audio is downloaded only with the audio switch on (see Safety and privacy). |
-| "Use this transcript: lecture.vtt" | An SRT, VTT, JSON or timestamped TXT transcript is imported. |
+| "Use this transcript: lecture.vtt" | An SRT, VTT, JSON or timestamped TXT transcript, a Zoom transcript TXT or a Teams DOCX export is imported. |
 | "Make a note from these slides: slides.pdf" | A slide PDF or PowerPoint (.pptx) deck alone makes a slides-only unit, whose note cites slides, never times. |
 | "Teach me this Panopto recording" | The transcript is read from the Panopto viewer. This needs an agent with browser tools. |
 | "Quiz me on <course>" | The agent asks what is due; when nothing is, practice items. |
@@ -142,7 +142,7 @@ Any agent that loads skills and runs shell commands. The skill carries notes for
 
 ### Which sources can it read?
 
-Local video and audio files, folders of materials, YouTube and Bilibili links, transcript files (SRT, VTT, JSON or timestamped TXT), slide PDFs, PowerPoint (.pptx) decks, and Panopto recordings through an agent with browser tools. Photos of slides must be exported to PDF first.
+Local video and audio files, folders of materials, YouTube and Bilibili links, transcript files (SRT, VTT, Whisper-style JSON, timestamped TXT, a Zoom transcript TXT or a Teams DOCX export), slide PDFs, PowerPoint (.pptx) decks, and Panopto recordings through an agent with browser tools. Photos of slides must be exported to PDF first.
 
 ### Does anything leave my computer?
 

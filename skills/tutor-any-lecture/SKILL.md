@@ -122,7 +122,7 @@ Extras are optional and never part of the gate.
 - [profile](references/profile.md): settings, value sets, the consent gate, plan resolution.
 - [local](references/adapters/local.md): local video or audio, local ASR.
 - [url](references/adapters/url.md): public video links, captions first.
-- [import](references/adapters/import.md): SRT, VTT, JSON and timestamped text transcripts.
+- [import](references/adapters/import.md): SRT, VTT, JSON, timestamped text and DOCX transcripts.
 - [panopto](references/adapters/panopto.md): Panopto recordings through the browser.
 - [moodle](references/adapters/moodle.md): slides from a Moodle course page.
 - [TEMPLATE](references/adapters/TEMPLATE.md): the headings for a new platform adapter.

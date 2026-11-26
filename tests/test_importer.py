@@ -308,3 +308,44 @@ def test_cli_import_media_and_duration_conflict(monkeypatch, tmp_path):
               "--media", str(media), "--duration", "600"])
     assert exc.value.code == 2
     assert probed == [] and not unit.exists()
+
+
+# ---- Task 10b: the files acquire import reads ------------------------------------
+
+IMPORT_ACCEPTS = (
+    "acquire import reads .srt, .vtt, .json (Whisper segments), .txt (lines stamped [m:ss], or a Zoom transcript) "
+    "and .docx (a Teams transcript)"
+)
+
+
+@pytest.mark.parametrize("name", ["slides.pdf", "notes.md", "transcript", "talk.doc"])
+def test_cli_import_names_what_it_reads(tmp_path, capsys, name):
+    code, out, unit = run_import_of_bad_file(tmp_path, capsys, name, b"%PDF\x89\x00")
+    assert code == 1
+    assert out == json.dumps({"status": "error", "message": f"{name} is not a transcript file: {IMPORT_ACCEPTS}"}) + "\n"
+    assert not UnitPaths(unit).transcript.exists()
+
+
+def test_cli_import_non_utf8_names_the_fix(tmp_path, capsys):
+    code, out, unit = run_import_of_bad_file(tmp_path, capsys, "bad.srt", b"\xff\xfe\x00\x01")
+    assert code == 1
+    assert json.loads(out) == {
+        "status": "error", "message": f"bad.srt is not UTF-8 text: save it as UTF-8 ({IMPORT_ACCEPTS})",
+    }
+    assert not UnitPaths(unit).transcript.exists()
+
+
+def test_cli_import_json_messages(tmp_path, capsys):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    code, out, unit = run_import_of_bad_file(tmp_path / "a", capsys, "bad.json", b"{not json")
+    assert code == 1
+    assert json.loads(out) == {"status": "error", "message": f"bad.json is not valid JSON: {IMPORT_ACCEPTS}"}
+    assert not UnitPaths(unit).transcript.exists()
+
+    code, out, unit = run_import_of_bad_file(tmp_path / "b", capsys, "extract.json", b'{"title": "x"}')
+    assert code == 1
+    assert json.loads(out) == {
+        "status": "error", "message": f"extract.json holds no Whisper segments: {IMPORT_ACCEPTS}",
+    }
+    assert not UnitPaths(unit).transcript.exists()

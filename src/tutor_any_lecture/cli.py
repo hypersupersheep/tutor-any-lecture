@@ -625,7 +625,7 @@ def build_parser() -> argparse.ArgumentParser:
         return EXIT_USAGE
 
     acquire.set_defaults(func=_acquire_usage)
-    imp = acquire_sub.add_parser("import", help="import a transcript file (.srt, .vtt, .json, .txt)")
+    imp = acquire_sub.add_parser("import", help="import a transcript file (.srt, .vtt, .json, .txt, .docx)")
     imp.add_argument("--file", type=_path, required=True, help="the transcript file")
     imp.add_argument("--unit", type=_path, required=True, help="the unit folder")
     length = imp.add_mutually_exclusive_group()
