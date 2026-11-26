@@ -519,6 +519,15 @@ def test_metadata_call_does_not_resolve_playlist_entries(fake_ydl, tmp_path, pro
     assert "extract_flat" not in caption_opts
 
 
+
+def test_audio_download_resolves_no_playlist(fake_ydl_no_caps, fake_asr, tmp_path, profile_on):
+    acquire_url("https://y/x", tmp_path, profile_on, False)
+    audio_opts = [o for o in fake_ydl_no_caps.all_opts if "format" in o]
+    assert len(audio_opts) == 1
+    assert audio_opts[0]["format"] == "bestaudio"
+    assert audio_opts[0].get("noplaylist") is True
+    assert "extract_flat" not in audio_opts[0]
+
 def test_no_backend_means_no_audio_download(monkeypatch, fake_ydl_no_caps, fake_asr, tmp_path, profile_on):
     def missing(backend=None, model=None):
         raise asr.BackendMissing("no ASR backend is installed")

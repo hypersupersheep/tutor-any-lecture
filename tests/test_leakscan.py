@@ -309,7 +309,7 @@ def test_star_terms_match_prefixes():
     assert scan("ABC0013", ["ABC0"]) == []
 
 
-def test_commit_messages_are_scanned_whatever_format_pretty_says(tmp_cfg, monkeypatch):
+def test_commit_messages_are_scanned_whatever_format_pretty_says(tmp_cfg, monkeypatch, capsys):
     write_denylist(tmp_cfg, "SecretWord")
     repo = new_repo(tmp_cfg, monkeypatch)
     git(repo, "config", "format.pretty", "oneline")
@@ -318,7 +318,9 @@ def test_commit_messages_are_scanned_whatever_format_pretty_says(tmp_cfg, monkey
     # the term is only in the body of the message, which the oneline format hides
     git(repo, "commit", "-q", "--no-verify", "-m", "clean subject", "-m", "body with secretword")
     monkeypatch.chdir(repo)
+    capsys.readouterr()
     assert leak_main([]) == 1
+    assert capsys.readouterr().err == "leak scan: blocked, private terms found: SecretWord\n"
 
 
 def test_new_branch_range_uses_the_named_remote(tmp_cfg, monkeypatch):

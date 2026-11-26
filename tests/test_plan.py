@@ -79,6 +79,13 @@ def test_load_plan_rejects_unsafe_course(tmp_path):
     assert str(e.value).startswith("plan.json: course name")
 
 
+def test_load_plan_rejects_unsafe_unit(tmp_path):
+    path = write_plan(tmp_path, unit="week 1/2")
+    with pytest.raises(PlanError) as e:
+        load_plan(path)
+    assert str(e.value).startswith("plan.json: unit name 'week 1/2' cannot be a folder name")
+
+
 def test_language_with_trailing_newline_is_rejected(tmp_path):
     path = write_plan(tmp_path, note_language="en\n")
     with pytest.raises(PlanError):

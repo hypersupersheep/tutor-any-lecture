@@ -85,9 +85,12 @@ ITEMS = bank()
 # 8 of 17 items in APPLY_KINDS: every variant of c3 and c4 is labelled recall, as c5's are
 ITEMS_MOSTLY_RECALL = bank(tracked={**TRACKED, **{(c, x): ("recall",) + TRACKED[(c, x)][1:]
                                                   for c in ("c3", "c4") for x in "ABC"}})
-# c2-A reworded from the prose sentence "A discount factor converts a future amount into its value today"
-ITEMS_COPYING_NOTE = bank(tracked={**TRACKED, ("c2", "A"): (
-    "apply", "A discount factor converts a future amount into what?", "Its value today")})
+# c5-A reworded from the prose sentence "Letting the number of periods grow without bound gives
+# continuous compounding, with growth factor e to the power rt"; c2-A keeps its apply item
+ITEMS_COPYING_NOTE = bank(tracked={**TRACKED, ("c5", "A"): (
+    "recall",
+    "Letting the number of periods grow without bound gives continuous compounding with what growth factor?",
+    "e to the power rt")})
 PLAN = plan(["c1", "c2", "c3", "c4", "c5"], "en")
 
 NOTE = """# Compound interest
@@ -175,7 +178,11 @@ def test_apply_share_below_half_fails():
 
 
 def test_prompt_copied_from_note_fails():
-    assert status_of(validate_items(ITEMS_COPYING_NOTE, PLAN, NOTE, "en"), "prompt_overlap") == "FAIL"
+    results = validate_items(ITEMS_COPYING_NOTE, PLAN, NOTE, "en")
+    assert status_of(results, "prompt_overlap") == "FAIL"
+    details = next(r.details for r in results if r.name == "prompt_overlap")
+    assert len(details) == 1
+    assert details[0].startswith("c5-A: prompt overlaps the lecture prose at 0.86")
 
 
 def test_cjk_overlap_uses_char_ngrams():

@@ -155,7 +155,8 @@ def is_shell_file(path, folder):
 def new_paths(folder, before):
     """Paths under ``folder`` that are not in the snapshot ``before``, leaving out the
     shell's own files and every new directory that exists only as their parent."""
-    new = [Path(p) for p in snapshot(folder) if p not in set(before)]
+    seen = set(before)
+    new = [Path(p) for p in snapshot(folder) if p not in seen]
     shell = {p for p in new if is_shell_file(p, folder)}
     holders = {a for p in shell for a in p.parents if a in new}
 

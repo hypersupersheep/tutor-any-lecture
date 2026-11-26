@@ -316,19 +316,19 @@ def test_sample_gate_has_no_warnings(tmp_path):
     assert result["warnings"] == 0
 
 
-def test_sample_effective_rate_has_a_numeric_variant():
-    answers = [item["answer"] for item in sample_json("items.json")["tracked"]["effective_rate"].values()]
-    assert [a for a in answers if re.search(r"\d+(?:\.\d+)?%", a)] != []
-
-
 @pytest.mark.parametrize("sample", SAMPLES)
 def test_sample_variants_are_parallel(sample):
-    """A, B and C of each concept share a kind, and all ask for a number or none does."""
+    """A, B and C of each concept share a kind, and all ask for a number or none does;
+    in the English sample at least one effective_rate answer holds a percentage."""
     for cid, variants in sample_json("items.json", sample)["tracked"].items():
         assert len({v["kind"] for v in variants.values()}) == 1, cid
         # a digit in the answer once its citations are removed: the item asks for a number
         numeric = {bool(re.search(r"\d", re.sub(r"\([^)]*\)", "", v["answer"]))) for v in variants.values()}
         assert len(numeric) == 1, cid
+    if sample == "en":
+        # the effective rate is asked as a number: at least one answer holds a percentage
+        answers = [v["answer"] for v in sample_json("items.json")["tracked"]["effective_rate"].values()]
+        assert [a for a in answers if re.search(r"\d+(?:\.\d+)?%", a)] != []
 
 
 # ---- S8. the Chinese sample's files and plan ----
@@ -528,12 +528,16 @@ def test_selftest_ignores_cleanup_errors(monkeypatch):
         raise PermissionError(13, "Permission denied", os.fspath(path))
 
     monkeypatch.setattr("tutor_any_lecture.selftest.rmtree", rmtree)
-    result = run_selftest()
-    # The cleanup was attempted, once, on the folder the run used, and it failed.
-    assert len(refused) == 1 and (refused[0] / "unit" / "verify.json").is_file()
-    shutil.rmtree(refused[0])
-    assert result["ok"] is True
-    assert [s["name"] for s in result["steps"]] == STEP_NAMES
+    try:
+        result = run_selftest()
+        # The cleanup was attempted, once, on the folder the run used, and it failed.
+        assert len(refused) == 1 and (refused[0] / "unit" / "verify.json").is_file()
+        assert result["ok"] is True
+        assert [s["name"] for s in result["steps"]] == STEP_NAMES
+    finally:
+        # The refused folder is removed even when an assertion above fails.
+        for path in refused:
+            shutil.rmtree(path, ignore_errors=True)
 
 
 

@@ -143,10 +143,13 @@ def test_quote_window_follows_quote_density(density, window):
 
 
 def test_same_language_share_ignores_quote_density():
-    note = "## A\n\n" + " ".join(["word"] * 60) + ' "a quotation of some length here" (0:30).\n'
-    shares = {d: status_of(check_note(note, "en", "deep", 90, "markdown", "en", quote_density=d), "quote_share")
-              for d in ("light", "standard", "dense")}
-    assert len(set(shares.values())) == 1
+    note = "## A\n\n" + " ".join(["word"] * 20) + ' "a quotation of some length here, long enough to count" (0:30).\n'
+    for d in ("light", "standard", "dense"):
+        assert status_of(check_note(note, "en", "deep", 90, "markdown", "en", quote_density=d), "quote_share") == "PASS"
+        # 44 quoted characters over the prose's 130 non-space characters (the citation is left out)
+        assert measure_note(note, "en", "deep", 90, "en", quote_density=d)["quote_share"] == {
+            "value": 0.34, "window": [0.1, 0.4],
+        }
     with pytest.raises(ValueError):
         check_note(note, "en", "deep", 90, "markdown", "en", quote_density="heavy")
 
