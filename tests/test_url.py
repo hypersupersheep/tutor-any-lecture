@@ -749,7 +749,9 @@ def test_cli_url_info_prints_title_and_writes_nothing(tmp_cfg, monkeypatch, tmp_
     monkeypatch.chdir(tmp_path)
     before = tree(tmp_path)
     assert main(["acquire", "url", "--url", "https://y/x", "--info"]) == 0
-    lines = capsys.readouterr().out.splitlines()
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    lines = captured.out.splitlines()
     assert len(lines) == 1
     assert json.loads(lines[0]) == {
         "status": "ok",
@@ -762,6 +764,18 @@ def test_cli_url_info_prints_title_and_writes_nothing(tmp_cfg, monkeypatch, tmp_
     assert tree(tmp_path) == before
     assert fake.caption_requests == [] and fake.downloads == [] and fake.folders == []
     assert all(not (BANNED & set(o)) for o in fake.all_opts)
+
+
+def test_cli_url_info_names_the_ignored_flags(tmp_cfg, monkeypatch, tmp_path, capsys):
+    fake = _install(monkeypatch, info(subs={"en": [orig()]}, lang="en"), {("cc", "en"): GOOD_VTT})
+    monkeypatch.chdir(tmp_path)
+    assert main(["acquire", "url", "--url", "https://y/x", "--info", "--unit", "X", "--budget-minutes", "5"]) == 0
+    captured = capsys.readouterr()
+    assert captured.err == "acquire url --info reads only the video page; ignored: --unit, --budget-minutes\n"
+    lines = captured.out.splitlines()
+    assert len(lines) == 1 and json.loads(lines[0])["status"] == "ok"
+    assert not (tmp_path / "X").exists()
+    assert fake.caption_requests == [] and fake.downloads == []
 
 
 def test_cli_url_info_without_captions_or_metadata(tmp_cfg, monkeypatch, capsys):

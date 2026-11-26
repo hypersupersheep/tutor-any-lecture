@@ -13,9 +13,9 @@ import argparse
 import dataclasses
 import json
 import math
+import re
 import signal
 import sys
-import re
 import threading
 from datetime import date
 from pathlib import Path
@@ -201,7 +201,19 @@ def _cmd_acquire_url(args) -> int:
     from .unit import UnitPaths
 
     if args.info:
-        # Only the page's metadata: no profile, no unit, nothing written.
+        # Only the page's metadata: no profile, no unit, nothing written. The flags that
+        # matter only for an acquisition are ignored, and one stderr line says which.
+        ignored = [
+            flag
+            for flag, given in (
+                ("--unit", args.unit is not None),
+                ("--force", args.force),
+                ("--budget-minutes", args.budget_minutes is not None),
+            )
+            if given
+        ]
+        if ignored:
+            print(f"acquire url --info reads only the video page; ignored: {', '.join(ignored)}", file=sys.stderr)
         try:
             meta = url_info(args.url)
         except (AcquireError, OSError) as e:
@@ -264,6 +276,23 @@ _SLIDES_USAGE = (
 )
 
 
+def _input_error(call):
+    """Run ``call``; an input error becomes the error object of ``_run_acquire``.
+
+    Returns ``(result, None)``, or ``(None, EXIT_FAIL)`` after printing
+    ``{"status": "error", "message": ...}`` for a ``ValueError`` (a malformed pages.json,
+    transcript.json or source.json), an ``AcquireError`` (an unreadable PDF) or an
+    ``OSError`` (a missing PDF or transcript).
+    """
+    from .transcript import AcquireError
+
+    try:
+        return call(), None
+    except (ValueError, AcquireError, OSError) as e:
+        _print_json({"status": "error", "message": str(e)})
+        return None, EXIT_FAIL
+
+
 def _cmd_slides(args) -> int:
     if args.pdf is None or args.unit is None:
         print(_SLIDES_USAGE, file=sys.stderr)
@@ -272,7 +301,9 @@ def _cmd_slides(args) -> int:
     from .slides import extract_pdf
     from .unit import UnitPaths
 
-    pages = extract_pdf(Path(args.pdf), Path(args.unit), images=args.images)
+    pages, failed = _input_error(lambda: extract_pdf(Path(args.pdf), Path(args.unit), images=args.images))
+    if failed is not None:
+        return failed
     labelled = sum(1 for p in pages if p.label is not None)
     _print_json({"status": "ok", "pages": len(pages), "labelled": labelled, "path": str(UnitPaths(args.unit).pages)})
     return EXIT_OK
@@ -285,10 +316,11 @@ def _cmd_slides_suspects(args) -> int:
         return EXIT_USAGE
 
     from .suspects import write_suspects
-
     from .unit import UnitPaths
 
-    found = write_suspects(Path(args.unit))
+    found, failed = _input_error(lambda: write_suspects(Path(args.unit)))
+    if failed is not None:
+        return failed
     _print_json({"status": "ok", "suspects": len(found), "path": str(UnitPaths(args.unit).suspects)})
     return EXIT_OK
 

@@ -152,9 +152,30 @@ def test_cli_slides_not_a_pdf_exits_1(tmp_path, capsys):
     unit = tmp_path / "unit"
     assert main(["slides", "--pdf", str(pdf), "--unit", str(unit)]) == 1
     captured = capsys.readouterr()
-    assert captured.out == ""
-    assert captured.err.splitlines() == ["notes.pdf is not a readable PDF"]
+    assert json.loads(captured.out) == {"status": "error", "message": "notes.pdf is not a readable PDF"}
+    assert captured.err == ""
     assert not unit.exists()
+
+
+def test_cli_slides_errors_are_json_objects(tmp_path, capsys):
+    missing = tmp_path / "missing.pdf"
+    unit = tmp_path / "unit"
+    assert main(["slides", "--pdf", str(missing), "--unit", str(unit)]) == 1
+    captured = capsys.readouterr()
+    lines = captured.out.splitlines()
+    assert len(lines) == 1
+    assert json.loads(lines[0]) == {"status": "error", "message": f"PDF not found: {missing}"}
+    assert captured.err == ""
+
+    # slides suspects on a unit with no transcript.
+    unit.mkdir()
+    assert main(["slides", "suspects", "--unit", str(unit)]) == 1
+    captured = capsys.readouterr()
+    lines = captured.out.splitlines()
+    assert len(lines) == 1
+    out = json.loads(lines[0])
+    assert out["status"] == "error" and out["message"].startswith("transcript not found: ")
+    assert captured.err == ""
 
 
 def test_cli_slides_pdf_with_suspects_is_usage(tmp_path, capsys):

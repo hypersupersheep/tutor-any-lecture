@@ -454,3 +454,11 @@ def test_cite_link_help_names_the_platforms(capsys):
         main(["cite", "--help"])
     out = " ".join(capsys.readouterr().out.split())
     assert "YouTube, Bilibili, Vimeo and Panopto" in out
+
+
+def test_cli_standard_imports_are_sorted():
+    import ast
+
+    tree = ast.parse(Path(cli.__file__).read_text(encoding="utf-8"))
+    names = [alias.name for node in tree.body if isinstance(node, ast.Import) for alias in node.names]
+    assert names and names == sorted(names)
