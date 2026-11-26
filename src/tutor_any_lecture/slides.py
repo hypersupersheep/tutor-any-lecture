@@ -279,7 +279,8 @@ PHOTO_COPY_RE = re.compile(r"photo-[0-9]{3,}\.(?:jpg|png)")
 _LONGEST_SIDE = 2000
 # EXIF orientations 2 to 8 mean the camera stored the picture mirrored or turned.
 _ORIENTATION_TAG = 0x0112
-_SUFFIX_OF_FORMAT = {"JPEG": "jpg", "PNG": "png"}
+# Pillow reads a JPEG that holds more than one image (a phone's HDR gain map) as MPO.
+_SUFFIX_OF_FORMAT = {"JPEG": "jpg", "MPO": "jpg", "PNG": "png"}
 
 
 def _natural_key(name: str) -> list:
@@ -349,7 +350,7 @@ def _photo_copy(photo: Path, data: bytes) -> tuple[bytes, str]:
             size = (max(1, round(upright.width * scale)), max(1, round(upright.height * scale)))
             upright = upright.resize(size, Image.Resampling.LANCZOS)
         out = io.BytesIO()
-        if fmt == "JPEG":
+        if suffix == "jpg":  # an MPO keeps only its first image, as a plain JPEG
             upright.save(out, "JPEG", quality=90)
         else:
             upright.save(out, "PNG")

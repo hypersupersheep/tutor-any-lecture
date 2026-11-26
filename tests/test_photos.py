@@ -125,6 +125,32 @@ def test_a_large_photo_is_scaled_to_2000_pixels(tmp_path, capsys):
         assert copy.format == "JPEG" and copy.size == (1000, 2000)
 
 
+def write_mpo(path, size):
+    """A JPEG that holds a second image (as phones store an HDR gain map): Pillow reads it as MPO."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    first = Image.new("RGB", size, (200, 40, 40))
+    second = Image.new("RGB", (size[0] // 2, size[1] // 2), (40, 40, 200))
+    first.save(path, "MPO", save_all=True, append_images=[second])
+    with Image.open(path) as check:
+        assert check.format == "MPO" and check.n_frames == 2
+    return path
+
+
+def test_a_multi_image_jpeg_is_copied_as_a_jpeg(tmp_path, capsys):
+    folder = folder_of(tmp_path)
+    small = write_mpo(folder / "1.jpg", (40, 30))
+    large = write_mpo(folder / "2.jpg", (2400, 1200))
+    plain = write_photo(folder / "3.png")
+    unit = unit_of(tmp_path)
+    code, out, err = run_photos([small, large, plain], unit, capsys)
+    assert code == 0 and err == ""
+    assert [p["image"] for p in stored_pages(unit)] == ["photo-001.jpg", "photo-002.jpg", "photo-003.png"]
+    assert (slides_dir(unit) / "photo-001.jpg").read_bytes() == small.read_bytes()
+    with Image.open(slides_dir(unit) / "photo-002.jpg") as copy:
+        assert copy.format == "JPEG" and copy.size == (2000, 1000)
+        assert getattr(copy, "n_frames", 1) == 1
+
+
 # ---- P4. what --photos refuses, before it writes anything ----
 
 def case_two_photos(tmp_path):
