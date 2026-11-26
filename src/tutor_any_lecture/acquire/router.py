@@ -12,7 +12,7 @@ from pathlib import Path
 
 from ..office import docx_lines
 from ..source import SLIDE_DECK_SUFFIXES
-from ..transcript import parse_meeting_export, parse_stamped_txt
+from ..transcript import parse_meeting_export, parse_txt
 from ..unit import UnitPaths
 from .panopto import load_extract
 
@@ -75,7 +75,7 @@ def _is_timed_txt(path: Path) -> bool:
     try:
         with open(path, "rb") as f:
             text = f.read(_TXT_HEAD_BYTES).decode("utf-8-sig", errors="replace")
-        return bool(parse_stamped_txt(text, None) or parse_meeting_export(text.splitlines(), None))
+        return bool(parse_txt(text, None))
     except Exception:
         return False
 

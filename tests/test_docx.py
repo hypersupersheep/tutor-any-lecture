@@ -117,6 +117,21 @@ def test_no_time_stamps_no_segments():
     assert parse_meeting_export(["Week 3 reading list", "Chapter 2"], None) == []
 
 
+def test_range_layout_drops_cue_numbers():
+    # A digit-only line right before a range is a cue number; every text line is kept,
+    # also a number that does not stand before a range.
+    lines = [
+        "1", "0:0:1.0 --> 0:0:2.0", "Hello",
+        "2", "0:0:3.0 --> 0:0:4.0", "Alice Smith", "The answer is", "42",
+        "3", "0:0:5.0 --> 0:0:6.0", "World",
+    ]
+    assert parse_meeting_export(lines, None) == [
+        Segment(1.0, 2.0, "Hello"),
+        Segment(3.0, 4.0, "The answer is 42"),
+        Segment(5.0, 6.0, "World"),
+    ]
+
+
 # ---- D3: acquire import reads a .docx, and Zoom's .txt ---------------------------
 
 
@@ -170,6 +185,47 @@ def test_cli_imports_a_zoom_txt(tmp_path, capsys):
     assert main(["acquire", "import", "--file", str(path), "--unit", str(unit)]) == 0
     assert json.loads(capsys.readouterr().out)["status"] == "ok"
     assert Transcript.from_json(UnitPaths(unit).transcript).segments == [Segment(3.0, 8.0, "Welcome to the course.")]
+
+
+def _import_segments(path: Path, unit: Path, capsys) -> list[Segment]:
+    assert main(["acquire", "import", "--file", str(path), "--unit", str(unit)]) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "ok"
+    return Transcript.from_json(UnitPaths(unit).transcript).segments
+
+
+def test_cli_imports_an_srt_saved_as_txt(tmp_path, capsys):
+    path = tmp_path / "captions.txt"
+    path.write_text(
+        "1\n00:00:01,000 --> 00:00:02,000\nHello\n\n2\n00:00:03,000 --> 00:00:04,000\nWorld\n",
+        encoding="utf-8", newline="\n",
+    )
+    assert _import_segments(path, tmp_path / "u", capsys) == [
+        Segment(1.0, 2.0, "Hello"), Segment(3.0, 4.0, "World"),
+    ]
+
+
+def test_cli_imports_a_vtt_saved_as_txt(tmp_path, capsys):
+    data = (
+        "\ufeff\nWEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<v Alice Smith>Hello</v>\n\n"
+        "2\n00:00:03.000 --> 00:00:04.500\nWorld\n"
+    ).encode("utf-8")
+    (tmp_path / "captions.txt").write_bytes(data)
+    (tmp_path / "captions.vtt").write_bytes(data)
+    from_txt = _import_segments(tmp_path / "captions.txt", tmp_path / "a", capsys)
+    from_vtt = _import_segments(tmp_path / "captions.vtt", tmp_path / "b", capsys)
+    assert from_txt == from_vtt == [Segment(1.0, 2.0, "Hello"), Segment(3.0, 4.5, "World")]
+
+
+def test_cli_imports_a_teams_range_docx(tmp_path, capsys):
+    # A .docx is read in the meeting layouts only: SRT-shaped times still drop the speaker.
+    lines = [
+        "0:0:0.0 --> 0:0:4.990", "Alice Smith", "Welcome to the course.",
+        "00:00:04,990 --> 00:00:09,120", "Bob Jones", "Yes.",
+    ]
+    path = make_docx(tmp_path, lines, name="Lecture 3.docx")
+    assert _import_segments(path, tmp_path / "u", capsys) == [
+        Segment(0.0, 4.99, "Welcome to the course."), Segment(4.99, 9.12, "Yes."),
+    ]
 
 
 # ---- W1: documents name DOCX transcripts -----------------------------------------

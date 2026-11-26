@@ -216,6 +216,7 @@ def _close_stamped(stamped: list[list], duration: float | None) -> list[Segment]
 # A meeting export's time: [h:]m:s, with an optional fraction whose first three digits are ms.
 _RANGE_TIME = r"(?:(\d+):)?(\d{1,2}):(\d{1,2})(?:[.,](\d{1,7}))?"
 _RANGE = re.compile(rf"{_RANGE_TIME}\s*-->\s*{_RANGE_TIME}")
+_CUE_NUMBER = re.compile(r"[0-9]+")
 # A header: a speaker (optional) and a start time [h:]m:ss, alone on its line.
 _HEADER = re.compile(r"(?:(.+?)\s+)?((?:\d+:)?\d+:\d{2})")
 _SPEAKER_NUMBER = re.compile(r"\d{1,3}")
@@ -257,7 +258,8 @@ def parse_meeting_export(lines: list[str], duration: float | None) -> list[Segme
     """The lines of a meeting transcript export (a Teams DOCX, a Zoom TXT), read in one layout.
 
     Range layout, when any line is ``<t> --> <t>``: the lines up to the next range are its
-    text, the first of them the speaker when there are two or more. Header layout, else,
+    text, the first of them the speaker when there are two or more; a line of digits alone
+    right before a range is a cue number and is dropped. Header layout, else,
     when any line is a speaker and a start time, or a time alone: the lines up to the next
     header are its text, and a segment ends where the next starts. Stamped layout, else:
     ``parse_stamped_txt``. Speaker names never reach the text; lines before the first time,
@@ -268,6 +270,13 @@ def parse_meeting_export(lines: list[str], duration: float | None) -> list[Segme
 
     ranges = [_RANGE.fullmatch(line) for line in lines]
     if any(ranges):
+        # A line of digits alone right before a range is a cue number, not text.
+        keep = [
+            not (_CUE_NUMBER.fullmatch(line) and i + 1 < len(lines) and ranges[i + 1] is not None)
+            for i, line in enumerate(lines)
+        ]
+        lines = [line for line, k in zip(lines, keep) if k]
+        ranges = [m for m, k in zip(ranges, keep) if k]
         segments: list[Segment] = []
         starts = [i for i, m in enumerate(ranges) if m is not None]
         for k, i in enumerate(starts):
@@ -292,6 +301,33 @@ def parse_meeting_export(lines: list[str], duration: float | None) -> list[Segme
         return _close_stamped(stamped, duration)
 
     return parse_stamped_txt("\n".join(lines), duration)
+
+
+# The SRT timing parse_srt reads, with two-digit hours and comma milliseconds on both sides.
+_SRT_TS = r"\d{2}:\d{2}:\d{2},\d{3}"
+_SRT_TIMING = re.compile(rf"\s*{_SRT_TS}\s*-->\s*{_SRT_TS}(?:\s+.*)?")
+_WEBVTT_SIGNATURE = re.compile(r"WEBVTT(?:[ \t].*)?")
+
+
+def parse_txt(text: str, duration: float | None) -> list[Segment]:
+    """A ``.txt`` transcript, as ``acquire import`` and the router read it.
+
+    Lines stamped ``[m:ss]`` read with ``parse_stamped_txt``, as a .txt always has. Failing
+    that, a caption file saved as .txt reads as one: ``parse_vtt`` when its first line (after a
+    BOM and blank lines) is ``WEBVTT``, ``parse_srt`` when its first timing line is SRT timing.
+    Anything else is read in the layouts of a meeting export (``parse_meeting_export``).
+    """
+    stamped = parse_stamped_txt(text, duration)
+    if stamped:
+        return stamped
+    lines = _normalise(text).splitlines()
+    first = next((line.strip() for line in lines if line.strip()), "")
+    if _WEBVTT_SIGNATURE.fullmatch(first):
+        return parse_vtt(text)
+    timing = next((line for line in lines if "-->" in line), None)
+    if timing is not None and _SRT_TIMING.fullmatch(timing):
+        return parse_srt(text)
+    return parse_meeting_export(lines, duration)
 
 
 def parse_whisper_json(obj) -> list[Segment]:

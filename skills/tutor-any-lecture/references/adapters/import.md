@@ -14,7 +14,7 @@ In the file the learner gives you. The parser is chosen by the file's suffix:
 - `.srt`: SubRip, with `,` or `.` before the milliseconds;
 - `.vtt`: WebVTT, header and cue settings allowed;
 - `.json`: Whisper-style segments, either `{"segments": [{"start", "end", "text"}, …]}` or a bare list of such objects (times in seconds);
-- `.txt`: timestamped text, one line per segment starting with `[m:ss]` or `[h:mm:ss]`; a line without a stamp continues the previous segment. A `.txt` with no `[m:ss]` stamp is read in the layouts of the `.docx` bullet, which is how a Zoom transcript saved in the meeting reads (`[Alice Smith] 00:00:03`, then the text);
+- `.txt`: timestamped text, one line per segment starting with `[m:ss]` or `[h:mm:ss]`; a line without a stamp continues the previous segment. A `.txt` with no `[m:ss]` stamp is read as WebVTT when its first line is `WEBVTT`, as SubRip when its first timing line is SubRip's (`00:00:01,000 --> 00:00:02,000`), and else in the layouts of the `.docx` bullet, which is how a Zoom transcript saved in the meeting reads (`[Alice Smith] 00:00:03`, then the text);
 - `.docx`: a Teams transcript saved as Word, read in three layouts: a range line such as `0:0:3.570 --> 0:0:7.110`, then the speaker and the text; the speaker and a start time on one line, such as `Alice Smith   0:03` or `[Alice Smith] 00:00:03`, then the text; `[m:ss]` stamped lines. Speaker names and the lines before the first time are left out.
 
 Files may be UTF-8 with or without a byte-order mark, with Windows or Unix line endings. Any other file, such as `.doc`, `.rtf` or `.pdf`, ends in `error` with a message that lists the five kinds; ask the learner for one of them.

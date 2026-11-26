@@ -22,7 +22,7 @@ from ..transcript import (
     health,
     parse_meeting_export,
     parse_srt,
-    parse_stamped_txt,
+    parse_txt,
     parse_vtt,
     parse_whisper_json,
 )
@@ -63,9 +63,9 @@ def _parse_text(file: Path, suffix: str, duration: float | None) -> list[Segment
         if isinstance(obj, dict) and "segments" not in obj:
             raise ValueError(f"{file.name} holds no Whisper segments: {IMPORT_ACCEPTS}")
         return parse_whisper_json(obj)
-    # A .txt stamped [m:ss] reads as it always has; only one without a stamp is read in
-    # the layouts of a meeting export, as a Zoom transcript saved in the meeting is.
-    return parse_stamped_txt(text, duration) or parse_meeting_export(text.splitlines(), duration)
+    # A .txt stamped [m:ss] reads as it always has; one without a stamp reads as the SRT or
+    # VTT file it holds, else in the layouts of a meeting export (a Zoom transcript).
+    return parse_txt(text, duration)
 
 
 def import_transcript(

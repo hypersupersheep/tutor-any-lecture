@@ -441,6 +441,20 @@ def test_zoom_txt_is_a_transcript(tmp_path):
     assert plan["questions"] == []
 
 
+@pytest.mark.parametrize("text", [
+    "1\n00:00:01,000 --> 00:00:02,000\nHello\n",
+    "WEBVTT\n\n00:01.000 --> 00:02.000\nHello\n",
+], ids=["srt", "vtt"])
+def test_captions_saved_as_txt_are_transcripts(tmp_path, text):
+    (tmp_path / "captions.txt").write_text(text, encoding="utf-8", newline="\n")
+    plan = route(tmp_path)
+    captions = str(tmp_path.resolve() / "captions.txt")
+    assert plan["files"]["transcript"] == [captions]
+    assert [s["argv"] for s in plan["steps"]] == [
+        ["tutor-any-lecture", "acquire", "import", "--file", captions, "--unit", "<unit>"],
+    ]
+
+
 def test_docx_is_a_transcript_only_with_time_stamps(tmp_path):
     make_docx(tmp_path, TEAMS_HEADER_LINES, name="Lecture 3.docx")
     make_docx(tmp_path, ["Week 3 reading list"], name="handout.docx")
