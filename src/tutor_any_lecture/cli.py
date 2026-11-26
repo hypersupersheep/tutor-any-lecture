@@ -382,12 +382,13 @@ def _cmd_progress_log(args) -> int:
     ws = Path(args.workspace) if args.workspace is not None else config.workspace()
     try:
         a = progress.log_from_unit(
-            Path(args.unit), args.item, args.phase, args.score, args.confidence, args.exposure, ws, day=args.date
+            Path(args.unit), args.item, args.phase, args.score, args.confidence, args.exposure, ws,
+            day=args.date, answer=args.answer,
         )
     except KeyError:
         print(f"unknown item id: {args.item}", file=sys.stderr)
         return EXIT_USAGE
-    _print_json(dataclasses.asdict(a))
+    _print_json({**dataclasses.asdict(a), "path": str(progress.log_path(a.course, ws))})
     return EXIT_OK
 
 
@@ -646,6 +647,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="how the lecture was seen (default: unknown)")
     pl.add_argument("--date", type=_day, default=None,
                     help="the day the answer was given, YYYY-MM-DD (default: today)")
+    pl.add_argument("--answer", default=None, metavar="TEXT",
+                    help="the learner's answer, shown beside a confident wrong answer on the page")
     pl.add_argument("--workspace", type=_path, default=None, help="the workspace folder (default: the profile's)")
     pl.set_defaults(func=_cmd_progress_log)
     pd = progress_sub.add_parser("due", help="print the reviews due as JSON")

@@ -1,3 +1,4 @@
+import dataclasses
 import json
 from datetime import date, datetime
 
@@ -72,7 +73,8 @@ def unit_dir(tmp_path):
 
     Course "C", unit "U1"; one tracked concept "c1" with variants A, B, C (ids "c1-A",
     "c1-B", "c1-C"); one practice item "p1" (variant None); every item has citation
-    "(slide 2, 01:00)". The layout is the one load_plan and load_items read.
+    "(slide 2, 01:00)". The layout is the one load_plan and load_items read. assignment.json
+    gives c1 pre A, post B, d7 C.
     """
     u = tmp_path / "课程 资料" / "第1周"
     u.mkdir(parents=True)
@@ -94,9 +96,25 @@ def unit_dir(tmp_path):
         "tracked": {"c1": {v: item(f"c1-{v}", v, "apply") for v in "ABC"}},
         "practice": [item("p1", None, "recall")],
     }
-    for name, obj in (("plan.json", plan), ("items.json", items)):
-        (u / name).write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+    assignment = {"seed": "C|U1", "concepts": {"c1": {"pre": "A", "post": "B", "d7": "C"}}}
+    for name, obj in (("plan.json", plan), ("items.json", items), ("assignment.json", assignment)):
+        write_json(u / name, obj)
     return u
+
+
+def write_json(path, obj):
+    path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+
+
+def add_variant(u, letter, concept="c1", kind="apply"):
+    """Add variant `letter` (id "<concept>-<letter>") to a tracked concept of the unit's items.json."""
+    path = u / "items.json"
+    items = json.loads(path.read_text(encoding="utf-8"))
+    items["tracked"][concept][letter] = {
+        "id": f"{concept}-{letter}", "concept": concept, "kind": kind, "prompt": f"Prompt {concept}-{letter}?",
+        "answer": "A.", "rubric": "R.", "citation": "(slide 2, 01:00)", "difficulty": 2, "variant": letter,
+    }
+    write_json(path, items)
 
 
 # ---- scores ----------------------------------------------------------------
@@ -672,3 +690,82 @@ def test_cli_commands_survive_a_malformed_line(tmp_path, capsys):
         captured = capsys.readouterr()
         assert captured.out.count("\n") == 1 and isinstance(json.loads(captured.out), (list, dict))
         assert captured.err == expected
+
+
+# ---- progress log: its own phase, assigned concepts, the answer (M2a Task 5) ---
+
+
+def log_argv(u, ws, item, phase, *extra):
+    return ["progress", "log", "--unit", str(u), "--item", item, "--phase", phase,
+            "--score", "1", "--confidence", "2", "--workspace", str(ws), *extra]
+
+
+@pytest.mark.parametrize("item, phase, message", [
+    ("p1", "post", "item p1 belongs to phase practice, not post"),
+    ("c1-A", "post", "item c1-A belongs to phase pre, not post"),
+    ("c1-B", "practice", "item c1-B belongs to phase post, not practice"),
+    ("c1-D", "d7", "item c1-D belongs to phase d1, not d7"),
+])
+def test_cli_log_refuses_an_item_outside_its_phase(tmp_path, capsys, item, phase, message):
+    u = unit_dir(tmp_path)
+    add_variant(u, "D")
+    ws = tmp_path / "ws"
+    assert main(log_argv(u, ws, item, phase)) == 1
+    captured = capsys.readouterr()
+    assert captured.err == message + "\n"
+    assert captured.out == ""
+    assert not (ws / "progress" / "C.jsonl").exists()
+
+
+def test_cli_log_needs_the_assignment_for_a_tracked_item(tmp_path, capsys):
+    u = unit_dir(tmp_path)
+    ws = tmp_path / "ws"
+    (u / "assignment.json").unlink()
+    assert main(log_argv(u, ws, "c1-B", "post")) == 1
+    captured = capsys.readouterr()
+    assert captured.err.startswith(str(u / "assignment.json") + " not found")
+    assert captured.out == "" and not (ws / "progress" / "C.jsonl").exists()
+    assert main(log_argv(u, ws, "p1", "practice")) == 0
+    capsys.readouterr()
+    write_json(u / "assignment.json", {"seed": "C|U1", "concepts": {}})
+    assert main(log_argv(u, ws, "c1-B", "post")) == 1
+    assert capsys.readouterr().err == "item c1-B has no phase in assignment.json\n"
+    # an assignment lacking a phase fails as `items assign` fails on it
+    write_json(u / "assignment.json", {"seed": "C|U1", "concepts": {"c1": {"pre": "A", "post": "B"}}})
+    assert main(log_argv(u, ws, "c1-B", "post")) == 1
+    assert capsys.readouterr().err == 'assignment.json: concept c1 has no "d7"\n'
+    assert len(load_attempts("C", ws)) == 1
+
+
+def test_cli_log_records_the_assigned_concepts(tmp_path):
+    u = unit_dir(tmp_path)
+    ws = tmp_path / "ws"
+    assert main(log_argv(u, ws, "c1-A", "pre")) == 0
+    add_variant(u, "D")
+    assert main(log_argv(u, ws, "c1-D", "d1")) == 0
+    assert main(log_argv(u, ws, "p1", "practice")) == 0
+    assert [a.assigned for a in load_attempts("C", ws)] == [["c1"], ["c1"], None]
+
+
+def test_cli_log_keeps_the_answer(tmp_path):
+    u = unit_dir(tmp_path)
+    ws = tmp_path / "ws"
+    assert main(log_argv(u, ws, "c1-B", "post", "--answer", "  six percent ")) == 0
+    assert main(log_argv(u, ws, "c1-B", "post", "--answer", "  ")) == 0
+    assert main(log_argv(u, ws, "c1-B", "post")) == 0
+    assert [a.answer for a in load_attempts("C", ws)] == ["six percent", None, None]
+
+
+def test_cli_log_prints_the_log_path(tmp_path, capsys):
+    u = unit_dir(tmp_path)
+    ws = tmp_path / "ws"
+    assert main(log_argv(u, ws, "c1-B", "post", "--answer", "x")) == 0
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["path"] == str(ws / "progress" / "C.jsonl")
+    assert (ws / "progress" / "C.jsonl").exists()
+    (a,) = load_attempts("C", ws)
+    assert printed == {**dataclasses.asdict(a), "path": printed["path"]}
+    # every new line carries all fourteen keys, in field order
+    line = (ws / "progress" / "C.jsonl").read_text(encoding="utf-8").split("\n")[0]
+    assert list(json.loads(line)) == [f.name for f in dataclasses.fields(Attempt)]
+    assert len(dataclasses.fields(Attempt)) == 14

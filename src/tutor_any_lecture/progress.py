@@ -10,7 +10,8 @@ from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
-from .items import find_item, load_items
+from . import items as itembank
+from .items import ASSIGNED_PHASES, OPTIONAL_PHASES, find_item, load_items
 from .plan import load_plan, safe_name
 from .unit import UnitPaths
 
@@ -71,6 +72,11 @@ def _progress_dir(workspace: Path) -> Path:
 def _course_file(workspace: Path, course: str, suffix: str) -> Path:
     """``<workspace>/progress/<course><suffix>``; PlanError when ``course`` is not a safe folder name."""
     return _progress_dir(workspace) / f"{safe_name(course, 'course')}{suffix}"
+
+
+def log_path(course: str, workspace: Path) -> Path:
+    """The course's log file, ``<workspace>/progress/<course>.jsonl``."""
+    return _course_file(workspace, course, ".jsonl")
 
 
 def log_attempt(a: Attempt, workspace: Path) -> Path:
@@ -188,6 +194,42 @@ def _stamp(day: date | None) -> str:
     return moment.astimezone().isoformat(timespec="seconds")
 
 
+def _own_phase(item, paths: UnitPaths) -> tuple[str, dict | None]:
+    """The one phase ``item`` is asked in, and the unit's assignment when it was read for that.
+
+    Practice items belong to practice, D to d1 and E to d21; A, B and C belong to the phase
+    of pre, post and d7 whose letter in assignment.json is the item's variant.
+    """
+    if item.variant is None:
+        return "practice", None
+    for phase, letter in OPTIONAL_PHASES.items():
+        if item.variant == letter:
+            return phase, None
+    if not paths.assignment.exists():
+        raise FileNotFoundError(
+            f"{paths.assignment} not found: run `tutor-any-lecture items assign --unit DIR` first"
+        )
+    # Read and checked as `items next` and `items assign` read and check it.
+    assignment = itembank._read_assignment(paths.assignment)
+    itembank._check_assignment(assignment, ASSIGNED_PHASES)
+    letters = assignment["concepts"].get(item.concept)
+    for phase in ASSIGNED_PHASES:
+        if letters is not None and letters[phase] == item.variant:
+            return phase, assignment
+    raise ValueError(f"item {item.id} has no phase in assignment.json")
+
+
+def _assigned(phase: str, items: dict, assignment: dict | None) -> list[str] | None:
+    """The concepts ``phase`` holds, sorted: assignment.json's for pre, post and d7, the
+    tracked concepts with a D (d1) or E (d21) variant, and None for practice."""
+    if phase in ASSIGNED_PHASES:
+        return sorted(assignment["concepts"])
+    if phase in OPTIONAL_PHASES:
+        letter = OPTIONAL_PHASES[phase]
+        return sorted(cid for cid, variants in items["tracked"].items() if letter in variants)
+    return None
+
+
 def log_from_unit(
     unit: Path,
     item_id: str,
@@ -197,14 +239,22 @@ def log_from_unit(
     exposure: str,
     workspace: Path,
     day: date | None = None,
+    answer: str | None = None,
 ) -> Attempt:
     """Log one attempt at ``item_id``; course, unit, variant, concept and citation come from the unit's files.
 
     ``day`` is the day the answer was given (default: today), for an answer logged later.
+    ``answer`` is the learner's answer, kept without surrounding whitespace (empty: None).
+    An item given a phase other than its own raises ValueError and writes nothing.
     """
     paths = UnitPaths(unit)
     plan = load_plan(paths.plan)
-    item = find_item(load_items(paths.items), item_id)
+    items = load_items(paths.items)
+    item = find_item(items, item_id)
+    own, assignment = _own_phase(item, paths)
+    if phase != own:
+        raise ValueError(f"item {item.id} belongs to phase {own}, not {phase}")
+    answer = answer.strip() if answer is not None else None
     a = Attempt(
         ts=_stamp(day),
         course=plan.course,
@@ -218,6 +268,8 @@ def log_from_unit(
         citation=item.citation,
         exposure=exposure,
         prompt=item.prompt,
+        answer=answer or None,
+        assigned=_assigned(phase, items, assignment),
     )
     log_attempt(a, workspace)
     return a
