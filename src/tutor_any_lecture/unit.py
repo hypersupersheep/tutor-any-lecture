@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .plan import Plan, PlanError, load_plan, safe_name
+
 
 class UnitPaths:
     """Paths of the files in a unit folder. Only ``ensure()`` touches the disk."""
@@ -81,3 +83,34 @@ def refuse_overwrite(unit: Path, force: bool) -> None:
     transcript = UnitPaths(unit).transcript
     if transcript.exists() and not force:
         raise FileExistsError(f"{transcript} already exists; rerun with --force to replace it")
+
+
+def _plan_of(path: Path, course: str, unit: str) -> Plan | None:
+    """The plan at ``path`` when it loads and names ``course`` and ``unit``; otherwise None."""
+    try:
+        plan = load_plan(path)
+    except (PlanError, ValueError, OSError, RecursionError):
+        return None
+    return plan if (plan.course, plan.unit) == (course, unit) else None
+
+
+def find_unit(workspace: Path, course: str, unit: str) -> tuple[Path, Plan] | None:
+    """The folder of the unit ``unit`` of ``course`` and the plan loaded there, or None.
+
+    ``<workspace>/courses/<course>/<unit>/plan.json`` comes first; else the first, in sorted
+    path order, of ``<workspace>/courses/*/*/plan.json`` whose course and unit match. A plan
+    that does not load is skipped without a message. Nothing is written.
+    """
+    courses = Path(workspace) / "courses"
+    direct = None
+    try:
+        direct = courses / safe_name(course, "course") / safe_name(unit, "unit") / "plan.json"
+    except PlanError:
+        pass  # not a folder name: only the search below can find it
+    candidates = [direct] if direct is not None else []
+    candidates += [p for p in sorted(courses.glob("*/*/plan.json")) if p != direct]
+    for path in candidates:
+        plan = _plan_of(path, course, unit)
+        if plan is not None:
+            return path.parent, plan
+    return None

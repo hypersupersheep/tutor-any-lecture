@@ -196,8 +196,8 @@ def test_log_round_trip_unicode_line_separators(tmp_path):
 def test_render_headline(tmp_path):
     write_attempts(tmp_path)
     p = render_progress("C", tmp_path, date(2026, 11, 27))
-    assert p.read_text(encoding="utf-8").splitlines()[2].startswith(
-        "Across 1 units: pre 0.20 → post 0.90, normalized gain 0.88"
+    assert p.read_text(encoding="utf-8").splitlines()[2] == (
+        "Across 1 unit: your score went from 20 before the note to 90 after it, a normalized gain of 88%; a week later you kept 78% of your post-quiz score."
     )
 
 
@@ -209,18 +209,17 @@ def test_render_page_content(tmp_path):
     lines = p.read_text(encoding="utf-8").splitlines()
     assert lines[:2] == ["# Progress — C", ""]
     assert lines[2] == (
-        "Across 1 units: pre 0.20 → post 0.90, normalized gain 0.88; post 0.90 → day 7 0.70, retention 0.78."
+        "Across 1 unit: your score went from 20 before the note to 90 after it, a normalized gain of 88%; a week later you kept 78% of your post-quiz score."
     )
     assert "| unit | pre → post | gain | post → day 7 | retention |" in lines
-    assert "| u1 | 0.20 → 0.90 | 0.88 | 0.90 → 0.70 | 0.78 |" in lines
-    assert "····○·········◆···●··  u1" in lines
+    assert "| u1 | 20 → 90 | 88% | 90 → 70 | 78% |" in lines
     by_concept = lines[lines.index("## By concept"):lines.index("## Due today")]
-    assert [x for x in by_concept if x.startswith(("○", "●", "◆", "·"))] == [
-        "○···················●◆  c1",
-        "○·········◆·········●  c2",
-        "····················○●◆  c3",
-        "○·········●◆··········  c4",
-        "○·········◆·········●  c5",
+    assert [x for x in by_concept if x.startswith("| c") and not x.startswith("| concept |")] == [
+        "| c1 | 0 | 100 | 100 |",
+        "| c2 | 0 | 100 | 50 |",
+        "| c3 | 100 | 100 | 100 |",
+        "| c4 | 0 | 50 | 50 |",
+        "| c5 | 0 | 100 | 50 |",
     ]
     assert lines[lines.index("## Due today") + 2] == "None."
     assert lines[lines.index("## Confident but wrong") + 2] == "- u1: p1 (c1), practice, (01:00)"
@@ -229,8 +228,8 @@ def test_render_page_content(tmp_path):
 def test_headline_omits_missing_parts(tmp_path):
     write_attempts(tmp_path, mk(unit="u1", pre=[0, 0, 1, 0, 0], post=[1, 1, 1, 0.5, 1]))
     lines = render_progress("C", tmp_path, date(2026, 11, 20)).read_text(encoding="utf-8").splitlines()
-    assert lines[2] == "Across 1 units: pre 0.20 → post 0.90, normalized gain 0.88."
-    assert "| u1 | 0.20 → 0.90 | 0.88 | 0.90 → — | — |" in lines
+    assert lines[2] == "Across 1 unit: your score went from 20 before the note to 90 after it, a normalized gain of 88%."
+    assert "| u1 | 20 → 90 | 88% | 90 → — | — |" in lines
     assert lines[lines.index("## Due today") + 2] == "None."
 
 
@@ -238,7 +237,7 @@ def test_render_without_attempts(tmp_path):
     # A log with only a practice attempt: no tracked attempts yet.
     write_attempts(tmp_path, [attempt(item_id="p1", variant=None, phase="practice", score=1)])
     lines = render_progress("C", tmp_path, date(2026, 11, 20)).read_text(encoding="utf-8").splitlines()
-    assert lines[:3] == ["# Progress — C", "", "No tracked attempts yet."]
+    assert lines[:3] == ["# Progress — C", "", "No pretest, post-quiz or review answers are logged yet."]
     assert "## Units" not in lines and "## By concept" not in lines
     assert lines[lines.index("## Confident but wrong") + 2] == "None."
 
@@ -400,7 +399,7 @@ def test_log_rejects_bad_phase_confidence_exposure(tmp_path, field, value):
 def test_table_escapes_pipe_in_unit_name(tmp_path):
     write_attempts(tmp_path, mk(unit="a|b", pre=[0], post=[1]))
     lines = render_progress("C", tmp_path, date(2026, 11, 20)).read_text(encoding="utf-8").splitlines()
-    assert "| a\\|b | 0.00 → 1.00 | 1.00 | 1.00 → — | — |" in lines
+    assert "| a\\|b | 0 → 100 | 100% | 100 → — | — |" in lines
 
 
 def test_cli_bare_progress_is_usage():
@@ -411,33 +410,29 @@ def test_cli_bare_progress_is_usage():
 
 RENDERED_PAGE = """# Progress — C
 
-Across 1 units: pre 0.00 → post 1.00, normalized gain 1.00.
+Across 1 unit: your score went from 0 before the note to 100 after it, a normalized gain of 100%.
+
+![Progress chart: ○ pretest, ● post quiz, ◆ day-7 review, on one 0 to 100 scale](<C.svg>)
 
 ## Units
 
 | unit | pre → post | gain | post → day 7 | retention |
 |---|---|---|---|---|
-| u1 | 0.00 → 1.00 | 1.00 | 1.00 → — | — |
+| u1 | 0 → 100 | 100% | 100 → — | — |
 
-Gain and retention compare only the concepts attempted in both phases, and the means beside them are over those concepts.
-
-Each strip runs from 0 to 100 in 21 columns: ○ pre, ● post, ◆ day 7; marks of equal scores stand side by side.
-
-```text
-○···················●  u1
-```
+Scores run from 0 to 100. Gain and retention compare only the concepts attempted in both phases, and the means beside them are over those concepts.
 
 ## By concept
 
 ### u1
 
-```text
-○···················●  c1
-```
+| concept | pre | post | day 7 |
+|---|---|---|---|
+| c1 | 0 | 100 | — |
 
 ## Due today
 
-- u1: d1 (optional), due 2026-11-21
+- u1: day-1 review (optional), due 2026-11-21
 
 ## Confident but wrong
 
@@ -468,8 +463,8 @@ def test_gain_pairs_concepts(tmp_path):
     assert normalized_gain(paired_scores(att, "pre", "post")) == pytest.approx(0.5)
     write_attempts(tmp_path, att)
     lines = render_progress("C", tmp_path, date(2026, 11, 20)).read_text(encoding="utf-8").splitlines()
-    assert lines[2] == "Across 1 units: pre 0.00 → post 0.50, normalized gain 0.50."
-    assert "| u1 | 0.00 → 0.50 | 0.50 | 0.50 → — | — |" in lines
+    assert lines[2] == "Across 1 unit: your score went from 0 before the note to 50 after it, a normalized gain of 50%."
+    assert "| u1 | 0 → 50 | 50% | 50 → — | — |" in lines
 
 
 def test_retention_pairs_concepts(tmp_path):
@@ -478,8 +473,8 @@ def test_retention_pairs_concepts(tmp_path):
     assert retention(paired_scores(att, "post", "d7")) == pytest.approx(0.5)
     write_attempts(tmp_path, att)
     lines = render_progress("C", tmp_path, date(2026, 11, 27)).read_text(encoding="utf-8").splitlines()
-    assert lines[2] == "Across 1 units: post 1.00 → day 7 0.50, retention 0.50."
-    assert "| u1 | — → 0.75 | — | 1.00 → 0.50 | 0.50 |" in lines
+    assert lines[2] == "Across 1 unit: a week later you kept 50% of your post-quiz score."
+    assert "| u1 | — → 75 | — | 100 → 50 | 50% |" in lines
     # no concept with both phases: the value is missing
     lonely = mk(unit="u2", post=[1]) + [attempt(unit="u2", item_id="c2-C", variant="C", concept="c2", phase="d7")]
     assert paired_scores(lonely, "post", "d7") == {}
@@ -529,16 +524,18 @@ def test_page_means_agree_with_the_gain(tmp_path):
     page = render_progress("C", tmp_path, date(2026, 11, 27)).read_text(encoding="utf-8")
     lines = page.splitlines()
     assert lines[2] == (
-        "Across 1 units: pre 0.00 → post 0.50, normalized gain 0.50; post 1.00 → day 7 0.50, retention 0.50."
+        "Across 1 unit: your score went from 0 before the note to 50 after it, a normalized gain of 50%; "
+        "a week later you kept 50% of your post-quiz score."
     )
-    assert "| u1 | 0.00 → 0.50 | 0.50 | 1.00 → 0.50 | 0.50 |" in lines
-    assert "pre 0.50 → post 0.50" not in page
-    # the per-concept lines keep every attempt
+    assert "100" not in lines[2]
+    assert "| u1 | 0 → 50 | 50% | 100 → 50 | 50% |" in lines
+    assert "50 → 75" not in page
+    # the per-concept rows keep every attempt
     by_concept = lines[lines.index("## By concept"):lines.index("## Due today")]
-    assert [x for x in by_concept if x.startswith(("○", "●", "◆", "·"))] == [
-        "····················○  c1",
-        "○·········●··········  c2",
-        "··········◆·········●  c3",
+    assert [x for x in by_concept if x.startswith("| c") and not x.startswith("| concept |")] == [
+        "| c1 | 100 | — | — |",
+        "| c2 | 0 | 50 | — |",
+        "| c3 | — | 100 | 50 |",
     ]
 
 
@@ -549,13 +546,11 @@ def test_equal_scores_show_both_marks(tmp_path):
     write_attempts(tmp_path, mk(unit="u1", pre=[1, 0, 0.5], post=[1, 0, 1], d7=[1, 0.5, 1]))
     lines = render_progress("C", tmp_path, date(2026, 11, 27)).read_text(encoding="utf-8").splitlines()
     by_concept = lines[lines.index("## By concept"):lines.index("## Due today")]
-    strips = [x for x in by_concept if x.startswith(("○", "●", "◆", "·"))]
-    assert strips == [
-        "····················○●◆  c1",
-        "○●·········◆··········  c2",
-        "··········○·········●◆  c3",
+    assert [x for x in by_concept if x.startswith("| c") and not x.startswith("| concept |")] == [
+        "| c1 | 100 | 100 | 100 |",
+        "| c2 | 0 | 0 | 50 |",
+        "| c3 | 50 | 100 | 100 |",
     ]
-    assert all(mark in line for line in strips for mark in "○●◆")
 
 
 def test_confident_wrong_shows_the_prompt(tmp_path):
@@ -575,7 +570,7 @@ def test_confident_wrong_shows_the_prompt(tmp_path):
     lines = render_progress("C", ws, date(2026, 11, 20)).read_text(encoding="utf-8").splitlines()
     start = lines.index("## Confident but wrong") + 2
     assert lines[start:start + 2] == [
-        '- U1: c1-B (c1) "A loan charges half a percent a month; what is its effective…", post, (slide 2, 01:00)',
+        '- U1: c1-B (c1) "A loan charges half a percent a month; what is its effective…", post quiz, (slide 2, 01:00)',
         "- U1: p1 (c1), practice, (01:00)",
     ]
 
@@ -893,12 +888,10 @@ def test_interrupted_day_7_review_is_offered_again(tmp_path, capsys):
     capsys.readouterr()
     page = (ws / "progress" / "C.md").read_text(encoding="utf-8")
     lines = page.splitlines()
-    assert lines[2] == "Across 1 units: pre 0.20 → post 0.90, normalized gain 0.88."
-    assert "| U5 | 0.20 → 0.90 | 0.88 | 0.90 → 2 of 5 | — |" in lines
-    assert lines[lines.index(PAIRED_NOTE_TEXT) + 2] == PARTIAL_NOTE
-    assert "- U5: d7, due 2026-11-08, 2 of 5 answered" in lines
-    (strip,) = [x for x in lines if x.endswith("  U5")]
-    assert "○" in strip and "●" in strip and "◆" not in strip
+    assert lines[2] == "Across 1 unit: your score went from 20 before the note to 90 after it, a normalized gain of 88%."
+    assert "| U5 | 20 → 90 | 88% | 90 → 2 of 5 | — |" in lines
+    assert lines[lines.index(SCALE_NOTE) + 2] == PARTIAL_NOTE
+    assert "- U5: day-7 review, due 2026-11-08, 2 of 5 answered" in lines
 
     log_scores(u, ws, "d7", [1, 0.5, 0.5], "2026-11-10", concepts=FIVE[2:])
     capsys.readouterr()
@@ -906,12 +899,12 @@ def test_interrupted_day_7_review_is_offered_again(tmp_path, capsys):
     assert capsys.readouterr().out == "[]\n"
     assert main([*render_argv, "2026-11-10"]) == 0
     lines = (ws / "progress" / "C.md").read_text(encoding="utf-8").splitlines()
-    assert "| U5 | 0.20 → 0.90 | 0.88 | 0.90 → 0.70 | 0.78 |" in lines
+    assert "| U5 | 20 → 90 | 88% | 90 → 70 | 78% |" in lines
     assert PARTIAL_NOTE not in lines
 
 
-PAIRED_NOTE_TEXT = (
-    "Gain and retention compare only the concepts attempted in both phases, "
+SCALE_NOTE = (
+    "Scores run from 0 to 100. Gain and retention compare only the concepts attempted in both phases, "
     "and the means beside them are over those concepts."
 )
 
@@ -923,7 +916,7 @@ def test_confident_wrong_shows_the_answer(tmp_path):
                  "--confidence", "3", "--answer", "six percent", "--workspace", str(ws)]) == 0
     lines = render_progress("C", ws, date.today()).read_text(encoding="utf-8").splitlines()
     start = lines.index("## Confident but wrong") + 2
-    assert lines[start] == '- U1: c1-B (c1) "Prompt c1-B?", post, (slide 2, 01:00); answered "six percent"'
+    assert lines[start] == '- U1: c1-B (c1) "Prompt c1-B?", post quiz, (slide 2, 01:00); answered "six percent"'
 
 
 def test_cli_render_takes_a_date(tmp_path, capsys):
@@ -935,7 +928,7 @@ def test_cli_render_takes_a_date(tmp_path, capsys):
         lines = (tmp_path / "progress" / "C.md").read_text(encoding="utf-8").splitlines()
         return lines[lines.index("## Due today") + 2]
 
-    assert due_today("2026-11-21") == "- u1: d1 (optional), due 2026-11-21"
+    assert due_today("2026-11-21") == "- u1: day-1 review (optional), due 2026-11-21"
     assert due_today("2026-11-20") == "None."
     with pytest.raises(SystemExit) as e:
         main([*argv, "2026-02-30"])
@@ -982,7 +975,7 @@ def test_log_from_the_earlier_code_works_everywhere(tmp_path, capsys):
     code, _ = run(["progress", "render", "--course", "demo-course", "--date", "2026-11-21"])
     assert code == 0
     page = (ws / "progress" / "demo-course.md").read_text(encoding="utf-8")
-    assert "| unit-01 | 0.50 → 0.50 | 0.00 | 0.50 → — | — |" in page.splitlines()
+    assert "| unit-01 | 50 → 50 | 0% | 50 → — | — |" in page.splitlines()
     code, _ = run(["progress", "log", "--unit", str(u), "--item", "ci-C", "--phase", "d7", "--score", "1",
                    "--confidence", "2", "--date", "2026-11-27"])
     assert code == 0

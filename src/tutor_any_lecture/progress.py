@@ -6,6 +6,8 @@ import dataclasses
 import json
 import sys
 from dataclasses import dataclass
+from functools import lru_cache
+from importlib import resources
 from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
@@ -13,33 +15,23 @@ from pathlib import Path
 from . import items as itembank
 from .items import ASSIGNED_PHASES, OPTIONAL_PHASES, find_item, load_items
 from .plan import load_plan, safe_name
-from .unit import UnitPaths
+from .unit import UnitPaths, find_unit
 
 PHASES = ("pre", "post", "d1", "d7", "d21", "practice")
 SCORES = (0, 0.5, 1)
 CONFIDENCES = (1, 2, 3)
 EXPOSURES = ("none", "attended", "watched", "unknown")
 
-# Phases shown on the page and in the headline, with their headline labels.
+# Phases shown on the page, in the sentence and in the chart.
 TRACKED_PHASES = ("pre", "post", "d7")
-HEADLINE_LABELS = {"pre": "pre", "post": "post", "d7": "day 7"}
 # Review phases: days after the post quiz is complete, and whether the review is optional.
 REVIEWS = (("d1", 1, True), ("d7", 7, False), ("d21", 21, True))
 # The optional d21 is no longer offered this many days after it is due.
 D21_LAPSE_DAYS = 14
 # The order of entries due on the same day: the post quiz first, then the reviews.
 DUE_ORDER = {"post": 0, **{phase: n for n, (phase, _, _) in enumerate(REVIEWS, start=1)}}
-STRIP_COLUMNS = 21
-PAIRED_NOTE = (
-    "Gain and retention compare only the concepts attempted in both phases, "
-    "and the means beside them are over those concepts."
-)
-STRIP_MARKS = (("pre", "○"), ("post", "●"), ("d7", "◆"))  # marks sharing a column stand side by side
-STRIP_LEGEND = "Each strip runs from 0 to 100 in 21 columns: ○ pre, ● post, ◆ day 7; marks of equal scores stand side by side."
-PARTIAL_NOTE = (
-    'A phase shown as "k of n" is partial: k of its n tracked concepts have an attempt so far, '
-    "and it stays out of every mean, gain and retention until the rest are answered."
-)
+# The page's language when neither the flag nor a unit's plan names one with a table.
+DEFAULT_LANGUAGE = "en"
 # How much of an item's prompt (and of the learner's answer) the confident-but-wrong list shows.
 PROMPT_SHOWN = 60
 
@@ -495,22 +487,194 @@ def confident_but_wrong(attempts) -> list[Attempt]:
     return [a for a in attempts if a.confidence == 3 and a.score == 0]
 
 
-def _fmt(x: float | None) -> str:
-    """Two decimals, half up; rounding to 6 decimals first keeps float noise from flipping a tie."""
-    if x is None:
-        return "—"
-    return str(Decimal(str(round(x, 6))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
-def _strip(pre: float | None, post: float | None, d7: float | None) -> str:
-    """A 21-cell 0-100 strip with ○ pre, ● post and ◆ d7; marks in one cell stand side by side."""
-    cells = [""] * STRIP_COLUMNS
-    values = {"pre": pre, "post": post, "d7": d7}
-    for phase, mark in STRIP_MARKS:
-        v = values[phase]
-        if v is not None:
-            cells[min(STRIP_COLUMNS - 1, max(0, int(round(v * 20, 6) + 0.5)))] += mark
-    return "".join(cell or "·" for cell in cells)
+# ---- the page ----------------------------------------------------------------
+
+
+@lru_cache(maxsize=None)
+def _tables() -> dict[str, dict[str, str]]:
+    """The page's fixed text by language, from data/progress_strings.json."""
+    text = resources.files("tutor_any_lecture").joinpath("data", "progress_strings.json").read_text(encoding="utf-8")
+    return json.loads(text)
+
+
+class _Text:
+    """The page's fixed text in one language; a key ending .one or .other is a plural pair."""
+
+    def __init__(self, lang: str) -> None:
+        self._table = _tables()[lang]
+
+    def __call__(self, key: str, **values) -> str:
+        return self._table[key].format(**values)
+
+    def plural(self, key: str, n: int) -> str:
+        return self(f"{key}.{'one' if n == 1 else 'other'}", n=n)
+
+    def phase(self, phase: str) -> str:
+        return self(f"phase.{phase}")
+
+
+def _language_key(code: str) -> str:
+    """``ZH-cn`` -> ``zh``, ``en_GB`` -> ``en``: stripped, lowercased, the part before the first - or _."""
+    return code.strip().lower().replace("_", "-").split("-")[0]
+
+
+def page_language(lang: str | None, attempts, plans) -> tuple[str, str | None]:
+    """The table the page is written from, and a notice when the language asked for has none.
+
+    The language is ``lang`` when given, else the note language of the newest unit with a
+    plan in ``plans`` (the newest: the unit whose first line comes last in the log), else
+    English. A language with no table gives English and the notice; no plan gives English
+    and no notice. Only ``.note_language`` of a plan is read.
+    """
+    if lang is None:
+        units = list(dict.fromkeys(a.unit for a in attempts))
+        lang = next((plans[u].note_language for u in reversed(units) if u in plans), None)
+        if lang is None:
+            return DEFAULT_LANGUAGE, None
+    key = _language_key(lang)
+    if key in _tables():
+        return key, None
+    return DEFAULT_LANGUAGE, f"no progress page text for language '{lang}'; the page is in English"
+
+
+def _whole(x: float) -> int:
+    """``x`` (0 to 1) on the 0 to 100 scale: times 100, halves away from zero.
+
+    Rounding to 6 decimals first keeps float noise from flipping a tie; int() turns -0 into 0.
+    """
+    return int((Decimal(str(round(x, 6))) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def _score(x: float | None) -> str:
+    return "—" if x is None else str(_whole(x))
+
+
+def _percent(x: float | None) -> str:
+    return "—" if x is None else f"{_whole(x)}%"
+
+
+def _cell(text: str) -> str:
+    """``text`` inside a Markdown table cell."""
+    return text.replace("|", "\\|")
+
+
+def _separator(header: str) -> str:
+    """The separator line under a Markdown table ``header``."""
+    return "|" + "---|" * (header.count("|") - 1)
+
+
+def _plans(workspace: Path, course: str, attempts) -> dict:
+    """The plan of every unit in the log that ``find_unit`` finds, by unit name."""
+    plans = {}
+    for unit in dict.fromkeys(a.unit for a in attempts):
+        found = find_unit(workspace, course, unit)
+        if found is not None:
+            plans[unit] = found[1]
+    return plans
+
+
+def concept_names(plan) -> dict[str, str]:
+    """Each concept id of ``plan``, in plan order, with the label it is shown by: its name
+    when that is a non-empty string (on one line), else its id. No plan: no names."""
+    names: dict[str, str] = {}
+    for c in getattr(plan, "concepts", None) or ():
+        if not isinstance(c, dict) or not isinstance(c.get("id"), str):
+            continue
+        name = c.get("name")
+        label = " ".join(name.split()) if isinstance(name, str) else ""
+        names.setdefault(c["id"], label or c["id"])
+    return names
+
+
+def tracked_units(attempts) -> list[str]:
+    """Every unit with an attempt in pre, post or d7, complete or not, in order of first appearance."""
+    return [u for u, phases in _phase_states(attempts).items() if any(p in phases for p in TRACKED_PHASES)]
+
+
+def concept_rows(attempts, unit: str, plan) -> list[tuple[str, dict[str, float]]]:
+    """Each concept of ``unit`` with an attempt in pre, post or d7: its label and the mean
+    of its attempts in each of those phases.
+
+    Concepts come in the plan's order, then the rest by id; the label is the plan's name,
+    else the id.
+    """
+    by_concept: dict[str, list[Attempt]] = {}
+    for a in attempts:
+        if a.unit == unit and a.phase in TRACKED_PHASES:
+            by_concept.setdefault(a.concept, []).append(a)
+    names = concept_names(plan)
+    order = [c for c in names if c in by_concept] + sorted(c for c in by_concept if c not in names)
+    return [(names.get(c, c), _phase_means(by_concept[c])) for c in order]
+
+
+def _sentence(t: _Text, tracked: list[str], scores, gains, retained) -> str:
+    """The page's conclusion: one sentence built from the numbers below it.
+
+    The gain clause covers pre and post, the retention clause post and day 7; each phase
+    neither covers gets the mean of its unit means. Clauses follow the first phase they cover.
+    """
+    if not tracked:
+        return t("nothing_yet")
+    clauses: list[tuple[int, str]] = []
+    covered: set[str] = set()
+    gain = normalized_gain(gains)
+    if gain is not None:
+        pre, post = _gain_means(gains)
+        clauses.append((0, t("gain_clause", pre=_score(pre), post=_score(post), gain=_percent(gain))))
+        covered |= {"pre", "post"}
+    kept = retention(retained)
+    if kept is not None:
+        clauses.append((1, t("retention_clause", retention=_percent(kept))))
+        covered |= {"post", "d7"}
+    for k, phase in enumerate(TRACKED_PHASES):
+        means = [scores[u][phase] for u in tracked if phase in scores.get(u, {})]
+        if means and phase not in covered:
+            clauses.append((k, t("average_clause", phase=t.phase(phase), mean=_score(_mean(means)))))
+    if not clauses:  # every phase is partial
+        return t("no_complete_phase")
+    clauses.sort(key=lambda clause: clause[0])
+    return t("sentence", opening=t.plural("opening", len(tracked)),
+             clauses=t("clause_sep").join(text for _, text in clauses))
+
+
+def _unit_row(t: _Text, unit: str, s: dict[str, float], states: dict[str, _PhaseState], gains, retained) -> str:
+    """One row of the units table: pre → post, gain, post → day 7, retention.
+
+    Where a unit has concepts attempted in both phases of a pair, the pair shows their means
+    and the gain or retention beside it is computed from them; otherwise each phase shows the
+    unit's mean over concepts (``unit_scores``), or ``partial`` for a partial phase, and the
+    gain or retention is missing.
+    """
+
+    def value(phase: str) -> str:
+        st = states.get(phase)
+        if st is not None and not st.complete:
+            return t("partial", k=st.answered, n=st.size)
+        return _score(s.get(phase))
+
+    if unit in gains:
+        pre_post = f"{_score(gains[unit]['pre'])} → {_score(gains[unit]['post'])}"
+        gain = normalized_gain({unit: gains[unit]})
+    else:
+        pre_post, gain = f"{value('pre')} → {value('post')}", None
+    if unit in retained:
+        post_d7 = f"{_score(retained[unit]['post'])} → {_score(retained[unit]['d7'])}"
+        kept = retention({unit: retained[unit]})
+    else:
+        post_d7, kept = f"{value('post')} → {value('d7')}", None
+    cells = [_cell(unit), pre_post, _percent(gain), post_d7, _percent(kept)]
+    return "| " + " | ".join(cells) + " |"
+
+
+def _concept_table(t: _Text, rows: list[tuple[str, dict[str, float]]]) -> str:
+    header = t("concepts_header")
+    lines = [header, _separator(header)]
+    for label, means in rows:
+        cells = [_cell(label), *(_score(means.get(p)) for p in TRACKED_PHASES)]
+        lines.append("| " + " | ".join(cells) + " |")
+    return "\n".join(lines)
 
 
 def _prompt_start(prompt: str) -> str:
@@ -523,141 +687,72 @@ def _prompt_start(prompt: str) -> str:
     return (head[:cut] if cut > 0 else text[:PROMPT_SHOWN]).rstrip() + "…"
 
 
-def _wrong_line(a: Attempt) -> str:
-    prompt = f' "{_prompt_start(a.prompt)}"' if a.prompt else ""
-    answer = f'; answered "{_prompt_start(a.answer)}"' if a.answer and a.answer.strip() else ""
-    return f"- {a.unit}: {a.item_id} ({a.concept}){prompt}, {a.phase}, {a.citation}{answer}"
+def _wrong_line(t: _Text, a: Attempt, names: dict[str, dict[str, str]]) -> str:
+    prompt = t("wrong_prompt", text=_prompt_start(a.prompt)) if a.prompt else ""
+    answer = t("wrong_answer", text=_prompt_start(a.answer)) if a.answer and a.answer.strip() else ""
+    concept = names.get(a.unit, {}).get(a.concept, a.concept)
+    line = t("wrong_line", unit=a.unit, item=a.item_id, concept=concept, prompt=prompt,
+             phase=t.phase(a.phase), citation=a.citation)
+    return line + answer
 
 
-def _fence(lines: list[str]) -> str:
-    return "\n".join(["```text", *lines, "```"])
-
-
-def _headline(scores: dict[str, dict[str, float]], tracked: list[str], gains, retained) -> str:
-    """One line. The gain stands beside the pre and post means it was computed from, the
-    retention beside its post and day-7 means; a phase in neither shows the mean of every attempt.
-    """
-    if not tracked:
-        return "No tracked attempts yet."
-    # Only units with a complete phase have means; the others show "k of n" in the table.
-    tracked = [u for u in tracked if any(p in scores.get(u, {}) for p in TRACKED_PHASES)]
-    if not tracked:
-        return "No complete phase yet."
-    segments: list[tuple[int, str]] = []  # (index of the first phase, text), joined in phase order
-    covered: set[str] = set()
-    gain_means = _gain_means(gains)
-    if gain_means is not None:
-        pre, post = gain_means
-        segments.append((0, f"pre {_fmt(pre)} → post {_fmt(post)}, normalized gain {_fmt(normalized_gain(gains))}"))
-        covered |= {"pre", "post"}
-    retention_means = _retention_means(retained)
-    if retention_means is not None:
-        post, d7 = retention_means
-        segments.append((1, f"post {_fmt(post)} → day 7 {_fmt(d7)}, retention {_fmt(retention(retained))}"))
-        covered |= {"post", "d7"}
-    raw = []
-    for k, phase in enumerate(TRACKED_PHASES):
-        means = [scores[u][phase] for u in tracked if phase in scores[u]]
-        if means and phase not in covered:
-            raw.append((k, f"{HEADLINE_LABELS[phase]} {_fmt(_mean(means))}"))
-    if raw:
-        segments.append((raw[0][0], " → ".join(text for _, text in raw)))
-    segments.sort(key=lambda seg: seg[0])
-    return f"Across {len(tracked)} units: " + "; ".join(text for _, text in segments) + "."
-
-
-def _pair(first: float | None, second: float | None) -> str:
-    return f"{_fmt(first)} → {_fmt(second)}"
-
-
-def _unit_row(unit: str, s: dict[str, float], states: dict[str, _PhaseState], gains, retained) -> str:
-    """One table row: pre → post, gain, post → day 7, retention.
-
-    Where a unit has concepts attempted in both phases of a pair, the pair shows their means
-    and the gain or retention beside it is computed from them; otherwise it shows the mean of
-    every attempt in each phase, or "k of n" for a partial phase, and the gain or retention
-    is missing.
-    """
-
-    def value(phase: str) -> str:
-        st = states.get(phase)
-        if st is not None and not st.complete:
-            return f"{st.answered} of {st.size}"
-        return _fmt(s.get(phase))
-
-    if unit in gains:
-        pre_post = _pair(gains[unit]["pre"], gains[unit]["post"])
-        gain = normalized_gain({unit: gains[unit]})
-    else:
-        pre_post, gain = f"{value('pre')} → {value('post')}", None
-    if unit in retained:
-        post_d7 = _pair(retained[unit]["post"], retained[unit]["d7"])
-        ret = retention({unit: retained[unit]})
-    else:
-        post_d7, ret = f"{value('post')} → {value('d7')}", None
-    cells = [unit.replace("|", "\\|"), pre_post, _fmt(gain), post_d7, _fmt(ret)]
-    return "| " + " | ".join(cells) + " |"
-
-
-def _concept_lines(attempts, unit: str) -> list[str]:
-    by_concept: dict[str, list[Attempt]] = {}
-    for a in attempts:
-        if a.unit == unit and a.phase in TRACKED_PHASES:
-            by_concept.setdefault(a.concept, []).append(a)
-    lines = []
-    for concept in sorted(by_concept):
-        means = _phase_means(by_concept[concept])
-        lines.append(f"{_strip(means.get('pre'), means.get('post'), means.get('d7'))}  {concept}")
-    return lines
-
-
-def _due_line(e: dict) -> str:
-    line = f"- {e['unit']}: {e['phase']}{' (optional)' if e['optional'] else ''}, due {e['due']}"
+def _due_line(t: _Text, e: dict) -> str:
+    line = t("due_line", unit=e["unit"], phase=t.phase(e["phase"]),
+             optional=t("optional") if e["optional"] else "", date=e["due"])
     if e["remaining"] is not None:
-        line += f", {e['answered']} of {e['answered'] + len(e['remaining'])} answered"
+        line += t("due_partial", k=e["answered"], n=e["answered"] + len(e["remaining"]))
     return line
 
 
-def render_progress(course: str, workspace: Path, today: date) -> Path:
+def render_progress(course: str, workspace: Path, today: date, lang: str | None = None,
+                    notices: list[str] | None = None) -> Path:
     """Write the progress page ``<workspace>/progress/<course>.md`` and return its path.
 
+    The page's language is ``lang``, else the newest unit's note language, else English
+    (``page_language``); with ``notices`` a list, the fallback notice is appended to it.
     A course with no log raises FileNotFoundError and writes nothing.
     """
     if not _course_file(workspace, course, ".jsonl").exists():
         raise FileNotFoundError(f"no progress log for course '{course}'")
-    attempts = load_attempts(course, workspace)
+    attempts = load_attempts(course, workspace)  # once, so each skipped line warns once
+    plans = _plans(workspace, course, attempts)
+    key, notice = page_language(lang, attempts, plans)
+    if notice is not None and notices is not None:
+        notices.append(notice)
+    t = _Text(key)
+    names = {unit: concept_names(plan) for unit, plan in plans.items()}
+
     scores = unit_scores(attempts)
     gains = paired_scores(attempts, "pre", "post")
     retained = paired_scores(attempts, "post", "d7")
     states = _phase_states(attempts)
-    # Every unit with an attempt in pre, post or d7, complete or not, in order of first appearance.
-    tracked = [u for u, phases in states.items() if any(p in phases for p in TRACKED_PHASES)]
+    tracked = tracked_units(attempts)
+    rows_by_unit = {u: concept_rows(attempts, u, plans.get(u)) for u in tracked}
+    page = _course_file(workspace, course, ".md")
+    chart = page.with_suffix(".svg")
 
-    blocks = [f"# Progress — {course}", _headline(scores, tracked, gains, retained)]
+    blocks = [f"# {t('title', course=course)}", _sentence(t, tracked, scores, gains, retained)]
     if tracked:
-        table = ["| unit | pre → post | gain | post → day 7 | retention |", "|---|---|---|---|---|"]
-        table += [_unit_row(u, scores.get(u, {}), states[u], gains, retained) for u in tracked]
-        # A partial phase has no score, so its mark is left out of the strip.
-        strips = [f"{_strip(*(scores.get(u, {}).get(p) for p in TRACKED_PHASES))}  {u}" for u in tracked]
+        header = t("units_header")
+        table = [header, _separator(header)]
+        table += [_unit_row(t, u, scores.get(u, {}), states[u], gains, retained) for u in tracked]
         partial = any(_partial(states, u, p) for u in tracked for p in TRACKED_PHASES)
         blocks += [
-            "## Units",
+            f"![{t('chart_alt')}](<{chart.name}>)",
+            f"## {t('units_heading')}",
             "\n".join(table),
-            PAIRED_NOTE,
-            *([PARTIAL_NOTE] if partial else []),
-            STRIP_LEGEND,
-            _fence(strips),
-            "## By concept",
+            t("scale_note"),
+            *([t("partial_note")] if partial else []),
+            f"## {t('concepts_heading')}",
         ]
         for u in tracked:
-            blocks += [f"### {u}", _fence(_concept_lines(attempts, u))]
+            blocks += [f"### {u}", _concept_table(t, rows_by_unit[u])]
 
-    due_lines = [_due_line(e) for e in due(attempts, today)]
-    blocks += ["## Due today", "\n".join(due_lines) or "None."]
-    wrong_lines = [_wrong_line(a) for a in confident_but_wrong(attempts)]
-    blocks += ["## Confident but wrong", "\n".join(wrong_lines) or "None."]
+    due_lines = [_due_line(t, e) for e in due(attempts, today)]
+    blocks += [f"## {t('due_heading')}", "\n".join(due_lines) or t("none")]
+    wrong_lines = [_wrong_line(t, a, names) for a in confident_but_wrong(attempts)]
+    blocks += [f"## {t('wrong_heading')}", "\n".join(wrong_lines) or t("none")]
 
-    path = _course_file(workspace, course, ".md")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n\n".join(blocks) + "\n", encoding="utf-8", newline="\n")
-    return path
+    page.parent.mkdir(parents=True, exist_ok=True)
+    page.write_text("\n\n".join(blocks) + "\n", encoding="utf-8", newline="\n")
+    return page
