@@ -4,7 +4,18 @@ from pathlib import Path
 
 import pytest
 
-from tutor_any_lecture.textstats import char_jaccard, containment, ngrams, units, unsegmented
+from tutor_any_lecture.textstats import (
+    CJK_CLASS,
+    CJK_RE,
+    char_jaccard,
+    cjk_runs,
+    cjk_script,
+    containment,
+    ngrams,
+    units,
+    unsegmented,
+    unspaced,
+)
 
 # synthetic: "compound interest is interest that comes from interest"
 THAI = "ดอกเบี้ยทบต้นคือดอกเบี้ยที่เกิดจากดอกเบี้ย"
@@ -74,3 +85,55 @@ def test_no_cross_module_private_imports():
 ])
 def test_scripts_the_checks_cannot_split(text, expected):
     assert unsegmented(text) is expected
+
+
+@pytest.mark.parametrize("ch, script", [
+    ("布", "han"),
+    ("\U0002000B", "han"),  # 𠀋, beyond U+FFFF
+    ("﨑", "han"),  # 﨑, a compatibility ideograph
+    ("々", "han"),
+    ("〇", "han"),
+    ("ひ", "hiragana"),
+    ("ー", "katakana"),
+    ("ｶ", "katakana"),  # ｶ, halfwidth
+    ("한", "hangul"),
+    ("・", None),
+    ("、", None),
+    ("A", None),
+    ("1", None),
+])
+def test_one_table_of_cjk_ranges(ch, script):
+    assert cjk_script(ch) == script
+    assert CJK_RE.pattern == "[" + CJK_CLASS + "]"
+    assert units("人々は〇", "ja") == 4
+    assert units("𠀋﨑", "zh") == 2
+
+
+def test_unspaced_scripts():
+    assert all(unspaced(ch) for ch in ("漢", "か", "カ", "，", "。", "３"))
+    assert not any(unspaced(ch) for ch in ("한", "A", "1", " "))
+
+
+def test_cjk_ranges_are_defined_once():
+    package = Path(__file__).resolve().parents[1] / "src" / "tutor_any_lecture"
+    files = [f for f in sorted(package.rglob("*.py")) if f.name != "textstats.py"]
+    assert files
+    pattern = re.compile(r"(?i)0x0*(3040|3400|4e00|ac00)\b|\\u(3040|3400|4e00|ac00)|[぀㐀一가]-")
+    offenders = [
+        f"{f.name}:{n}"
+        for f in files
+        for n, line in enumerate(f.read_text(encoding="utf-8").split("\n"), 1)
+        if pattern.search(line)
+    ]
+    assert offenders == []
+
+
+def test_cjk_runs_split_at_script_changes():
+    assert cjk_runs("確率過程の定義 GBM2") == [("確率過程", "han"), ("の", "hiragana"), ("定義", "han"), ("GBM", None)]
+    assert cjk_runs("확률과정은 시간에") == [("확률과정은", "hangul"), ("시간에", "hangul")]
+
+
+def test_korean_is_counted_in_syllables():
+    assert units("확률과정은 시간에 따라", "ko") == 10
+    assert cjk_script("한") == "hangul"
+    assert unspaced("한") is False

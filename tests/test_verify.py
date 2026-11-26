@@ -896,3 +896,13 @@ def test_measures_line_says_n_a_without_prose():
     line = format_measures(measure_note("## A\n\nplain words\n", "zh", "deep", 90.0, "en"))
     assert "quote ratio n/a (0.4-1.2)" in line
     assert "None" not in line
+
+
+def test_quotes_with_newly_counted_cjk_characters_are_found(tmp_path):
+    u = copy_fixture("ok", tmp_path)
+    set_languages(u, "ja", "ja")
+    add_segment(u, 178.0, 180.0, "人々は〇から複利を学ぶ。")
+    append_to_note(u, "\n\n講師は「人々は〇から複利を学ぶ」と述べる (2:59)。\n")
+    r = run_verify(u)
+    assert [c["name"] for c in r["checks"] if c["status"] == "FAIL"] == []
+    assert quote_source_details(r) == []

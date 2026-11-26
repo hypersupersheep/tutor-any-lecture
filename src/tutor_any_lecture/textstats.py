@@ -9,7 +9,21 @@ import re
 import unicodedata
 
 CJK_LANGS = {"zh", "ja", "ko"}
-CJK_RE = re.compile(r"[㐀-䶿一-鿿぀-ヿ가-힯]")
+# The one table of CJK code points: script name -> inclusive ranges. Every module reads it.
+CJK_SCRIPTS: dict[str, tuple[tuple[int, int], ...]] = {
+    # 々 〆 〇, Extension A, the Unified Ideographs, the compatibility ideographs, planes 2 and 3
+    "han": ((0x3005, 0x3007), (0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xF900, 0xFAFF), (0x20000, 0x3FFFF)),
+    "hiragana": ((0x3040, 0x309F),),
+    # katakana, its phonetic extensions, the halfwidth forms
+    "katakana": ((0x30A0, 0x30FF), (0x31F0, 0x31FF), (0xFF66, 0xFF9F)),
+    "hangul": ((0xAC00, 0xD7AF),),
+}
+# The body of a regex character class over every range, so verify can build on CJK_RE.pattern.
+CJK_CLASS = "".join(f"\\U{lo:08X}-\\U{hi:08X}" for ranges in CJK_SCRIPTS.values() for lo, hi in ranges)
+CJK_RE = re.compile("[" + CJK_CLASS + "]")
+# Written without spaces between words: these scripts, CJK punctuation and the fullwidth forms.
+UNSPACED_SCRIPTS = frozenset({"han", "hiragana", "katakana"})
+UNSPACED_RANGES = ((0x3001, 0x303F), (0xFF01, 0xFF65))
 WORD_RE = re.compile(r"[^\W_]+(?:['’-][^\W_]+)*")
 ALNUM_RE = re.compile(r"[^\W_]")
 
@@ -39,6 +53,56 @@ def is_cjk_language(lang: str) -> bool:
     """True when the primary subtag of `lang` is zh, ja or ko ("zh-CN" yes, "auto" no)."""
     primary = re.split(r"[-_]", (lang or "").lower(), maxsplit=1)[0]
     return primary in CJK_LANGS
+
+
+def cjk_range_script(ch: str) -> str | None:
+    """The script of ``CJK_SCRIPTS`` whose range holds ``ch``, whatever its category."""
+    cp = ord(ch)
+    for script, ranges in CJK_SCRIPTS.items():
+        if any(lo <= cp <= hi for lo, hi in ranges):
+            return script
+    return None
+
+
+def cjk_script(ch: str) -> str | None:
+    """The CJK script of ``ch``; None outside the ranges and for punctuation (``・``, ``゠``)."""
+    if unicodedata.category(ch).startswith("P"):
+        return None
+    return cjk_range_script(ch)
+
+
+def unspaced(ch: str) -> bool:
+    """True for a character of a script written without spaces: Han and kana (any category),
+    CJK punctuation (U+3001 to U+303F) and the fullwidth forms (U+FF01 to U+FF65).
+    Hangul is not unspaced: Korean puts spaces between words."""
+    cp = ord(ch)
+    return cjk_range_script(ch) in UNSPACED_SCRIPTS or any(lo <= cp <= hi for lo, hi in UNSPACED_RANGES)
+
+
+def cjk_runs(text: str) -> list[tuple[str, str | None]]:
+    """The maximal runs of letters, in order, each with its script.
+
+    A CJK letter is a character ``cjk_script`` names; any other alphabetic character is a
+    letter of script None. Digits, punctuation and spaces end a run, and so does a change of
+    script, including one between han, hiragana and katakana.
+    """
+    runs: list[tuple[str, str | None]] = []
+    current: list[str] = []
+    current_script: str | None = None
+    for ch in text:
+        script = cjk_script(ch)
+        if script is not None or ch.isalpha():
+            if current and script != current_script:
+                runs.append(("".join(current), current_script))
+                current = []
+            current.append(ch)
+            current_script = script
+        elif current:
+            runs.append(("".join(current), current_script))
+            current = []
+    if current:
+        runs.append(("".join(current), current_script))
+    return runs
 
 
 def unsegmented(text: str) -> bool:

@@ -12,11 +12,11 @@ import unicodedata
 from pathlib import Path
 
 from .slides import Page, load_pages, term_list
+from .textstats import cjk_runs, cjk_script
 from .transcript import Transcript
 from .unit import UnitPaths
 
 THRESHOLD = 0.8
-CJK_RANGES = ((0x3040, 0x30FF), (0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xAC00, 0xD7AF))
 # Word endings cut off to find a plain inflection of a slide term ("payments", "included").
 INFLECTION_ENDINGS = ("ing", "ed", "es", "s", "e", "d")
 
@@ -27,38 +27,11 @@ def norm(s: str) -> str:
     return "".join(c for c in decomposed if unicodedata.combining(c) == 0).casefold()
 
 
-def _is_cjk(c: str) -> bool:
-    cp = ord(c)
-    return any(lo <= cp <= hi for lo, hi in CJK_RANGES)
-
-
 def _tokens(text: str) -> list[str]:
-    """Latin words and CJK 2-4-grams, in order of occurrence.
-
-    A run is a maximal stretch of letters of one script (CJK or not). Digits,
-    punctuation and whitespace end a run, and so does a change of script.
-    Punctuation inside the CJK ranges (U+30FB "・", U+30A0 "゠") ends a run too.
-    """
-    runs: list[tuple[str, bool]] = []
-    current: list[str] = []
-    current_cjk = False
-    for c in text:
-        cjk = _is_cjk(c) and not unicodedata.category(c).startswith("P")
-        if cjk or c.isalpha():
-            if current and cjk != current_cjk:
-                runs.append(("".join(current), current_cjk))
-                current = []
-            current.append(c)
-            current_cjk = cjk
-        elif current:
-            runs.append(("".join(current), current_cjk))
-            current = []
-    if current:
-        runs.append(("".join(current), current_cjk))
-
+    """Latin words and CJK 2-4-grams, in order of occurrence, from the runs of ``cjk_runs``."""
     tokens: list[str] = []
-    for run, cjk in runs:
-        if not cjk:
+    for run, script in cjk_runs(text):
+        if script is None:
             tokens.append(run)
             continue
         for start in range(len(run)):
@@ -133,7 +106,7 @@ def flag_suspects(transcript: Transcript, pages: list[Page], lang: str) -> list[
             if hit is None:
                 continue
             # Decided by the token as heard: a CJK n-gram has no inflections.
-            if not _is_cjk(token[0]) and _stems(key) & term_stems:
+            if cjk_script(token[0]) is None and _stems(key) & term_stems:
                 continue
             reported.add(key)
             found.append({"time": float(segment.start), "heard": token, "nearest": hit[0], "ratio": round(hit[1], 3)})
