@@ -168,7 +168,7 @@ def test_terms_numbers_and_banned_phrases_warn(tmp_path):
     assert entry(r, "terms") == {"name": "terms", "status": "WARN", "details": [
         "not in the transcript or slides: Monte Carlo", "not in the transcript or slides: GBM"]}
     assert entry(r, "numbers") == {"name": "numbers", "status": "WARN", "details": [
-        "in the note, not in the sources: 3days"]}
+        "in the note, not in the sources: 3 days"]}
     assert entry(r, "banned_phrases") == {"name": "banned_phrases", "status": "WARN", "details": [
         "banned phrase: tapestry"]}
 
@@ -422,7 +422,7 @@ def test_numbers_ignore_marker_sections_and_notes(tmp_path):
     )
     assert entry(run_verify(u), "numbers") == before
     append_to_note(u, "\nOver 3 years the gap grows (slide 1).\n")
-    assert "in the note, not in the sources: 3years" in entry(run_verify(u), "numbers")["details"]
+    assert "in the note, not in the sources: 3 years" in entry(run_verify(u), "numbers")["details"]
 
 
 def test_terms_ignore_marker_sections(tmp_path):
@@ -762,3 +762,34 @@ def test_other_language_notes_get_no_false_fail(tmp_path, language, segment, sen
     assert [c["name"] for c in r["checks"] if c["status"] == "FAIL"] == []
     assert r["overall"] != "FAIL"
     assert quote_source_details(r) == []
+
+
+# ---------------------------------------------------------------- numbers across widths and languages
+
+
+def test_numbers_match_across_widths_and_languages(tmp_path):
+    u = copy_fixture("ok", tmp_path)
+    add_segment(u, 170.0, 175.0, "A rate of 3% for 5 years, then 3 months more.")
+    append_to_note(u, "\n\n利率是３％，存5年，再存3个月 (2:52).\n")
+    assert entry(run_verify(u), "numbers") == {"name": "numbers", "status": "PASS", "details": []}
+
+
+def test_chinese_percent_and_cjk_units(tmp_path):
+    u = copy_fixture("ok", tmp_path)
+    add_segment(u, 170.0, 175.0, "That is 5 percent a year.")
+    append_to_note(u, "\n\n百分之5的利率，等了10年 (2:52).\n")
+    assert entry(run_verify(u), "numbers") == {
+        "name": "numbers", "status": "WARN", "details": ["in the note, not in the sources: 10年"]}
+
+
+def test_calendar_years_ordinals_and_month_names_are_not_numbers(tmp_path):
+    u = copy_fixture("ok", tmp_path)
+    append_to_note(u, "\n\n2008年的危机在第3周讲到，3月开始 (slide 1).\n")
+    assert entry(run_verify(u), "numbers") == {"name": "numbers", "status": "PASS", "details": []}
+
+
+def test_numbers_are_shown_as_written(tmp_path):
+    u = copy_fixture("ok", tmp_path)
+    append_to_note(u, "\n\nIt took 20  years (slide 1).\n")
+    assert entry(run_verify(u), "numbers") == {
+        "name": "numbers", "status": "WARN", "details": ["in the note, not in the sources: 20 years"]}

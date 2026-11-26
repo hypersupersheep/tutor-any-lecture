@@ -101,11 +101,35 @@ SPEECH_WORDS = (
 )
 LECTURER_WORDS = (("lecturer", "professor", "teacher", "instructor"), ("讲师", "老师", "教授"))
 
-# numbers: a quantity with a unit, or a currency sign and the first digit after it.
+# numbers, read after NFKC: ASCII digits with an optional decimal part, optional spaces or
+# tabs, then a unit; or 百分之 before the number (a percent); or a currency sign and the
+# first digit after it. A number is compared by its key: the number as written plus the
+# unit's key. English forms ignore case and end at a word boundary; the rest are as written.
+NUMBER_UNITS = {
+    "%": ("%", "percent"),
+    "bp": ("bp", "bps", "基点"),
+    "year": ("year", "years", "年", "년"),
+    "month": ("month", "months", "个月", "個月", "ヶ月", "か月", "カ月", "개월"),
+    "week": ("week", "weeks", "周", "週", "星期", "个星期", "個星期", "週間"),
+    "day": ("day", "days", "天", "日間"),
+    "hour": ("hour", "hours", "小时", "小時", "个小时", "個小時", "時間", "시간"),
+    "minute": ("minute", "minutes", "分钟", "分鐘", "分間"),
+}
+_UNIT_KEY = {form: key for key, forms in NUMBER_UNITS.items() for form in forms}
+_UNIT_FORMS_RE = "|".join(
+    re.escape(form) + (r"\b" if form.isascii() and form.isalpha() else "")
+    for form in sorted(_UNIT_KEY, key=len, reverse=True)  # longest first: 个星期 before 星期
+)
+_NUMBER = r"[0-9]+(?:\.[0-9]+)?"
 NUMBER_RE = re.compile(
-    r"\d+(?:\.\d+)?\s?(?:%|(?:percent|bps?|years?|months?|weeks?|days?|hours?|minutes?)\b)|[£$€¥]\s?\d",
+    rf"百分之(?P<percent_of>{_NUMBER})"
+    rf"|(?<![0-9])(?P<number>{_NUMBER})[ \t]*(?P<unit>{_UNIT_FORMS_RE})"
+    r"|[£$€¥]\s?\d",
     re.IGNORECASE,
 )
+# Not numbers: a calendar year (1000 to 2999 before 年 or 년) and an ordinal (right after 第).
+CALENDAR_YEAR_UNITS = ("年", "년")
+ORDINAL_PREFIX = "第"
 
 
 # ---------------------------------------------------------------- text views
@@ -528,14 +552,35 @@ def _check_terms(note_text: str, sources: str, lang: str) -> dict:
     return _entry("terms", "WARN" if details else "PASS", details)
 
 
-def _numbers(text: str) -> list[str]:
-    return _dedupe(["".join(m.group().lower().split()) for m in NUMBER_RE.finditer(text)])
+def _is_calendar_year(number: str, unit: str) -> bool:
+    return unit in CALENDAR_YEAR_UNITS and number.isdigit() and len(number) == 4 and 1000 <= int(number) <= 2999
+
+
+def _numbers(text: str) -> dict[str, str]:
+    """Each number's key, in order of first use, with its first match as written: after
+    NFKC, each run of whitespace one space."""
+    text = unicodedata.normalize("NFKC", text)
+    found: dict[str, str] = {}
+    for m in NUMBER_RE.finditer(text):
+        if m.group("percent_of") is not None:
+            key = m.group("percent_of") + "%"
+        elif m.group("number") is not None:
+            number, unit = m.group("number"), m.group("unit")
+            if _is_calendar_year(number, unit) or text[: m.start()].endswith(ORDINAL_PREFIX):
+                continue
+            key = number + _UNIT_KEY[unit.lower()]
+        else:
+            key = "".join(m.group().split())
+        found.setdefault(key, " ".join(m.group().split()))
+    return found
 
 
 def _check_numbers(note_text: str, sources: str) -> dict:
+    """WARN: numbers with a unit or a currency sign on one side only, compared by key and
+    shown as written."""
     in_note, in_sources = _numbers(note_text), _numbers(sources)
-    details = [f"in the sources, not in the note: {n}" for n in in_sources if n not in in_note]
-    details += [f"in the note, not in the sources: {n}" for n in in_note if n not in in_sources]
+    details = [f"in the sources, not in the note: {shown}" for key, shown in in_sources.items() if key not in in_note]
+    details += [f"in the note, not in the sources: {shown}" for key, shown in in_note.items() if key not in in_sources]
     return _entry("numbers", "WARN" if details else "PASS", details)
 
 
