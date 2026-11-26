@@ -155,7 +155,8 @@ def test_profile_accepts_every_platform_key(tmp_cfg):
     from tutor_any_lecture.profile import set_value
 
     assert PLATFORM_KEYS == (
-        "blackboard", "brightspace", "canvas", "echo360", "kaltura", "moodle", "panopto", "teams", "zoom"
+        "blackboard", "brightspace", "canvas", "chaoxing", "coursera", "echo360", "edx", "icourse163", "kaltura",
+        "moodle", "panopto", "teams", "xuetangx", "yuketang", "zoom"
     )
     profile = set_value("platforms", "{" + ", ".join(f"{k}: https://{k}.example.org" for k in PLATFORM_KEYS) + "}")
     assert profile.platforms == {k: f"https://{k}.example.org" for k in PLATFORM_KEYS}
@@ -172,7 +173,8 @@ def test_an_unknown_platform_names_the_allowed_keys(tmp_cfg):
 # ---- A7. each new adapter fills the template the same way ----
 
 LMS = {"canvas", "blackboard", "brightspace"}
-VIDEO = {"echo360", "kaltura", "zoom"}
+COURSE_SITES = ("coursera", "edx", "icourse163", "xuetangx", "yuketang", "chaoxing")
+VIDEO = {"echo360", "kaltura", "zoom"} | set(COURSE_SITES)
 MEETING = {"zoom", "teams"}
 DOES_NOT_DOWNLOAD = (
     "This adapter does not download the recording; it reads a caption or transcript file the platform lets the "
@@ -262,6 +264,44 @@ def test_learning_platforms_hand_over_slides_and_recordings():
         assert "slides --pdf F --unit DIR" in text, stem
         for link in ("panopto.md", "echo360.md", "kaltura.md", "zoom.md"):
             assert f"({link})" in text, (stem, link)
+
+
+# ---- B2. the course sites ----
+
+CHINESE_FIRST = {
+    "icourse163": "Adapter: 中国大学MOOC (icourse163).",
+    "xuetangx": "Adapter: 学堂在线 (xuetangx).",
+    "yuketang": "Adapter: 雨课堂 (yuketang).",
+    "chaoxing": "Adapter: 学习通 (chaoxing).",
+}
+FIXED_ADDRESS = (
+    "A site whose address is the same for everyone writes it in full; its `platforms` value is optional and, "
+    "when set, replaces that address."
+)
+
+
+def test_course_sites_have_adapters():
+    for stem in COURSE_SITES:
+        assert (ADAPTERS / f"{stem}.md").is_file(), stem
+        assert stem in PLATFORM_KEYS, stem
+
+
+def test_chinese_platform_adapters_name_both_names():
+    for stem, expected in CHINESE_FIRST.items():
+        first = adapter(stem).splitlines()[0]
+        # up to and including the first full stop that is followed by a space
+        assert first[: first.index(". ") + 1] == expected, stem
+
+
+@pytest.mark.parametrize("path", new_adapters(), ids=lambda p: p.name)
+def test_url_patterns_name_a_placeholder_or_the_vendor_site(path):
+    patterns = h2_section(read(path), "URL patterns")
+    assert f"<{path.stem}_url>" in patterns or "https://" in patterns
+    assert "<course_id>" not in patterns
+
+
+def test_template_says_a_fixed_address_is_written_in_full():
+    assert FIXED_ADDRESS in before_first_h2(read(TEMPLATE))
 
 
 # ---- A12. the documents point to the new adapters ----
