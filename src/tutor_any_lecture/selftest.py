@@ -10,7 +10,6 @@ installed wheel on a fresh machine.
 
 from __future__ import annotations
 
-import json
 import tempfile
 from importlib import resources
 from pathlib import Path
@@ -18,8 +17,8 @@ from shutil import rmtree
 
 from .acquire.importer import import_transcript
 from .cards import export_tsv
-from .conceptmap import load_map, to_mermaid
-from .items import assign_variants, load_items
+from .conceptmap import export_mermaid
+from .items import assign_unit
 from .plan import load_plan
 from .slides import extract_pdf
 from .unit import UnitPaths
@@ -61,13 +60,13 @@ def _copy_sample(files: dict[str, bytes], unit: Path) -> None:
 
 
 def _run_steps(unit: Path) -> list[dict]:
-    """Run the six steps in order and stop at the first one that fails."""
+    """Run the six steps in order and stop at the first one that fails. "items assign" and
+    "map mermaid" call the functions behind those commands, so the map is validated too."""
     paths = UnitPaths(unit)
-    state: dict = {}
 
     def import_step() -> tuple[bool, str]:
-        # The plan is loaded once, here, and reused by "items assign".
-        state["plan"] = plan = load_plan(paths.plan)
+        # The lecture length for the transcript's health comes from plan.json.
+        plan = load_plan(paths.plan)
         h = import_transcript(unit / "sources" / "lecture.vtt", unit, float(plan.duration_s), False)
         verdict = "healthy" if h.ok else "unhealthy"
         return h.ok, f"transcript {verdict} (coverage {h.coverage:.2f}, repetition {h.repetition:.2f})"
@@ -77,11 +76,7 @@ def _run_steps(unit: Path) -> list[dict]:
         return bool(pages), f"{len(pages)} pages"
 
     def assign_step() -> tuple[bool, str]:
-        plan = state["plan"]
-        obj = assign_variants(load_items(paths.items), f"{plan.course}|{plan.unit}")
-        paths.assignment.write_text(
-            json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n"
-        )
+        assign_unit(unit, False)
         return paths.assignment.is_file(), paths.assignment.name
 
     def cards_step() -> tuple[bool, str]:
@@ -89,8 +84,10 @@ def _run_steps(unit: Path) -> list[dict]:
         return path.exists(), path.name
 
     def map_step() -> tuple[bool, str]:
-        paths.mermaid.write_text(to_mermaid(load_map(paths.map)), encoding="utf-8", newline="\n")
-        return paths.mermaid.is_file(), paths.mermaid.name
+        # One file (no views, or one view) or one per view; a failing map raises MapInvalid.
+        written = export_mermaid(unit)
+        written = written if isinstance(written, list) else [written]
+        return all(path.is_file() for path in written), ", ".join(path.name for path in written)
 
     def verify_step() -> tuple[bool, str]:
         result = run_verify(unit)

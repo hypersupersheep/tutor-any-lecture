@@ -536,6 +536,45 @@ def test_selftest_ignores_cleanup_errors(monkeypatch):
     assert [s["name"] for s in result["steps"]] == STEP_NAMES
 
 
+
+# ---- the steps call the commands' own functions (Task 9b) ----
+
+
+def test_selftest_uses_the_commands_functions(monkeypatch, tmp_path):
+    calls: dict[str, list] = {"assign_unit": [], "export_mermaid": []}
+    for name in calls:
+        real = getattr(selftest, name)
+
+        def wrapper(unit, *args, _real=real, _name=name, **kwargs):
+            calls[_name].append(unit)
+            return _real(unit, *args, **kwargs)
+
+        monkeypatch.setattr(f"tutor_any_lecture.selftest.{name}", wrapper)
+    unit = tmp_path / "unit"
+    result = run_selftest(unit)
+    assert result["ok"] is True
+    assert calls == {"assign_unit": [unit], "export_mermaid": [unit]}
+    details = {s["name"]: s["detail"] for s in result["steps"]}
+    # The English sample's map has no views, so the whole map goes to overview.mmd.
+    assert (details["items assign"], details["map mermaid"]) == ("assignment.json", "overview.mmd")
+
+
+def test_selftest_map_step_validates_the_map(monkeypatch, tmp_path):
+    real = selftest._read_sample
+
+    def broken_map(*args, **kwargs):
+        files = real(*args, **kwargs)
+        m = json.loads(files["map.json"].decode("utf-8"))
+        m["edges"][0]["verb"] = ""
+        files["map.json"] = (json.dumps(m, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+        return files
+
+    monkeypatch.setattr("tutor_any_lecture.selftest._read_sample", broken_map)
+    result = run_selftest(tmp_path / "unit")
+    assert result["steps"][-1] == {"name": "map mermaid", "ok": False, "detail": "MapInvalid: map.json failed validation"}
+    assert result["ok"] is False
+
+
 # ---- the doctor line ----
 
 
