@@ -1,9 +1,12 @@
 """The concept map: the map.json schema, its checks and the Mermaid export.
 
-map.json is ``{"nodes": [{"id", "label", "type", "order"?, "citation"?}],
+map.json is ``{"nodes": [{"id", "label", "type", "order"?, "key"?, "citation"?}],
 "edges": [{"from", "to", "verb"}], "views": [{"id", "nodes": [ids]}]?}``. The agent
 writes it; ``validate_map`` checks it and ``to_mermaid`` turns it into a flowchart.
-``citation`` is a plain string such as "slide 3" and is not used here.
+``order`` numbers the main line in lecture order, each value once; ``key`` (true or
+false) flags the idea a view depends on, and only the drawing uses it. ``citation`` is
+a plain string such as "slide 3" and is not used here. ``load_checked_map`` is the one
+load-and-check step of every command that turns the map into a file.
 """
 
 from __future__ import annotations
@@ -35,7 +38,7 @@ class UnknownView(ValueError):
 
 
 class MapInvalid(Exception):
-    """Raised by ``export_mermaid`` when the map fails a check after ``schema``; ``results`` holds them all.
+    """Raised by ``load_checked_map`` when the map fails a check after ``schema``; ``results`` holds them all.
 
     A failing ``schema`` is a ValueError instead (see ``_raise_on_schema``)."""
 
@@ -83,6 +86,7 @@ def _check_schema(m) -> list[str]:
         return offences
 
     ids: set[str] = set()
+    first_with_order: dict[int, str] = {}  # each order value -> the name of the first node with it
     for n, node in enumerate(nodes, 1):
         if not isinstance(node, dict):
             offences.append(f"node #{n}: not an object")
@@ -97,8 +101,18 @@ def _check_schema(m) -> list[str]:
         if not _is_text(node.get("label")):
             reasons.append("label is not a non-empty string")
         # bool is a subclass of int, so true/false must be excluded explicitly.
-        if "order" in node and (not isinstance(node["order"], int) or isinstance(node["order"], bool)):
+        order = node.get("order")
+        integer_order = isinstance(order, int) and not isinstance(order, bool)
+        if "order" in node and not integer_order:
             reasons.append("order is not an integer")
+        # isinstance, not ``in (True, False)``: 1 == True and 0 == False.
+        if "key" in node and not isinstance(node["key"], bool):
+            reasons.append("key is not true or false")
+        if integer_order:
+            if order in first_with_order:
+                reasons.append(f"order {order} repeats {first_with_order[order]}")
+            else:
+                first_with_order[order] = name
         if reasons:
             offences.append(f"{name}: {', '.join(reasons)}")
         if _is_text(node_id) and (not NODE_ID_RE.fullmatch(node_id) or node_id.lower() == "end"):
@@ -250,20 +264,30 @@ def view_file(unit: Path, view_id: str) -> Path:
     return UnitPaths(unit).root / f"overview-{view_id}.mmd"
 
 
+def load_checked_map(unit: Path) -> dict:
+    """The unit's map.json, parsed, once every check passes.
+
+    Raises what ``load_map`` raises, ValueError ("map.json: ...", one line) when
+    ``schema`` fails, and MapInvalid when a later check does. Every command that writes
+    a file from the map calls this first, so they all refuse a broken map alike.
+    """
+    m = load_map(UnitPaths(unit).map)
+    results = validate_map(m)
+    _raise_on_schema(results)
+    if any(r.status == "FAIL" for r in results):
+        raise MapInvalid(results)
+    return m
+
+
 def export_mermaid(unit: Path, view_id: str | None = None) -> Path | list[Path]:
-    """Write the map as Mermaid; writes nothing if the map fails: ValueError when
-    ``schema`` fails, MapInvalid when a later check does.
+    """Write the map as Mermaid; writes nothing if the map fails (see ``load_checked_map``).
 
     With ``view_id``, or for a map without views: overview.mmd (that view, or the whole
     map), and its path is returned. A map with views and no ``view_id``: one file per
     view, ``overview-<view id>.mmd``, in view order, and the list of their paths.
     """
     paths = UnitPaths(unit)
-    m = load_map(paths.map)
-    results = validate_map(m)
-    _raise_on_schema(results)
-    if any(r.status == "FAIL" for r in results):
-        raise MapInvalid(results)
+    m = load_checked_map(unit)
     views = m.get("views") or []
     if view_id is not None or not views:
         text = to_mermaid(m, view_id)

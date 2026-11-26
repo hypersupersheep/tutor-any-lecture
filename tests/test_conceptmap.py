@@ -307,3 +307,58 @@ def test_mermaid_escapes_html_characters():
     s = to_mermaid(m)
     assert 'a["P(X#lt;x) #amp; Q#gt;0"]' in s
     assert 'a -- "is #lt; than" --> b' in s
+
+
+# ---- a key flag, each order once (Task 14, K1) -------------------------------
+
+
+@pytest.mark.parametrize("key, status", [(True, "PASS"), (False, "PASS"), (1, "FAIL"), ("yes", "FAIL"), (None, "FAIL")])
+def test_key_must_be_true_or_false(key, status):
+    m = map_with_edge("uses")
+    m["nodes"][0]["key"] = key
+    results = validate_map(m)
+    assert status_of(results, "schema") == status
+    if status == "FAIL":
+        assert results[0].details == ["a: key is not true or false"]
+
+
+def test_orders_are_unique():
+    m = map_with_edge("uses")
+    m["nodes"].append({"id": "c", "label": "C", "type": "definition"})
+    for node in m["nodes"]:
+        node["order"] = 1
+    results = validate_map(m)
+    assert [(r.name, r.status) for r in results] == [("schema", "FAIL")]
+    assert results[0].details == ["b: order 1 repeats a", "c: order 1 repeats a"]
+    for order, node in enumerate(m["nodes"], 1):
+        node["order"] = order
+    assert status_of(validate_map(m), "schema") == "PASS"
+
+
+def test_key_and_order_reasons_join_in_order():
+    m = {"nodes": [
+        {"id": "a", "label": "A", "type": "definition", "order": 1},
+        {"id": "b", "label": "", "type": "definition", "order": 1, "key": "yes"},
+    ], "edges": []}
+    assert validate_map(m)[0].details == [
+        "b: label is not a non-empty string, key is not true or false, order 1 repeats a"
+    ]
+
+
+def test_mermaid_ignores_key():
+    m = map_with_edge("uses")
+    m["nodes"][0]["key"] = True
+    assert to_mermaid(m) == AB_MERMAID
+
+
+def test_bundled_maps_pass():
+    from pathlib import Path
+
+    import tutor_any_lecture
+    from tutor_any_lecture.conceptmap import load_map
+
+    data = Path(tutor_any_lecture.__file__).parent / "data"
+    maps = sorted(data.glob("sample*/map.json"))
+    assert maps
+    for path in maps:
+        assert all(r.status != "FAIL" for r in validate_map(load_map(path))), path
