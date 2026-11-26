@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw
 
 from tutor_any_lecture import keyframes
 from tutor_any_lecture.cli import main
-from tutor_any_lecture.ffmpeg import Stream, ffmpeg_exe
+from tutor_any_lecture.ffmpeg import Stream, ffmpeg_exe, sample_gray_frames
 from tutor_any_lecture.keyframes import DUPLICATE_BITS, extract_keyframes, frame_hash, hamming, select_frames
 from tutor_any_lecture.slides import load_pages
 from tutor_any_lecture.transcript import AcquireError
@@ -207,6 +207,38 @@ def test_keyframes_of_a_synthetic_lecture(lecture):
         with Image.open(folder / name) as image:
             assert (image.format, image.size) == ("JPEG", (320, 240))
     assert not (unit / "sources" / "source.json").exists()
+
+
+def test_keyframe_times_follow_the_file_when_the_video_starts_late(tmp_path):
+    # 30 s of audio, and a video track that starts 6 s later: bars from 6 s on the file's
+    # timeline, other bars from 15 s. Frame k must be the picture at k * 2 s of the file, not
+    # of the video track, or the times (and the saved frames) would run 6 s early.
+    folder = tmp_path / "课程 资料"
+    folder.mkdir()
+    video = folder / "第1周 lecture.mkv"
+    subprocess.run(
+        [ffmpeg_exe(), "-hide_banner", "-nostdin",
+         "-f", "lavfi", "-i", "sine=frequency=440:duration=30",
+         "-itsoffset", "6", "-f", "lavfi",
+         "-i", "smptebars=s=320x240:r=5:d=9[a];pal75bars=s=320x240:r=5:d=9[b];[a][b]concat=n=2:v=1:a=0",
+         "-map", "0:a", "-map", "1:v", "-c:a", "flac", "-c:v", "mpeg4", "-q:v", "2", str(video)],
+        check=True, capture_output=True,
+    )
+    unit = folder / "第1周"
+    pages, candidates = extract_keyframes(video, unit)
+    assert [p.time for p in pages] == [0.0, 16.0]
+    assert candidates in (12, 13)  # 0 s to the end of the video at 24 s, every 2 s
+
+    # Each saved frame shows the picture that was hashed for its time, and not the other one.
+    sampled = []
+    for frame in sample_gray_frames(video, 1, 2.0):
+        with Image.frombytes("L", (64, 64), frame) as image:
+            sampled.append(frame_hash(image))
+    for page, other in zip(pages, reversed(pages)):
+        with Image.open(unit / "sources" / "slides" / page.image) as saved:
+            h = frame_hash(saved)
+        assert hamming(h, sampled[round(page.time / 2.0)]) <= DUPLICATE_BITS
+        assert hamming(h, sampled[round(other.time / 2.0)]) > DUPLICATE_BITS
 
 
 def test_keyframes_errors_name_the_video(lecture, monkeypatch):

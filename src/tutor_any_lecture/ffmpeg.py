@@ -105,11 +105,15 @@ def extract_audio(src: Path, dst_wav: Path) -> None:
 def sample_gray_frames(path: Path, index: int, every_s: float, size: int = 64) -> list[bytes]:
     """One ``size`` x ``size`` gray frame of stream ``index`` every ``every_s`` seconds, as raw bytes.
 
-    The frames come in time order, frame k at ``k * every_s`` seconds; a shorter tail is dropped.
+    The frames come in time order, frame k at ``k * every_s`` seconds of the file's timeline
+    (the one ``save_frame``'s ``-ss`` seeks in), even when the video track starts after the
+    audio; a shorter tail is dropped.
     """
+    # start_time=0 pins the fps filter's first output to 0 s, so frame k is at k * every_s
+    # whatever the first video timestamp; the frames before it repeat the first picture.
     proc = subprocess.run(
         [ffmpeg_exe(), "-hide_banner", "-nostdin", "-i", str(path), "-map", f"0:{index}",
-         "-vf", f"fps=1/{every_s:g},scale={size}:{size}:flags=area,format=gray",
+         "-vf", f"fps=1/{every_s:g}:start_time=0,scale={size}:{size}:flags=area,format=gray",
          "-f", "rawvideo", "pipe:1"],
         capture_output=True,
     )
