@@ -79,6 +79,21 @@ def unspaced(ch: str) -> bool:
     return cjk_range_script(ch) in UNSPACED_SCRIPTS or any(lo <= cp <= hi for lo, hi in UNSPACED_RANGES)
 
 
+def join_lines(lines: list[str]) -> str:
+    """Lines joined into one text: each stripped, empty ones dropped, and two neighbours
+    joined with no space when the left one ends and the right one starts with an
+    ``unspaced`` character, else with one space. Spaces inside a line stay."""
+    out = ""
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        if out and not (unspaced(out[-1]) and unspaced(line[0])):
+            out += " "
+        out += line
+    return out
+
+
 def cjk_runs(text: str) -> list[tuple[str, str | None]]:
     """The maximal runs of letters, in order, each with its script.
 

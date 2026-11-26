@@ -256,3 +256,17 @@ def test_whisper_json_malformed_is_value_error(obj, message):
 
 def test_whisper_json_item_without_text_is_skipped_before_time_check():
     assert parse_whisper_json([{"start": 0}, {"start": 0, "end": 1, "text": "a"}]) == [Segment(0.0, 1.0, "a")]
+
+
+def test_cue_lines_join_without_a_space_between_cjk():
+    vtt = "WEBVTT\n\n00:00:01.000 --> 00:00:04.000\n<c>布朗</c>运动是一个\n随机过程，\n也叫 Wiener process\n"
+    assert [s.text for s in parse_vtt(vtt)] == ["布朗运动是一个随机过程，也叫 Wiener process"]
+    srt = "1\n00:00:01,000 --> 00:00:04,000\n確率過程は\nマルチンゲールです\n"
+    assert [s.text for s in parse_srt(srt)] == ["確率過程はマルチンゲールです"]
+    srt = "1\n00:00:01,000 --> 00:00:04,000\n확률과정은\n시간에 따라\n"
+    assert [s.text for s in parse_srt(srt)] == ["확률과정은 시간에 따라"]
+
+
+def test_stamped_continuation_joins_cjk():
+    segments = parse_stamped_txt("[0:05] 布朗运动是一个\n随机过程\n[0:09] 下一句\n", None)
+    assert [s.text for s in segments] == ["布朗运动是一个随机过程", "下一句"]

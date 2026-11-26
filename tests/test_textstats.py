@@ -11,6 +11,7 @@ from tutor_any_lecture.textstats import (
     cjk_runs,
     cjk_script,
     containment,
+    join_lines,
     ngrams,
     units,
     unsegmented,
@@ -137,3 +138,8 @@ def test_korean_is_counted_in_syllables():
     assert units("확률과정은 시간에 따라", "ko") == 10
     assert cjk_script("한") == "hangul"
     assert unspaced("한") is False
+
+
+def test_join_lines():
+    assert join_lines(["布朗", " 运动 ", "", "GBM", "확률", "과정"]) == "布朗运动 GBM 확률 과정"
+    assert join_lines(["利率是３", "％"]) == "利率是３％"

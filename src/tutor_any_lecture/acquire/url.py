@@ -20,6 +20,7 @@ from tutor_any_lecture import asr, ffmpeg
 from ..profile import PUBLIC_VIDEO_AUDIO_NOTICE, ConsentRequired, Profile, has_audio_consent
 from ..slides import load_pages, slide_terms
 from ..source import SourceInfo, slide_digests, url_without_tokens
+from ..textstats import unspaced
 from ..transcript import (
     AcquireError,
     EmptyTranscript,
@@ -175,24 +176,51 @@ def pick_caption(info: dict, lecture_language: str) -> tuple[str, str, str] | No
     return None
 
 
+def _caption_units(text: str) -> list[tuple[int, str]]:
+    """The units of a caption and where each starts: every ``unspaced`` character is one unit,
+    and every maximal run of other characters that are not whitespace is one; whitespace
+    separates units."""
+    units: list[tuple[int, str]] = []
+    word_start: int | None = None
+    for i, ch in enumerate(text):
+        if ch.isspace() or unspaced(ch):
+            if word_start is not None:
+                units.append((word_start, text[word_start:i]))
+                word_start = None
+            if not ch.isspace():
+                units.append((i, ch))
+        elif word_start is None:
+            word_start = i
+    if word_start is not None:
+        units.append((word_start, text[word_start:]))
+    return units
+
+
 def _unroll_auto(segments: list[Segment]) -> list[Segment]:
     """Remove the repeats of YouTube's rolling automatic captions.
 
-    Each cue loses the longest leading run of words that equals a trailing run of the
-    preceding input cue (before that cue's own trimming); cues left empty are dropped.
+    A cue's units are its ``unspaced`` characters (Chinese and Japanese), one unit each, and
+    the runs of other characters between whitespace (words, Korean included). Each cue loses
+    the longest leading run of k units that equals a trailing run of the preceding input cue's
+    units (before that cue's own trimming); an overlap made only of unspaced characters counts
+    only from k = 2, so one shared character is not taken for a repeat. What remains is the
+    cue's text from its next unit on, as written; cues left empty are dropped.
     """
     out: list[Segment] = []
     prev: list[str] | None = None
     for seg in segments:
-        words = seg.text.split()
-        rest = words
+        units = _caption_units(seg.text)
+        words = [unit for _, unit in units]
+        rest = seg.text[units[0][0]:] if units else ""
         if prev is not None:
             for k in range(min(len(words), len(prev)), 0, -1):
+                if k == 1 and unspaced(words[0][0]):
+                    break
                 if words[:k] == prev[-k:]:
-                    rest = words[k:]
+                    rest = seg.text[units[k][0]:] if k < len(units) else ""
                     break
         if rest:
-            out.append(Segment(seg.start, seg.end, " ".join(rest)))
+            out.append(Segment(seg.start, seg.end, rest))
         prev = words
     return out
 

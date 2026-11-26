@@ -274,6 +274,63 @@ def test_auto_rolling_captions_unrolled():
     assert all("<" not in s.text for s in segs)
 
 
+
+# Shaped like YT_AUTO_VTT, with the same times.
+ZH_AUTO_VTT = "\n".join([
+    "WEBVTT",
+    "Kind: captions",
+    "Language: zh",
+    "",
+    "00:00:00.160 --> 00:00:02.389 align:start position:0%",
+    " ",
+    "布朗<00:00:00.480><c>运动</c><00:00:00.960><c>是一个</c>",
+    "",
+    "00:00:02.389 --> 00:00:02.399 align:start position:0%",
+    "布朗运动是一个",
+    " ",
+    "",
+    "00:00:02.399 --> 00:00:04.710 align:start position:0%",
+    "布朗运动是一个",
+    "随机<00:00:03.000><c>过程</c>",
+    "",
+    "00:00:04.710 --> 00:00:04.720 align:start position:0%",
+    "随机过程",
+    " ",
+    "",
+    "00:00:04.720 --> 00:00:07.000 align:start position:0%",
+    "随机过程",
+    "我们<00:00:05.500><c>先看</c><00:00:06.000><c>定义</c>",
+    "",
+    "00:00:07.000 --> 00:00:07.010 align:start position:0%",
+    "我们先看定义",
+    " ",
+    "",
+])
+
+
+def test_chinese_rolling_captions_unrolled():
+    segs = _unroll_auto(parse_vtt(ZH_AUTO_VTT))
+    assert [s.text for s in segs] == ["布朗运动是一个", "随机过程", "我们先看定义"]
+    assert [s.start for s in segs] == pytest.approx([0.16, 2.399, 4.72])
+    assert [s.end for s in segs] == pytest.approx([2.389, 4.71, 7.0])
+    assert all("<" not in s.text for s in segs)
+
+
+def test_partial_cjk_overlap_is_trimmed():
+    segs = _unroll_auto([Segment(0, 2, "我们今天讲布朗运动"), Segment(2, 4, "布朗运动是一个随机过程")])
+    assert [s.text for s in segs] == ["我们今天讲布朗运动", "是一个随机过程"]
+
+
+def test_one_shared_cjk_character_is_not_an_overlap():
+    segs = _unroll_auto([Segment(0, 2, "这是我们要看的"), Segment(2, 4, "的确如此")])
+    assert [s.text for s in segs] == ["这是我们要看的", "的确如此"]
+
+
+def test_korean_rolling_captions_trim_words():
+    segs = _unroll_auto([Segment(0, 2, "확률과정은 시간에"), Segment(2, 4, "시간에 따라 변한다")])
+    assert [s.text for s in segs] == ["확률과정은 시간에", "따라 변한다"]
+
+
 # ---- acquire_url -----------------------------------------------------------
 
 def test_no_cookies_ever(fake_ydl, tmp_path, profile_on):

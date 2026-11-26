@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .plan import read_json
+from .textstats import join_lines
 
 
 class EmptyTranscript(ValueError):
@@ -133,7 +134,12 @@ def _blocks(text: str) -> list[list[str]]:
 
 
 def _read_cues(text: str, clean=None) -> list[Segment]:
-    """The cue reader shared by SRT and VTT. ``clean`` removes format-specific tags."""
+    """The cue reader shared by SRT and VTT. ``clean`` removes format-specific tags.
+
+    Each payload line is cleaned first, so a tag at a line end cannot hide a character from
+    ``join_lines``; the lines are then joined with ``join_lines`` (no space at a break between
+    two characters of a script written without spaces) and whitespace is collapsed.
+    """
     segments: list[Segment] = []
     for block in _blocks(text):
         idx = next((i for i, line in enumerate(block) if "-->" in line), None)
@@ -144,10 +150,10 @@ def _read_cues(text: str, clean=None) -> list[Segment]:
             continue
         start = _ms_to_seconds(*m.group(1, 2, 3, 4))
         end = _ms_to_seconds(*m.group(5, 6, 7, 8))
-        payload = " ".join(block[idx + 1:])
+        lines = block[idx + 1:]
         if clean is not None:
-            payload = clean(payload)
-        payload = _collapse(payload)
+            lines = [clean(line) for line in lines]
+        payload = _collapse(join_lines(lines))
         if payload:
             segments.append(Segment(start, end, payload))
     return segments
@@ -184,7 +190,8 @@ _STAMP = re.compile(r"^\s*\[(\d+:\d{2}(?::\d{2})?)\]\s*(.*)$")
 
 
 def parse_stamped_txt(text: str, duration: float | None) -> list[Segment]:
-    """Lines like ``[m:ss] text`` or ``[h:mm:ss] text``; unstamped lines continue the previous one."""
+    """Lines like ``[m:ss] text`` or ``[h:mm:ss] text``; unstamped lines continue the previous one,
+    joined to it with ``join_lines``."""
     stamped: list[list] = []  # [start, text]
     for line in _normalise(text).split("\n"):
         m = _STAMP.match(line)
@@ -192,7 +199,7 @@ def parse_stamped_txt(text: str, duration: float | None) -> list[Segment]:
             stamp, rest = m.groups()
             stamped.append([clock_seconds(stamp), rest])
         elif line.strip() and stamped:
-            stamped[-1][1] += " " + line
+            stamped[-1][1] = join_lines([stamped[-1][1], line])
     return _close_stamped(stamped, duration)
 
 
@@ -262,7 +269,8 @@ def parse_meeting_export(lines: list[str], duration: float | None) -> list[Segme
     right before a range is a cue number and is dropped. Header layout, else,
     when any line is a speaker and a start time, or a time alone: the lines up to the next
     header are its text, and a segment ends where the next starts. Stamped layout, else:
-    ``parse_stamped_txt``. Speaker names never reach the text; lines before the first time,
+    ``parse_stamped_txt``. The text lines of one segment are joined with ``join_lines``.
+    Speaker names never reach the text; lines before the first time,
     and the "started transcription" and "stopped transcription" notices, are dropped.
     """
     lines = [line.strip() for line in lines]
@@ -283,7 +291,7 @@ def parse_meeting_export(lines: list[str], duration: float | None) -> list[Segme
             block = lines[i + 1:starts[k + 1] if k + 1 < len(starts) else len(lines)]
             if len(block) >= 2:
                 block = block[1:]  # the speaker
-            text = _collapse(" ".join(block))
+            text = _collapse(join_lines(block))
             if text:
                 m = ranges[i]
                 start, end = _range_seconds(*m.group(1, 2, 3, 4)), _range_seconds(*m.group(5, 6, 7, 8))
@@ -297,7 +305,7 @@ def parse_meeting_export(lines: list[str], duration: float | None) -> list[Segme
             if start is not None:
                 stamped.append([start, ""])
             elif stamped:
-                stamped[-1][1] += " " + line
+                stamped[-1][1] = join_lines([stamped[-1][1], line])
         return _close_stamped(stamped, duration)
 
     return parse_stamped_txt("\n".join(lines), duration)

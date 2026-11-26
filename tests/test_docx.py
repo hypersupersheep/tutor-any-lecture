@@ -252,3 +252,12 @@ def test_documents_name_docx_transcripts(monkeypatch, capsys):
         main(["acquire", "--help"])
     assert exc.value.code == 0
     assert "(.srt, .vtt, .json, .txt, .docx)" in " ".join(capsys.readouterr().out.split())
+
+
+def test_meeting_export_lines_join_without_a_space_between_cjk():
+    assert parse_meeting_export(["0:0:0.0 --> 0:0:4.0", "讲师", "布朗运动是一个", "随机过程"], None) == [
+        Segment(0.0, 4.0, "布朗运动是一个随机过程"),
+    ]
+    assert parse_meeting_export(["[讲师] 00:00:03", "布朗运动是一个", "随机过程"], None) == [
+        Segment(3.0, 8.0, "布朗运动是一个随机过程"),
+    ]
