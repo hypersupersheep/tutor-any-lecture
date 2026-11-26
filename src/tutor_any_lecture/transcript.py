@@ -193,6 +193,15 @@ def parse_stamped_txt(text: str, duration: float | None) -> list[Segment]:
             stamped.append([clock_seconds(stamp), rest])
         elif line.strip() and stamped:
             stamped[-1][1] += " " + line
+    return _close_stamped(stamped, duration)
+
+
+def _close_stamped(stamped: list[list], duration: float | None) -> list[Segment]:
+    """``[start, text]`` pairs to segments: empty texts are dropped, each segment ends where the
+    next starts, and the last ends 5 s after its start, or at ``duration`` when that is sooner.
+
+    Shared by ``parse_stamped_txt`` and the header layout of ``parse_meeting_export``.
+    """
     kept = [(start, _collapse(t)) for start, t in stamped if _collapse(t)]
     segments: list[Segment] = []
     for i, (start, t) in enumerate(kept):
@@ -280,15 +289,7 @@ def parse_meeting_export(lines: list[str], duration: float | None) -> list[Segme
                 stamped.append([start, ""])
             elif stamped:
                 stamped[-1][1] += " " + line
-        kept = [(start, _collapse(t)) for start, t in stamped if _collapse(t)]
-        segments = []
-        for i, (start, t) in enumerate(kept):
-            if i + 1 < len(kept):
-                end = kept[i + 1][0]
-            else:  # as parse_stamped_txt ends its last segment
-                end = max(start, min(start + 5, duration or start + 5))
-            segments.append(Segment(start, end, t))
-        return segments
+        return _close_stamped(stamped, duration)
 
     return parse_stamped_txt("\n".join(lines), duration)
 
