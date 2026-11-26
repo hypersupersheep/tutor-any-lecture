@@ -162,7 +162,7 @@ For an entry, DIR is `<workspace>/courses/<course>/<unit>`. Anything the learner
 
 ## Cards
 
-Core cards at most 25 per unit (10 for goal quick). Miss cards come from `tutor-any-lecture cards add-misses --unit DIR`, which adds one card for each item scored below 1 in a post, d1, d7 or d21 attempt of the unit, at most 10 per unit, not counted against the core cap. It copies the item's whole prompt and answer, so after each run rewrite every new miss card in cards.json to the rules below (one point, a clear cue on the front, a short back), keeping its `id`, `kind` and `citation`, then run `cards export` again. The rules, for core and miss cards alike:
+Core cards at most 25 per unit (10 for goal quick). Miss cards come from `tutor-any-lecture cards add-misses --unit DIR`, which adds one card for each item scored below 1 in a post, d1, d7 or d21 attempt of the unit, at most 10 per unit over all its reviews (once a unit has 10, later misses add none; the gate fails more than 10), not counted against the core cap. It copies the item's whole prompt and answer, so after each run rewrite every new miss card in cards.json to the rules below (one point, a clear cue on the front, a short back), keeping its `id`, `kind` and `citation`, then run `cards export` again. The gate warns (`miss_rewritten`) while a miss card's front is still its item's whole prompt. The rules, for core and miss cards alike:
 - one point per card, answered by recall;
 - a clear cue on the front that does not leak the answer;
 - difficulty around 90% success with some effort;

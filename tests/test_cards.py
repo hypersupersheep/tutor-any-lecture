@@ -368,3 +368,46 @@ def test_back_length_rule_covers_miss_cards():
     results = validate_cards([card("Q?"), long_miss], "deep", "en")
     assert status_of(results, "back_length") == "WARN"
     assert next(r.details for r in results if r.name == "back_length") == ["c1-A|miss: back has 351 characters"]
+
+
+# ---- the miss-card cap and the rewrite warning (Task 9b) -------------------
+
+def misses(n):
+    """n miss cards x1|miss … xn|miss."""
+    return [card(f"Miss {i}?", id=f"x{i}|miss", kind="miss") for i in range(1, n + 1)]
+
+
+def count_result(results):
+    return next((r.status, r.details) for r in results if r.name == "count")
+
+
+def test_more_than_ten_miss_cards_fail_the_count():
+    assert count_result(validate_cards(cards(2) + misses(11), "deep", "en")) == ("FAIL", ["11 miss cards, cap 10"])
+    assert count_result(validate_cards(cards(2) + misses(10), "deep", "en")) == ("PASS", [])
+    assert count_result(validate_cards(cards(26) + misses(11), "deep", "en")) == (
+        "FAIL", ["26 core cards, cap 25", "11 miss cards, cap 10"]
+    )
+
+
+def test_gate_warns_on_a_miss_card_not_rewritten(tmp_path):
+    from tutor_any_lecture.selftest import run_selftest
+    from tutor_any_lecture.verify import run_verify
+
+    unit = tmp_path / "unit"
+    assert run_selftest(unit)["ok"]
+    items = json.loads((unit / "items.json").read_text(encoding="utf-8"))
+    item = next(iter(next(iter(items["tracked"].values())).values()))
+    data = json.loads((unit / "cards.json").read_text(encoding="utf-8"))
+    miss = {"id": f"{item['id']}|miss", "concept": item["concept"], "front": item["prompt"],
+            "back": item["answer"], "citation": item["citation"], "kind": "miss"}
+    write_json(unit / "cards.json", data + [miss])
+    result = run_verify(unit)
+    entry = next(c for c in result["checks"] if c["name"] == "cards")
+    assert (entry["status"], entry["details"]) == ("WARN", [
+        f"miss_rewritten: {item['id']}|miss: front is still the item's whole prompt; rewrite it to one point"
+    ])
+    assert result["overall"] == "PASS"
+    miss["front"] = "Second-year interest at 10%: simple against compound?"
+    write_json(unit / "cards.json", data + [miss])
+    entry = next(c for c in run_verify(unit)["checks"] if c["name"] == "cards")
+    assert entry["status"] == "PASS"

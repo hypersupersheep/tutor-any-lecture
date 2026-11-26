@@ -14,7 +14,7 @@ from bisect import bisect_right
 from importlib import resources
 from pathlib import Path
 
-from .cards import load_cards, validate_cards
+from .cards import load_cards, miss_rewritten, validate_cards
 from .checks import NOT_APPLIED, CheckResult
 from .citations import format_seconds, link_time_problems, link_times, parse, resolve, time_link_platform
 from .conceptmap import load_map, validate_map
@@ -631,7 +631,14 @@ def _check_cards(p: UnitPaths, plan, lang: str) -> dict:
     except ValueError as e:
         return _entry("cards", "FAIL", [_error_detail("cards.json", e)])
     concepts = [c["id"] for c in plan.concepts]
-    return _fold("cards", validate_cards(cards, plan.goal, lang, concepts=concepts))
+    results = validate_cards(cards, plan.goal, lang, concepts=concepts)
+    # A missing or unreadable items.json is reported by the items check, not here.
+    try:
+        items = load_items(p.items)
+    except (OSError, ValueError):
+        items = None
+    results.append(miss_rewritten(cards, items))
+    return _fold("cards", results)
 
 
 def _check_map(p: UnitPaths, plan) -> dict:

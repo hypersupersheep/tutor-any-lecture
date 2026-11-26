@@ -112,14 +112,20 @@ def _result(name: str, bad_status: str, offences: list[str]) -> CheckResult:
 def validate_cards(cards, goal: str, lang: str, concepts=None) -> list[CheckResult]:
     """The five card checks, always in this order: count, duplicates, citation, back_length, concept.
 
+    ``count`` fails for core cards over the cap of the goal and for more than MISS_CAP miss cards.
+
     ``concepts`` is the list of plan.json concept ids; every card's concept must be one of
     them. Without it the concept check passes as skipped. ``lang`` is unused: the duplicate
     rule is the same character 3-gram Jaccard in every language.
     """
     core = [c for c in cards if c.kind == "core"]
+    miss_count = len(cards) - len(core)
 
     cap = QUICK_CAP if goal == "quick" else CORE_CAP
     count = [f"{len(core)} core cards, cap {cap}"] if len(core) > cap else []
+    # add_misses stops at MISS_CAP; a hand-edited cards.json may still hold more.
+    if miss_count > MISS_CAP:
+        count.append(f"{miss_count} miss cards, cap {MISS_CAP}")
 
     duplicates = []
     for i, x in enumerate(core):
@@ -146,6 +152,28 @@ def validate_cards(cards, goal: str, lang: str, concepts=None) -> list[CheckResu
         _result("back_length", "WARN", back_length),
         concept,
     ]
+
+
+def _collapsed(text: str) -> str:
+    return " ".join(text.split())
+
+
+def miss_rewritten(cards, items) -> CheckResult:
+    """WARN for each miss card ``<item id>|miss`` whose front is still that item's whole
+    prompt (whitespace collapsed), the text ``add_misses`` copied; ``items`` is
+    ``load_items``'s result, or None when items.json cannot be read (then nothing is reported).
+    An id that names no item is not reported."""
+    offences = []
+    for c in cards if items is not None else []:
+        if c.kind != "miss" or not c.id.endswith("|miss"):
+            continue
+        try:
+            item = find_item(items, c.id[: -len("|miss")])
+        except KeyError:
+            continue
+        if _collapsed(c.front) == _collapsed(item.prompt):
+            offences.append(f"{c.id}: front is still the item's whole prompt; rewrite it to one point")
+    return _result("miss_rewritten", "WARN", offences)
 
 
 # ---------------------------------------------------------------- export
