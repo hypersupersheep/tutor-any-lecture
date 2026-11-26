@@ -700,3 +700,65 @@ def test_measures_line_when_length_is_not_applied():
     assert line.startswith("measures: length not applied for this language; time citations ")
     unknown = format_measures(measure_note(THAI_NOTE, "th", "deep", None, "th"))
     assert unknown.startswith("measures: length not applied for this language; quote share ")
+
+
+def set_languages(u, note_language, lecture_language=None):
+    """Local helper: set plan.json's note_language, and lecture_language when given."""
+    path = UnitPaths(u).plan
+    plan = _read_json(path)
+    plan["note_language"] = note_language
+    if lecture_language is not None:
+        plan["lecture_language"] = lecture_language
+    _write_json(path, plan)
+
+
+def test_thai_quote_is_not_looked_up(tmp_path):
+    u = copy_fixture("ok", tmp_path)
+    add_segment(u, 178.0, 180.0, THAI)
+    append_to_note(u, '\n\nThe lecturer said "ต้นคือดอกเบี้ยที่เกิดจากดอกเบี้ย" (2:59).\n')
+    r = run_verify(u)
+    assert r["overall"] == "PASS" and entry(r, "citations")["status"] == "WARN"
+    assert quote_source_details(r) == ["quote 'ต้นคือดอกเบี้ยที่เกิดจากดอกเบี้ย': not applied for this language"]
+
+
+def test_terms_not_applied_for_german(tmp_path):
+    sentence = "\n\nDie Zinsen werden Im Zweiten Jahr berechnet (slide 1).\n"
+    en = copy_fixture("ok", tmp_path / "en")
+    append_to_note(en, sentence)
+    assert entry(run_verify(en), "terms") == {"name": "terms", "status": "WARN", "details": [
+        "not in the transcript or slides: Die Zinsen", "not in the transcript or slides: Im Zweiten Jahr"]}
+    de = copy_fixture("ok", tmp_path / "de")
+    set_languages(de, "de")
+    append_to_note(de, sentence)
+    assert entry(run_verify(de), "terms") == {
+        "name": "terms", "status": "WARN", "details": ["not applied for this language"]}
+
+
+def test_terms_not_applied_to_unsegmented_prose(tmp_path):
+    u = copy_fixture("ok", tmp_path)
+    set_languages(u, "th")
+    path = UnitPaths(u).explanation
+    md = path.read_text(encoding="utf-8")
+    body = md[md.index("## Interest on interest"):md.index("<!-- tal:check -->")]
+    thai_body = "## ดอกเบี้ย\n\n" + (THAI + " ") * 30 + "Reading Guide Convention (slide 1, 0:42).\n\n"
+    path.write_text(md.replace(body, thai_body), encoding="utf-8", newline="\n")
+    assert entry(run_verify(u), "terms") == {
+        "name": "terms", "status": "WARN", "details": ["not applied for this language"]}
+
+
+@pytest.mark.parametrize("language, segment, sentence", [
+    ("ja", "複利とは利息にも利息がつくことです。", "講師は「複利とは利息にも利息がつく」と述べる (2:59)。"),
+    ("ko", "복리는 이자에도 이자가 붙는 것입니다.", "강사는 “복리는 이자에도 이자가 붙는 것”이라고 말한다 (2:59)."),
+    ("es", "El interés compuesto genera interés sobre el interés.",
+     "El profesor dice «el interés compuesto genera interés sobre el interés» (2:59)."),
+    ("de", "Zinseszins bedeutet Zinsen auf Zinsen.", "Der Dozent sagt „Zinseszins bedeutet Zinsen auf Zinsen“ (2:59)."),
+])
+def test_other_language_notes_get_no_false_fail(tmp_path, language, segment, sentence):
+    u = copy_fixture("ok", tmp_path)
+    set_languages(u, language, language)
+    add_segment(u, 178.0, 180.0, segment)
+    append_to_note(u, "\n\n" + sentence + "\n")
+    r = run_verify(u)
+    assert [c["name"] for c in r["checks"] if c["status"] == "FAIL"] == []
+    assert r["overall"] != "FAIL"
+    assert quote_source_details(r) == []

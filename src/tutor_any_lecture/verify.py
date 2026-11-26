@@ -43,6 +43,7 @@ from .textstats import (
     MD_LINK_URL_RE,
     PAREN_MATH_RE,
     strip_code,
+    unsegmented,
 )
 from .transcript import Transcript
 from .unit import UnitPaths
@@ -69,6 +70,8 @@ URL_RE = re.compile(r"<https?://[^>\s]*>|https?://\S+")
 HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 HTML_TAG_RE = re.compile(r"</?[A-Za-z][^>\n]*>")
 LATIN_WORD_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ɏḀ-ỿ]+")
+# Languages that capitalise every noun: a capital marks no term there.
+NOUN_CAPITAL_LANGS = ("de", "lb")
 # A Markdown link inside a citation group: shown as its text.
 CITATION_LINK_RE = re.compile(r"\[([^\]\n]*)\]\([^()\s]*\)")
 
@@ -378,8 +381,12 @@ def _wrong_speaker(lead_in: str, tail: str, label: str) -> bool:
     return student_label and not students and not _word_positions(tail, STUDENT_WORDS)
 
 
+def _primary_subtag(lang: str) -> str:
+    return re.split(r"[-_]", (lang or "").lower(), maxsplit=1)[0]
+
+
 def _checks_speakers(lang: str) -> bool:
-    return re.split(r"[-_]", (lang or "").lower(), maxsplit=1)[0] in SPEAKER_CHECK_LANGS
+    return _primary_subtag(lang) in SPEAKER_CHECK_LANGS
 
 
 def _check_quote_source(md: str, transcript, pages, lang: str) -> CheckResult:
@@ -387,6 +394,7 @@ def _check_quote_source(md: str, transcript, pages, lang: str) -> CheckResult:
 
     A quote with no part long enough to check is a WARN, and so is an inline quote that the
     note gives to the wrong speaker (in an English or Chinese note, by the transcript's labels).
+    A quote in a script the checks cannot split (``unsegmented``) is not looked up: WARN.
     """
     sources = _QuoteSources(transcript, pages)
     details: list[str] = []
@@ -401,6 +409,10 @@ def _check_quote_source(md: str, transcript, pages, lang: str) -> CheckResult:
         if not places:
             continue  # only times in a unit without a transcript
         shown = quote if len(quote) <= QUOTE_SHOWN_CHARS else quote[:QUOTE_SHOWN_CHARS] + "…"
+        if unsegmented(quote):
+            details.append(f"quote '{shown}': {NOT_APPLIED}")
+            worst = max(worst, "WARN", key=SEVERITY.__getitem__)
+            continue
         cited = ", ".join(_dedupe([CITATION_LINK_RE.sub(r"\1", c.raw) for c in cits]))
         if not parts:
             details.append(f"quote '{shown}' cited {cited} has no part of three words or six CJK characters to check")
@@ -501,11 +513,16 @@ def _without_reader_guide(text: str) -> str:
 _CALLOUT_NAMES = {name.casefold() for name in CALLOUT_TYPES}
 
 
-def _check_terms(note_text: str, sources: str) -> dict:
+def _check_terms(note_text: str, sources: str, lang: str) -> dict:
+    """WARN: capitalised terms of the prose that are in no source; not applied where
+    capitals do not mark terms (German, Luxembourgish) or the prose is ``unsegmented``."""
+    text = _terms_text(_without_reader_guide(note_text))
+    if _primary_subtag(lang) in NOUN_CAPITAL_LANGS or unsegmented(text):
+        return _entry("terms", "WARN", [NOT_APPLIED])
     haystack = _normalise(sources)
     details = [
         f"not in the transcript or slides: {term}"
-        for term in _terms(_terms_text(_without_reader_guide(note_text)))
+        for term in _terms(text)
         if term.casefold() not in _CALLOUT_NAMES and _normalise(term) not in haystack
     ]
     return _entry("terms", "WARN" if details else "PASS", details)
@@ -649,7 +666,7 @@ def run_verify(unit: Path) -> dict:
     checks = [
         _check_citations(cits, pages, duration, transcript, slides_only, md, source, lang),
         _check_coverage(cits, pages, md),
-        _check_terms(note_text, sources),
+        _check_terms(note_text, sources, lang),
         _check_numbers(note_text, sources),
         _fold(
             "structure",
