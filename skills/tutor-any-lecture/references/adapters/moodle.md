@@ -1,4 +1,4 @@
-Adapter: Moodle. Documentation only: slides and other files on a Moodle course page, read in the browser. It needs an agent with browser tools (see [claude-code](../agents/claude-code.md), [codex](../agents/codex.md), [generic](../agents/generic.md)). `<moodle_url>` is the institution's Moodle address (the profile's `platforms`, or ask the learner).
+Adapter: Moodle. Documentation only: slides and other files on a Moodle course page, read in the browser. It needs an agent with browser tools (see [claude-code](../agents/claude-code.md), [codex](../agents/codex.md), [generic](../agents/generic.md)). `<moodle_url>` is the institution's Moodle address (the profile's `platforms` key `moodle`, or ask the learner).
 
 ## Platform
 
@@ -16,7 +16,7 @@ Not on Moodle itself: recordings are External tool (LTI) activities that open Pa
 
 ## Read-only steps
 
-1. Use the browser's existing login. At a sign-in page, stop and ask the learner to sign in; never type credentials. At a "Verify you are human" check, stop and hand it to the learner.
+1. Use the browser's existing login. At a sign-in page, stop and ask the learner to sign in; never type credentials. Where the school or the platform allows it, suggest that the learner ticks the option to stay signed in when they sign in, so the agent stops at sign-in pages less often. If the agent is connected to a password manager that asks the learner to confirm each item it fills, the learner may let it fill the sign-in; the agent never sees, types or stores the password. At a "Verify you are human" check, stop and hand it to the learner.
 2. Open the course page and find the unit's week. Note each file's name and type; an HTML page may duplicate a PDF or hold content of its own, so compare before you skip it.
 3. Download a file only as the profile's `downloads` allows: with ask (the default), ask the learner before each download; with allow, take only files Moodle itself offers for download. Save them where the learner keeps course files.
 4. Run `tutor-any-lecture slides --pdf F --unit DIR` on the slide PDF, or `tutor-any-lecture slides --pptx F --unit DIR` on a `.pptx` deck; when the course posts both, use the PDF. It prints `{"status": "ok", "pages": N, "labelled": M, "path": …}` (M: pages with a footer number; with `--pptx` also `"notes": K`, the slides with speaker notes) and exits 0. It writes `sources/slides/pages.json` and, when the unit has no `sources/source.json`, a slides-only `source.json` (`"kind": "slides-only"`); an existing source.json gains the deck's digest; nothing else in it changes. Slides alone make a slides-only unit: its note cites slides only, never times.

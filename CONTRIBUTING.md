@@ -4,13 +4,14 @@ Thank you for helping. This page says what a first contribution can be, how to s
 
 ## A first contribution: a platform adapter
 
-An adapter tells the agent how to get one lecture's transcript, slides and details from one lecture platform into a unit folder. It is a Markdown file, not code.
+An adapter tells the agent how to get one lecture's transcript, slides and details from one lecture platform into a unit folder. It is a Markdown file, plus its name in the profile's list of platforms.
 
-1. Copy [skills/tutor-any-lecture/references/adapters/TEMPLATE.md](skills/tutor-any-lecture/references/adapters/TEMPLATE.md) to a new file beside it, named after the platform (`<platform>.md`).
+1. Copy [skills/tutor-any-lecture/references/adapters/TEMPLATE.md](skills/tutor-any-lecture/references/adapters/TEMPLATE.md) to a new file beside it, named as its naming paragraph says: `<platform>.md`, the platform's usual name in lower-case ASCII letters and digits, starting with a letter (for example `canvas.md`).
 2. Keep its seven headings, in their order, and fill in each one.
-3. Use only the commands that exist today (`tutor-any-lecture --help` lists them); an adapter adds no command.
-4. Write no real institution's address: use placeholders such as `<moodle_url>`, `<panopto_url>` and `<course>`.
-5. Under "Verified by", write "experimental" until the steps have been followed on a real lecture; then name the run without personal names, for example "a contributor, 2026-11".
+3. Use only the commands that exist today (`tutor-any-lecture --help` lists them); an adapter adds no command. It may bring one read-only helper script, `<platform>_extract.js`, as the template's helper scripts paragraph describes.
+4. Add the platform's name to `PLATFORM_KEYS` in `src/tutor_any_lecture/profile.py`, in alphabetical order, and to the `platforms` bullet of `skills/tutor-any-lecture/references/profile.md`; `tests/test_platform_docs.py` checks that they agree with the file names.
+5. Write no real institution's address: use placeholders such as `<moodle_url>`, `<panopto_url>` and `<course>`.
+6. Under "Verified by", write "experimental" until the steps have been followed on a real lecture; then name the run without personal names, for example "a contributor, 2026-11".
 
 If you would rather ask for an adapter than write one, open an issue with the "Platform adapter" template.
 

@@ -1,4 +1,4 @@
-Adapter: Panopto. A lecture recording hosted on Panopto, usually reached from a Moodle course page. It needs an agent with browser tools (see the agent notes: [claude-code](../agents/claude-code.md), [codex](../agents/codex.md), [generic](../agents/generic.md)). Below, `<moodle_url>` and `<panopto_url>` are the institution's addresses (the profile's `platforms`, or ask the learner).
+Adapter: Panopto. A lecture recording hosted on Panopto, usually reached from a Moodle course page. It needs an agent with browser tools (see the agent notes: [claude-code](../agents/claude-code.md), [codex](../agents/codex.md), [generic](../agents/generic.md)). Below, `<moodle_url>` and `<panopto_url>` are the institution's addresses (the profile's `platforms` keys `moodle` and `panopto`, or ask the learner).
 
 ## Platform
 
@@ -26,7 +26,7 @@ When `#transcriptTabPane` is empty there are three possible reasons: speech reco
 
 ## Read-only steps
 
-1. **Login.** The pages use the institution's single sign-on, in the browser the agent already has. If a username, password or MFA field appears, stop and ask the learner to sign in in that browser; never type any credential. If the page only asks to pick an account that is already signed in, pick it. If a "Verify you are human" check appears, stop and hand it to the learner; do not click it or work around it.
+1. **Login.** The pages use the institution's single sign-on, in the browser the agent already has. If a username, password or MFA field appears, stop and ask the learner to sign in in that browser; never type any credential. Where the school or the platform allows it, suggest that the learner ticks the option to stay signed in when they sign in, so the agent stops at sign-in pages less often. If the agent is connected to a password manager that asks the learner to confirm each item it fills, the learner may let it fill the sign-in; the agent never sees, types or stores the password. If the page only asks to pick an account that is already signed in, pick it. If a "Verify you are human" check appears, stop and hand it to the learner; do not click it or work around it.
 2. **Find the recording.** Open the course page. Recordings are External tool (LTI) activities, usually in the week's section, and their names vary by course ("Session N Recording", "Lecture N Recording", "Lecture N Video"); pre-lecture videos and assignment tools may also be LTI activities. So list every LTI activity instead of searching for one word, with a read-only page script:
 
    ```js

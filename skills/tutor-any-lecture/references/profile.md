@@ -11,7 +11,7 @@ The same folder holds `cli-path`. A missing or empty file means every default. T
   - an unknown key;
   - for `goal`, `quote_density`, `terms`, `level`, `output_target`, `downloads`, `public_video_audio` and `naming`, a value outside the set in the table below;
   - for `outputs`, a value that is not a YAML list, a member other than explanation, pretest, quiz, cards, map, or a list without explanation;
-  - for `platforms`, a value that is not a YAML mapping, a key other than `moodle` and `panopto`, or a value that is not text;
+  - for `platforms`, a value that is not a YAML mapping, a key that is not the name of a platform adapter, or a value that is not text; the keys are `moodle`, `panopto`;
   - `public_video_audio_consent`, which only the consent gate below writes.
 
   `note_language`, `lecture_language`, `workspace` and `obsidian_vault` take any text.
@@ -39,7 +39,7 @@ In file order, with defaults:
 | `downloads` | `ask` | ask, allow | ask (default) asks before every download; allow permits only downloads the platform itself offers |
 | `public_video_audio` | `off` | on, off | audio download from a video's address when no usable captions exist; the learner's decision for every address; consent gate below |
 | `public_video_audio_consent` | absent (`null` in `profile show`) | a date, YYYY-MM-DD | the day the learner accepted the notice; written and removed only by the consent gate |
-| `platforms` | `{}` | a mapping | base URLs of the learner's platforms, for example `moodle: https://moodle.example.edu`; the adapters use them as `<moodle_url>` and `<panopto_url>` |
+| `platforms` | `{}` | a mapping | base URLs of the learner's platforms, for example `moodle: https://moodle.example.edu`; the adapters use each value as the key followed by `_url` in angle brackets, for example `<moodle_url>` and `<canvas_url>` |
 
 `outputs` and `platforms` are set as YAML: `tutor-any-lecture profile set outputs "[explanation, quiz]"`. In the file itself, quote a value that YAML would read as a boolean (yes, no, true, false); `public_video_audio: on` and `off` are understood unquoted.
 
