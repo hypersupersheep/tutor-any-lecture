@@ -296,3 +296,24 @@ def test_step0_compares_versions_and_names_the_selftest_line():
         "the last stdout line is the selftest command",
     ):
         assert s in step0, s
+
+
+# ---- the audio rule once; stop when Download is off ----
+
+def guardrails_section() -> list[str]:
+    """SKILL.md's Guardrails section, as lines: from its heading to the next H2."""
+    lines = read(SKILL).splitlines()
+    start = lines.index("## Guardrails")
+    end = next(i for i in range(start + 1, len(lines)) if lines[i].startswith("## "))
+    return lines[start + 1:end]
+
+
+def test_guardrails_state_the_audio_rule_once():
+    assert len([line for line in guardrails_section() if "responsibility" in line]) == 1
+
+
+def test_panopto_stops_when_download_is_off():
+    t = read(SKILL.parent / "references" / "adapters" / "panopto.md")
+    assert "If Download is greyed out or missing, stop and tell the learner" in t
+    assert "ask the learner to download it themselves" in t
+    assert "Use it only when the profile's `downloads` allows it" not in t

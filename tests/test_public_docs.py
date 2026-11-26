@@ -435,3 +435,24 @@ def test_governance_files_say_what_they_must():
     for readme in READMES:
         links = relative_links(section(readme, "Contributing"))
         assert "CONTRIBUTING.md" in links and "SECURITY.md" in links, readme.name
+
+
+# ---- W1. no milestone names; W3. the companion skills name the current skill ----
+
+MILESTONE = re.compile(r"(?<![A-Za-z0-9])M[12](?![A-Za-z0-9])")
+COMPANIONS = [ROOT / "skills" / "excalidraw-concept-map" / "SKILL.md", ROOT / "skills" / "handwritten-notes-pdf" / "SKILL.md"]
+
+
+def test_documents_never_name_a_milestone():
+    docs = list(PUBLIC_DOCS) + [ROOT / "CHANGELOG.md"] + sorted((ROOT / "skills").rglob("*.md"))
+    assert len(docs) > len(PUBLIC_DOCS) + 10
+    found = [(str(d.relative_to(ROOT)), m.group()) for d in docs for m in MILESTONE.finditer(read(d))]
+    assert found == []
+
+
+def test_companion_skills_name_the_current_skill():
+    for path in COMPANIONS:
+        text = read(path)
+        assert "lecture-tutor" not in text and "第 8 步" not in text, path
+        meta = front_matter(path)
+        assert "tutor-any-lecture" in meta["description"], path

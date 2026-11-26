@@ -1,6 +1,6 @@
 ---
 name: handwritten-notes-pdf
-description: Use when the user wants a handwritten-style (手写风 / 手写版) review PDF of lecture or course notes on grid paper, to read or annotate in Notability on iPad — including the default follow-up after a lecture-tutor 讲解 note, or requests like "手写版", "手写笔记", "网格纸笔记", "Notability 复习版".
+description: Use when the user wants a handwritten-style (手写风 / 手写版) review PDF of lecture or course notes on grid paper, to read or annotate in Notability on iPad — including after a tutor-any-lecture explanation note when the learner asks for one, or requests like "手写版", "手写笔记", "网格纸笔记", "Notability 复习版".
 ---
 
 # handwritten-notes-pdf
@@ -13,7 +13,7 @@ description: Use when the user wants a handwritten-style (手写风 / 手写版)
 
 ## When to use
 
-- lecture-tutor 的讲解定稿后,默认做一份(见该 skill 第 8 步)。
+- tutor-any-lecture 的讲解通过门禁后,学习者要的时候做一份。
 - 用户要某份笔记的"手写版 / 网格纸版"。
 - 不用于:要用户自己的笔迹(那是 iPad 备忘录的"粘贴为手写");要可编辑的 Word 或 Docs。
 

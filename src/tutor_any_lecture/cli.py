@@ -568,7 +568,7 @@ def build_parser() -> argparse.ArgumentParser:
     loc.add_argument("--budget-minutes", type=_positive_number, default=None,
                      help="stop ASR after this many minutes (default: max(30, 2 x the media length))")
     loc.set_defaults(func=_cmd_acquire_local)
-    url = acquire_sub.add_parser("url", help="get a public video's captions, or (with consent) its audio")
+    url = acquire_sub.add_parser("url", help="get a video link's captions, or (with the audio switch on) its audio")
     url.add_argument("--url", required=True, help="the video URL")
     url.add_argument("--unit", type=_path, default=None, help="the unit folder (required unless --info)")
     url.add_argument("--info", action="store_true",

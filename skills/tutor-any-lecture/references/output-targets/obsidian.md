@@ -5,7 +5,7 @@
 ## Settings
 
 - `obsidian_vault`: the vault folder. When it is empty, ask the learner for it once, after delivery, and suggest `tutor-any-lecture profile set obsidian_vault <folder>`; until then deliver as for markdown.
-- `naming`: how files are named in the vault. Only `default` exists in M1: the note keeps its name, `explanation.md`, inside its unit folder.
+- `naming`: how files are named in the vault. Only `default` exists in this version: the note keeps its name, `explanation.md`, inside its unit folder.
 
 ## Note conventions
 

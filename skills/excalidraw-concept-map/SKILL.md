@@ -1,6 +1,6 @@
 ---
 name: excalidraw-concept-map
-description: Use when the user wants a hand-drawn Excalidraw overview or concept map (总览图, 概念图, 思维导图, 手绘图) of a lecture or topic to view and edit in Obsidian — including the default follow-up after a lecture-tutor 讲解 note, or any mention of Excalidraw.
+description: Use when the user wants a hand-drawn Excalidraw overview or concept map (总览图, 概念图, 思维导图, 手绘图) of a lecture or topic to view and edit in Obsidian — including after a tutor-any-lecture explanation note when the learner asks for one, or any mention of Excalidraw.
 ---
 
 # excalidraw-concept-map
@@ -13,7 +13,7 @@ description: Use when the user wants a hand-drawn Excalidraw overview or concept
 
 ## When to use
 
-- lecture-tutor 的讲解定稿后,默认做一张(见该 skill 第 8 步)。
+- tutor-any-lecture 的讲解通过门禁后,学习者要的时候做一张。
 - 用户要某个话题的总览图、概念图,或者提到 Excalidraw。
 - 不用于:精确的数据图表(那用 dataviz);需要排公式的推导页(那用 handwritten-notes-pdf)。
 

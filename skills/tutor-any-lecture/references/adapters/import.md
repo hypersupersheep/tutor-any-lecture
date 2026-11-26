@@ -16,7 +16,7 @@ In the file the learner gives you. The parser is chosen by the file's suffix:
 - `.json`: Whisper-style segments, either `{"segments": [{"start", "end", "text"}, …]}` or a bare list of such objects (times in seconds);
 - `.txt` and any other suffix: timestamped text, one line per segment starting with `[m:ss]` or `[h:mm:ss]`; a line without a stamp continues the previous segment.
 
-Files may be UTF-8 with or without a byte-order mark, with Windows or Unix line endings. DOCX is not read in M1: ask the learner for an SRT, VTT or TXT export of the same transcript instead (most platforms offer one next to the DOCX).
+Files may be UTF-8 with or without a byte-order mark, with Windows or Unix line endings. DOCX is not read in this version: ask the learner for an SRT, VTT or TXT export of the same transcript instead (most platforms offer one next to the DOCX).
 
 ## Read-only steps
 

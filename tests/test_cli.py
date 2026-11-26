@@ -28,6 +28,15 @@ def test_cli_help_lists_groups(capsys):
     assert all(g in out for g in ["doctor", "acquire", "verify", "progress", "cards", "items", "map", "selftest", "cite"])
 
 
+def test_acquire_url_help_does_not_say_public(capsys):
+    with pytest.raises(SystemExit) as exc:
+        main(["acquire", "--help"])
+    assert exc.value.code == 0
+    out = " ".join(capsys.readouterr().out.split())
+    assert "get a video link's captions, or (with the audio switch on) its audio" in out
+    assert "public video" not in out
+
+
 def test_parser_registers_twelve_groups():
     assert top_level_commands() == {
         "profile", "doctor", "acquire", "transcribe", "slides", "items",

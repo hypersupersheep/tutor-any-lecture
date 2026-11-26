@@ -35,7 +35,7 @@ In file order, with defaults:
 | `output_target` | `markdown` | markdown, obsidian, notion | where the files go ([markdown](output-targets/markdown.md), [obsidian](output-targets/obsidian.md)); notion is delivered as Markdown for import |
 | `workspace` | `~/TutorAnyLecture` | a folder | holds `courses/<course>/<unit>/` and `progress/` |
 | `obsidian_vault` | empty | a folder | the vault for the obsidian target |
-| `naming` | `default` | default | file naming in the vault; only default exists in M1 |
+| `naming` | `default` | default | file naming in the vault; only default exists in this version |
 | `downloads` | `ask` | ask, allow | ask (default) asks before every download; allow permits only downloads the platform itself offers |
 | `public_video_audio` | `off` | on, off | audio download from a video's address when no usable captions exist; the learner's decision for every address; consent gate below |
 | `public_video_audio_consent` | absent (`null` in `profile show`) | a date, YYYY-MM-DD | the day the learner accepted the notice; written and removed only by the consent gate |

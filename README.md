@@ -97,7 +97,7 @@ With route C, run the selftest command that the installer printed as its last li
 tutor-any-lecture selftest
 ```
 
-It runs the bundled sample through the whole pipeline, the gate included. It needs no network and no speech model; exit code 0 means the install works. Then give your agent a lecture: "Teach me this lecture: <file, folder or link>".
+It runs the bundled sample from the transcript import to the gate. It needs no network and no speech model; exit code 0 means the install works. Then give your agent a lecture: "Teach me this lecture: <file, folder or link>".
 
 ## What to ask
 

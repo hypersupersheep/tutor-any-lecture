@@ -109,7 +109,6 @@ Extras are optional and never part of the gate.
 - Never type, store or ask for passwords. Use the browser's existing login; at a login page, stop and ask the user to sign in.
 - Never read browser cookies.
 - Download media only when the profile allows it.
-- Downloading audio is off until the learner switches it on; from then on it is their decision and their responsibility for every address. The tool does not check a platform's terms.
 - Never circumvent DRM, and never use the learner's passwords or cookies. Downloading audio is the learner's choice and responsibility, through the public_video_audio switch.
 - Every claim you attribute to the lecturer carries a (slide N) or (mm:ss) citation.
 - Read-only on every platform: no submissions, posts or bookings. Course material stays local, for personal study.
