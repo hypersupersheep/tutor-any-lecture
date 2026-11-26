@@ -1,131 +1,70 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.png">
-    <img alt="lecture-tutor: turn a lecture recording into notes you can check" src="assets/banner-light.png" width="100%">
-  </picture>
-</p>
-
 # Tutor Any Lecture
 
-<p align="center">
-  <a href="#install"><img alt="Claude Code skills" src="https://img.shields.io/badge/Claude_Code-skills-D97757?style=flat-square"></a>
-  <img alt="Panopto and Moodle" src="https://img.shields.io/badge/Panopto_%2B_Moodle-tested_on_real_courses-2B6CB0?style=flat-square">
-  <img alt="Obsidian" src="https://img.shields.io/badge/Obsidian-native-7C3AED?style=flat-square&logo=obsidian&logoColor=white">
-  <img alt="Local audio on Apple Silicon" src="https://img.shields.io/badge/audio-local_MLX-555555?style=flat-square&logo=apple&logoColor=white">
-  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2F9E44?style=flat-square"></a>
-</p>
+**A tutor built from your own lectures: it tests you, cites the lecturer, schedules your review.**
 
-<p align="center">
-  <b>English</b> · <a href="README.zh-CN.md">简体中文</a>
-</p>
+It quizzes you first, explains the lecture in the lecturer's own words, cites the minute and the slide, quizzes you again, and sends your misses to Anki.
 
-**lecture-tutor** is a set of three [Claude Code](https://claude.com/claude-code) skills that turn one lecture recording into a study pack you can check line by line. Claude reads the Panopto transcript and the slides, then writes a study note that follows the lecture in order. Every definition is quoted from the slides or lecture notes with its location, every spoken explanation carries a `(mm:ss)` timestamp you can jump to, and anything Claude added sits in its own box. From that note it draws hand-drawn Excalidraw maps, typesets a handwritten-style review sheet on grid paper, and records an audio lesson with a local text-to-speech model.
+[简体中文](README.zh-CN.md)
 
-A generic "summarise this lecture" prompt reads well and drifts: you can't tell what the lecturer said from what the model filled in, and the auto-captions' mistakes ("Dublin cobbler" for *Doeblin coupling*) slip straight through. lecture-tutor treats the lecture as the source of truth and makes every claim traceable.
-
-<p align="center">
-  <a href="#what-one-lecture-becomes">What you get</a> ·
-  <a href="#showcase">Showcase</a> ·
-  <a href="#how-it-works">How it works</a> ·
-  <a href="#install">Install</a> ·
-  <a href="#design-principles">Design principles</a> ·
-  <a href="#safety">Safety</a> ·
-  <a href="#faq">FAQ</a>
-</p>
+Tutor Any Lecture is an agent skill and a command-line tool, both named `tutor-any-lecture`. Your agent reads the lecture, writes the note and asks the questions; the command gets the transcript, checks the note before you see it, logs your answers and works out which reviews are due.
 
 ## What one lecture becomes
 
-| Output | File | What it is |
-|---|---|---|
-| **Study note** | `W04-讲解-<title>.md` | An explanation written as prose, in the order the lecture went. Definitions quoted verbatim with `(slide N)`, explanations tagged `(mm:ss)`, caption errors fixed against the slides and listed in an errata table, 6–10 self-test questions with folded answers, and a formula sheet. |
-| **Exercise note** | `W04-习题.md` | The same treatment for the lecturer's problem-solving videos. |
-| **Overview map** | `W04-总览图.excalidraw.md` | A hand-drawn Excalidraw flowchart of the argument: why each step leads to the next. |
-| **Concept map** | `W04-思维导图.excalidraw.md` | The week organised by concept. Every node links to the section that explains it, so the map shows up in Obsidian backlinks. |
-| **Review sheet** | `W04-手写版.pdf` | 2–4 A4 pages on grid paper in a handwriting font, formulas in blue ink, highlighter and red-pen notes. Made for annotating in Notability or GoodNotes. |
-| **Audio lesson** | `W04-语音.m4a` | A 25–40 minute single-voice lesson written for listening, synthesised locally with Qwen3-TTS and checked by transcribing it back with Whisper. |
+Each lecture becomes a unit: the folder `<workspace>/courses/<course>/<unit>/`, where the workspace is `~/TutorAnyLecture` unless you change it.
 
-The notes are written in Chinese (the skills were built for a Chinese-speaking student at an English-language university); technical terms stay in English.
-
-## Showcase
-
-Week 4 of a second-year stochastic processes module: two lectures on convergence to the stationary distribution, coupling from the past and the Poisson process, plus four short exercise videos. 2 h 17 min of recordings, 1,102 transcript lines.
-
-<table>
-  <tr>
-    <th colspan="3">Concept map: the week by concept, every node linked back to the note</th>
-  </tr>
-  <tr>
-    <td colspan="3"><img src="assets/showcase/concept-map.png" alt="Concept map with 37 linked nodes"></td>
-  </tr>
-  <tr>
-    <th width="30%">Overview map: the order of the argument</th>
-    <th colspan="2">Review sheet: handwritten-style pages on grid paper</th>
-  </tr>
-  <tr>
-    <td valign="top"><img src="assets/showcase/overview-map.png" alt="Overview map of the two lectures"></td>
-    <td valign="top"><img src="assets/showcase/review-sheet-p1.png" alt="Review sheet, page 1"></td>
-    <td valign="top"><img src="assets/showcase/review-sheet-p2.png" alt="Review sheet, page 2"></td>
-  </tr>
-</table>
-
-| From this week's recordings | |
+| File | What it is |
 |---|---|
-| Study note | 7,061 Chinese characters · 20 sections · **160 verbatim quotes · 404 timestamps** · 11 numbered formulas |
-| Caption errors fixed | 25, each with the time, the caption text and the correction |
-| Self-test | 10 questions aimed at the lecture's most common mistakes |
-| Maps | 12-step overview · 37-node concept map, every node linked back to the note |
-| Audio lesson | 29 minutes · [43-second sample](assets/showcase/audio-sample.m4a) |
+| `explanation.md` | The note, in lecture order. Every claim about what the lecturer said is cited `(slide N)` or `(mm:ss)`; for a video link, each time links to that second of the video. It holds a pretest section, short checks with folded answers, the slides the lecture did not cover, and an errata list for misheard captions. |
+| `items.json`, `assignment.json` | The questions: three parallel variants of each tracked concept, assigned at random to the pretest, the post quiz and the day-7 review. |
+| `cards.json`, `cards.tsv` | Anki cards. `cards.tsv` imports through Anki's File, Import. |
+| `map.json`, `overview.mmd` or `overview-<view>.mmd` | The concept map: five node kinds (definition, theorem, method, example, pitfall), a verb on every edge, at most 12 nodes per view, written out as Mermaid that GitHub renders. |
+| `verify.json` | The gate's result. |
+| `sources/` | The transcript, the slide text, and where the material came from. |
+| `progress/<course>.jsonl`, `progress/<course>.md`, in the workspace | Every quiz attempt, and the progress page. |
 
-**[See the full example →](examples/stochastic-week4/)** with an excerpt of the note, the errata table, self-test questions and the map sources. Lecturer quotes are redacted on this public page.
+The note is written in the language of the `note_language` setting, by default the language you talk to your agent in. The `outputs` setting picks which of these a unit gets; the explanation is always one of them.
+
+## A look at the bundled sample
+
+This is part of the note of the bundled synthetic sample, a three-minute mini-lecture on compound interest with three slides, which `tutor-any-lecture selftest` runs through the gate. The whole note is [src/tutor_any_lecture/data/sample/explanation.md](src/tutor_any_lecture/data/sample/explanation.md).
+
+> The lecturer starts from a bank that pays a yearly rate on a deposit (0:09). Slide 1 gives the two ways to pay it. Under simple interest "the rate applies to the deposit only"; under compound interest "the rate applies to the balance, past interest included" (slide 1).
+>
+> The rate is the same in both; only its base differs. "Last year's interest is now part of the balance, and this year it earns interest too" (0:36). The lecturer calls this the whole trick and adds that "people call it interest on interest" (0:45). So compounding is not a higher rate but a base that grows every year by the interest already earned.
 
 ## How it works
 
-```mermaid
-flowchart TD
-    rec["Panopto recording"] -->|read-only DOM| tr["Transcript + chapters"]
-    slides["Slides or lecture notes"] --> plan
-    tr --> plan["Plan: topic switches · slide inventory · caption errors · uncovered slides"]
-    plan --> quotes["quotes.md: every quote with its source"]
-    quotes --> note["Study note: prose, in lecture order"]
-    note --> check{"note_stats.sh red lines"}
-    check -->|fix| note
-    check --> maps["Overview map + concept map"]
-    check --> sheet["Review sheet PDF"]
-    check --> audio["Audio lesson"]
-```
-
-1. **Find the course.** Course code → Moodle id and local folder, from your config.
-2. **Find the recording.** Claude lists every LTI activity and the Panopto block on the Moodle course page, because each course names its recordings differently, then opens the viewer with `autoplay=false`.
-3. **Read the transcript.** `panopto_extract.js` reads the transcript, chapters, AI summary and lecture date from the page's DOM. It clicks nothing.
-4. **Read everything** and plan: where the lecturer switches topic, a slide-by-slide inventory, a list of misheard words checked against the slides, and the slides that were never covered.
-5. **Write.** Quotes go into `quotes.md` with their sources first; the note is then written around them, following the [writing contract](skills/tutor-any-lecture/references/writing.md).
-6. **Check.** `note_stats.sh` measures the note against the contract (quote density, paragraph length, heading structure, highlight count) and flags red lines. Every definition on every slide is traced to a place in the note.
-7. **Deliver** to the course folder and the Obsidian vault, one `lecture_wN/` folder per week, images in `截图/`.
-8. **Draw and typeset** the overview map, concept map and review sheet with the two companion skills.
-9. **Record** the audio lesson: a script written for the ear, local TTS, then Whisper back-transcription to check terms and formulas.
+1. **Check.** The skill's Step 0 runs `tutor-any-lecture doctor --json --skill <skill folder>`, and on first use `tutor-any-lecture selftest`.
+2. **Acquire.** The transcript and the slides go into the unit folder. Captions are used before speech recognition.
+3. **Plan.** The agent writes plan.json, with five tracked concepts (all of them when the lecture has fewer).
+4. **Write.** The agent writes the items, then the note with plain time citations, which `tutor-any-lecture cite link --unit DIR` turns into links for a video link, then the cards and the map.
+5. **Gate.** `tutor-any-lecture verify --unit DIR` runs nine checks: citations, coverage, terms, numbers, structure, items, cards, map and banned phrases. A FAIL blocks delivery; the agent fixes the file and reruns until the result is PASS. What each check catches is in [skills/tutor-any-lecture/references/gate.md](skills/tutor-any-lecture/references/gate.md).
+6. **Pretest.** Before you see the note, the agent asks the pretest in chat, one question at a time, and asks how sure you are before it grades your answer.
+7. **Post quiz.** After you have read the note, it asks the post quiz the same way. The questions you miss become Anki cards.
+8. **Reviews.** Reviews come 1, 7 and 21 days after your first post quiz (days 1 and 21 are optional), and `tutor-any-lecture progress render --course C` writes the progress page.
 
 ## Install
 
-**Requirements:** an agent that loads skills and runs shell commands (Claude Code, Codex and others); either [uv](https://docs.astral.sh/uv/) or Python 3.10+; git, for an install that does not start from a checkout; Node.js only for `npx skills add`. Works on macOS, Linux and Windows x64.
+**Requirements:** an agent that loads skills and runs shell commands (Claude Code, Codex and others); [uv](https://docs.astral.sh/uv/) or Python 3.10+; git, for route C's clone and for the first-use install of routes A and D; Node.js only for `npx skills add`. Works on macOS, Linux and Windows x64.
 
-**Option A: `npx skills` (recommended)**
+### A. npx skills add (recommended)
 
 ```bash
 npx skills add hypersupersheep/tutor-any-lecture
 ```
 
-This copies the skill into your agent's skills folder. Success check: your agent lists `tutor-any-lecture` among its skills. The command-line tool is installed on first use: the skill's Step 0 runs `tutor-any-lecture doctor --json`, and when the command is missing it offers to run the installer that ships inside the skill with `--cli-only`, since the skill is already in place (`scripts/install.sh`, or `scripts/install.ps1` on Windows).
+This copies the skill into your agent's skills folder. Success check: your agent lists `tutor-any-lecture` among its skills. The command-line tool is installed on first use: the skill's Step 0 runs `tutor-any-lecture doctor --json --skill <skill folder>`, and when the command is missing it offers to run the installer that ships inside the skill, `skills/tutor-any-lecture/scripts/install.sh` (on Windows `skills/tutor-any-lecture/scripts/install.ps1`), with `--cli-only` (`-CliOnly`), since the skill is already in place.
 
-**Option B: Claude Code plugin**
+### B. Claude Code plugin
 
 ```text
 /plugin marketplace add hypersupersheep/tutor-any-lecture
 /plugin install tutor-any-lecture@tutor-any-lecture
 ```
 
-Success check: `/plugin` shows `tutor-any-lecture` as installed. The command-line tool is installed on first use, as in Option A.
+Success check: `/plugin` shows `tutor-any-lecture` as installed. The command-line tool is installed on first use, as in route A.
 
-**Option C: ask your agent to install it**
+### C. Ask your agent to install it
 
 Paste this into your agent:
 
@@ -135,121 +74,129 @@ Install tutor-any-lecture for me. After each step, check the result. If a check 
 1. Clone https://github.com/hypersupersheep/tutor-any-lecture into a folder of your choice.
    Check: the folder contains install.sh and install.ps1.
 2. In that folder, run `bash install.sh --yes` on macOS or Linux, or `powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -Yes` on Windows (also from Git Bash; `bash install.sh` is not for Windows). Do not pipe any download into a shell. It can take several minutes.
-   Check: the exit code is 0 and the last output is a JSON object with "ready": true. On exit code 3, show me what it printed (the "fix" lines of that JSON, or the instructions for installing uv or git) and stop.
-3. Read the full path of the command from the file ${XDG_CONFIG_HOME:-$HOME/.config}/tutor-any-lecture/cli-path (on Windows: %APPDATA%\tutor-any-lecture\cli-path) and run `<that path> selftest`.
-   Check: the exit code is 0.
+   Check: the exit code is 0, and the last line it printed is the selftest command with the command's full path. On exit code 3, show me what it printed and stop.
+3. Run the command from that last line (on Windows, in PowerShell).
+   Check: the exit code is 0. The same full path is stored in the file ${XDG_CONFIG_HOME:-$HOME/.config}/tutor-any-lecture/cli-path (on Windows: %APPDATA%\tutor-any-lecture\cli-path) for later sessions.
 4. Look for tutor-any-lecture/SKILL.md in your own skills folder (for example ~/.claude/skills/ or ~/.codex/skills/).
    Check: the file exists. If it does not, run the installer again with `--agents` followed by claude, codex or agents (on Windows: `-Agents`).
 ```
 
-The installer uses `uv tool install` when uv is present. Otherwise it creates a private environment in `~/.tutor-any-lecture/venv` (`%LOCALAPPDATA%\tutor-any-lecture\venv` on Windows). It installs nothing into your system Python and never downloads a script to run it. It then records the command's full path in the `cli-path` file, copies the skill to the agents it finds (`~/.claude`, `~/.codex`, `~/.agents`), and runs `tutor-any-lecture doctor --json`. Exit codes: 0 ready, 1 failed or cancelled, 2 bad option, 3 needs action (it prints what to do). Add `--dry-run` (`-DryRun`) to see the plan without changing anything, and `--cli-only` (`-CliOnly`) to install the command without copying the skill.
+The installer uses `uv tool install` when uv is present. Otherwise it creates a private environment in `~/.tutor-any-lecture/venv` (`%LOCALAPPDATA%\tutor-any-lecture\venv` on Windows). It installs nothing into your system Python and never downloads a script to run it. It then records the command's full path in the `cli-path` file, copies the skill to the agents it finds (`~/.claude`, `~/.codex`, `~/.agents`), runs `tutor-any-lecture doctor --json --skill <skill folder>` on its own skill folder, and prints the selftest command as its last line. Exit codes: 0 ready, 1 failed or cancelled, 2 bad option, 3 needs action (it prints what to do). Add `--dry-run` (`-DryRun`) to see the plan without changing anything, and `--cli-only` (`-CliOnly`) to install the command without copying the skill.
 
 Speech recognition is an add-on, needed only for audio or video that has no captions. It is a large download (several hundred megabytes, more on Apple Silicon), so the installer leaves it out unless you add `--with-asr` (`-WithAsr`); you can run the installer again with it later. Captions, transcripts and slides work without it.
 
-**Option D: Claude.ai (ZIP upload)**
+### D. Claude.ai upload
 
-Zip the folder `skills/tutor-any-lecture` and upload it as a skill in Claude.ai. Limits: Claude.ai cannot process large local videos, so this route works from slides, captions and transcripts only.
+Zip the folder `skills/tutor-any-lecture` and upload it as a skill in Claude.ai. Success check: Claude.ai lists `tutor-any-lecture` among your skills. Claude.ai cannot process large local videos, so this route works from slides, captions and transcripts only. Step 0 still runs there; when doctor cannot become ready, use an agent on your own computer.
 
-### Quick start
+## Quick start
+
+With route C, run the selftest command that the installer printed as its last line. With routes A, B and D the agent runs selftest itself on first use. When the command is on your PATH, this is the same:
 
 ```bash
 tutor-any-lecture selftest
 ```
 
-This runs a bundled sample (a three-minute mini-lecture with three slides) through the whole pipeline. It needs no network and no speech-to-text model; exit code 0 means the install works. If your shell cannot find the command, use the full path stored in the `cli-path` file. Then give your agent a lecture: `Teach me this lecture: <file, folder or link>`.
+It runs the bundled sample through the whole pipeline, the gate included. It needs no network and no speech model; exit code 0 means the install works. Then give your agent a lecture: "Teach me this lecture: <file, folder or link>".
 
-## Usage
+## What to ask
 
-Log in to Moodle once in Claude's browser, then ask in Claude Code:
+Ask your agent in plain words; it picks the commands.
 
-| You say | Claude does |
+| You say | What happens |
 |---|---|
-| `讲一下 COURSE101 第 4 周` | Finds the week's recordings, reads transcripts and slides, writes the study note, and waits for your review. |
-| `做手写版和总览图` | Typesets the review sheet and draws the overview map from the approved note. |
-| `做个语音版` | Writes the audio script, synthesises it locally and spot-checks it with Whisper. |
-| `把这段录像的转写拿下来` | Just locates the recording and extracts the transcript, for use elsewhere. |
+| "Teach me this lecture: week4.mp4" | A local video or audio file is transcribed on your computer with the speech-recognition add-on. With a caption or transcript file beside it, that file is imported instead. |
+| "Teach me the lecture in this folder" | `acquire route` sorts the folder's files and plans the steps; the agent asks you only what it cannot tell. |
+| "Teach me this video: <YouTube or Bilibili link>" | Captions are used first. The audio is downloaded only with the audio switch on (see Safety and privacy). |
+| "Use this transcript: lecture.vtt" | An SRT, VTT, JSON or timestamped TXT transcript is imported. |
+| "Make a note from these slides: slides.pdf" | A slide PDF alone makes a slides-only unit, whose note cites slides, never times. |
+| "Teach me this Panopto recording" | The transcript is read from the Panopto viewer. This needs an agent with browser tools. |
+| "Quiz me on <course>" | The agent asks what is due; when nothing is, practice items. |
+| "What is due today?" | `progress due` lists the post quizzes and reviews due. |
+| "Show my progress" | `progress render` writes the course's progress page. |
 
-English requests work too; the notes come out in Chinese.
+Every source adapter is marked experimental in its reference until a real run has been recorded: see the "Verified by" section of each file under `skills/tutor-any-lecture/references/adapters/`.
 
-## What's inside
+## Optional extras
 
-| Skill | Use it for | Works on its own |
-|---|---|---|
-| [`lecture-tutor`](skills/tutor-any-lecture/SKILL.md) | The full pipeline: locate the recording, extract the transcript, write and check the note, deliver, audio lesson | Needs the two below for maps and review sheets |
-| [`handwritten-notes-pdf`](skills/handwritten-notes-pdf/SKILL.md) | A light markup → handwritten-style A4 PDF on grid paper, with KaTeX formulas, highlighter, red pen and sticky notes | Yes, for any notes |
-| [`excalidraw-concept-map`](skills/excalidraw-concept-map/SKILL.md) | A Mermaid flowchart → hand-drawn Excalidraw drawing that Obsidian can open and edit, plus a PNG | Yes, for any topic |
+Extras are optional and never part of the gate.
 
-```text
-skills/tutor-any-lecture/
-├── SKILL.md                     the workflow, for any agent
-├── references/
-│   ├── writing.md               the writing contract for the note
-│   ├── teaching.md              pretest, quiz, reviews and card rules
-│   ├── gate.md                  what `verify` checks
-│   ├── profile.md               settings
-│   ├── adapters/                one file per source: local, url, import, panopto, moodle
-│   ├── agents/                  agent-specific notes: claude-code, codex, generic
-│   ├── output-targets/          markdown, obsidian
-│   └── audio-script-rules.md    how to write and synthesise the audio lesson
-└── scripts/
-    ├── install.sh               installer for macOS and Linux
-    ├── install.ps1              installer for Windows
-    ├── panopto_extract.js       read-only DOM extraction in the Panopto viewer
-    └── tts_synthesize.py        audio script → m4a with local Qwen3-TTS
-```
+- **Audio lesson.** Experimental, for Apple Silicon only, and its rules are written in Chinese. It is made only when you ask for it: the agent writes a script for listening and runs `skills/tutor-any-lecture/scripts/tts_synthesize.py` with a Python that has `mlx-audio` and numpy installed, with ffmpeg and ffprobe on PATH.
+- **Review sheet and hand-drawn map.** Two separate companion skills: `skills/handwritten-notes-pdf/` turns a light markup file into a grid-paper PDF, and `skills/excalidraw-concept-map/` turns a Mermaid file into an Obsidian `.excalidraw.md`, with an optional `.excalidraw` file and a PNG. Their instructions are written in Chinese. `npx skills add` offers all three skills and the Claude Code plugin brings all three, while the installer of route C copies only `skills/tutor-any-lecture` and does not copy them. So after route C, or for any other agent, copy `skills/handwritten-notes-pdf/` and `skills/excalidraw-concept-map/` into your agent's skills folder yourself. They need a Python with `websocket-client`, which you install by hand, and Chrome or Chromium, which they find through `CHROME_PATH`, the default Chrome location on macOS, or `google-chrome`, `google-chrome-stable`, `chromium` or `chromium-browser` on PATH; on Windows, set `CHROME_PATH`. They load their libraries and fonts from the network each time they render.
 
-## Design principles
+## Safety and privacy
 
-1. **The lecture is the source of truth.** Quotes are pulled into `quotes.md` with their sources before the note is written, and every sentence attributed to the lecturer must trace back to it. Notation follows the slides, even when it clashes; clashes are flagged, not "fixed".
-2. **Prose, not outlines.** Headings appear only where the lecturer actually changes topic, since headings help recall only at real topic shifts (Hyönä & Lorch, 2004). Reasoning lives in sentences, not bullet fragments. The contract was revised after two controlled runs on the same lecture, with and without the rules.
-3. **What was said, kept apart from what was added.** Supplements, doubts and computed numbers each get a labelled box; the body text is only what the lecture contains.
-4. **Practice that matches the exam.** Self-test questions target the lecture's most common misconceptions and match exam question types (Dunlosky et al., 2013); self-explanation prompts ask *why*, not *what* (Bisra et al., 2018).
-5. **Audio written for the ear.** One voice, short sentences, formulas read by meaning and anchored to numbered equations in the note, because complex reasoning is harder to follow by ear than on the page (Leahy & Sweller, 2011).
-6. **Measured, not eyeballed.** A script checks quote density, paragraph length, structure and highlights before anything is delivered.
-
-## Safety
-
-- **Read-only** on Moodle and Panopto: it never submits work, answers quizzes, posts, books slots, or presses Edit, Cuts, Streams, Download or Share.
-- **No credentials.** It never types passwords or MFA codes and never reads access tokens or cookies. At a login page or a "Verify you are human" check it stops and hands over to you.
-- **Asks before downloading** any recording, every time. It never circumvents DRM and never uses your passwords or cookies. Downloading audio is your choice and responsibility, through the `public_video_audio` switch.
-- **For personal study** of recordings you are entitled to watch. Don't redistribute recordings, transcripts or notes made from copyrighted lectures. The showcase in this repo contains generated diagrams and short excerpts only, with lecturer quotes redacted.
-
-**Video audio (off by default).** The setting is `public_video_audio`. Turning it on lets tutor-any-lecture download the audio track of a video (YouTube, Bilibili and other sites yt-dlp supports) when no usable captions exist, transcribe it locally, then delete it. Until you turn it on, no audio is downloaded. From then on the decision and the responsibility are yours for every address you give, a school's or a meeting platform's recordings included: check that you are allowed to download it, and follow the site's terms and copyright. The tool does not check them for you. Use it for personal study only. The tool never uses your login or cookies, so a recording behind a sign-in is not reachable this way: there use the platform's captions, or a file you downloaded yourself. DRM is never circumvented.
+- **No passwords.** It never types, stores or asks for a password. At a login page or a "Verify you are human" check it stops and hands over to you.
+- **No browser cookies.** It never reads them.
+- **Read-only on every platform.** No submissions, posts or bookings. In Panopto it never presses Edit, Cuts, Streams, Download or Share.
+- **Downloads follow the `downloads` setting.** `ask`, the default, asks before every download a platform itself offers; `allow` permits those without asking. DRM is never circumvented.
+- **Video audio follows `public_video_audio`.** It is off by default. Turning it on shows a notice and records the day you accepted it. From then on, when a video has no usable captions, the audio track alone is downloaded, transcribed on your computer and deleted. The decision and the responsibility are yours for every address you give. A recording behind a sign-in is out of reach, because the tool never uses your login.
+- **What stays local.** There is no telemetry. The tool keeps transcripts, items and progress on your computer. Your agent reads them as it reads any file you give it, so they go to that agent's model provider under its terms. The tool uses the network for the addresses you give it, for installing, once for the speech model on the first transcription, and, for the extras, for the audio model's first download and the libraries and fonts the companion pages load.
+- **Personal study.** Do not redistribute recordings, or notes made from copyrighted lectures.
 
 ## FAQ
 
-<details>
-<summary><b>Does it work without Panopto?</b></summary>
+### Which agents does it work with?
 
-The extraction script targets Panopto's viewer. With another platform, give Claude a transcript file, or let it transcribe a recording you are allowed to download with mlx-whisper; from step 4 on, the pipeline is the same. `panopto.md` also notes where Echo360 keeps its transcripts.
+Any agent that loads skills and runs shell commands. The skill carries notes for Claude Code and Codex, and a generic note for the others, under `skills/tutor-any-lecture/references/agents/`. Browser tools are needed only for Panopto and Moodle pages.
 
-</details>
+### Which sources can it read?
 
-<details>
-<summary><b>Can it write English notes?</b></summary>
+Local video and audio files, folders of materials, YouTube and Bilibili links, transcript files (SRT, VTT, JSON or timestamped TXT), slide PDFs, and Panopto recordings through an agent with browser tools. A PPTX deck or photos of slides must be exported to PDF first.
 
-Not out of the box. The writing contract and the audio rules are written in Chinese and tuned for Chinese prose (character counts, punctuation, TTS reading rules). Translating `references/writing-rules.md` and adjusting the thresholds in `note_stats.sh` is the place to start.
+### Does anything leave my computer?
 
-</details>
+There is no telemetry, and the tool keeps transcripts, items and progress on your computer. Your agent reads those files as it reads any file you give it, so they go to that agent's model provider under its terms. The tool uses the network for the addresses you give it, for installing, and once for the speech model on the first transcription; the extras also download the audio model once and load libraries and fonts when they render.
 
-<details>
-<summary><b>Do I need a Mac?</b></summary>
+### Can the notes be in English, or another language?
 
-Only for the audio lesson and local transcription, which run on MLX. Notes, maps and review sheets need Chrome and Python, nothing platform-specific; set `CHROME_PATH` if Chrome isn't in its default location.
+Yes. The note is written in the language of the `note_language` setting, by default the language you talk to your agent in. To fix it, run `tutor-any-lecture profile set note_language en` with the language code you want.
 
-</details>
+### Do I need a Mac?
 
-<details>
-<summary><b>Why is the concept map not generated automatically like the overview map?</b></summary>
+No. Speech recognition uses mlx-whisper on Apple Silicon and faster-whisper elsewhere, and the rest runs on macOS, Linux and Windows. Only the audio lesson needs Apple Silicon.
 
-Mermaid's automatic layout routes cross-branch relation lines straight through other nodes once a map has 30+ nodes. The showcase concept map was laid out by a small per-week script on top of the same Excalidraw renderer. Generalising that layout is the most obvious next step.
+### How do I get the cards into Anki?
 
-</details>
+Import `cards.tsv` with Anki's File, Import. The cards keep stable ids, so importing the file again updates them without losing their review history.
+
+### When are reviews due?
+
+1, 7 and 21 days after your first post quiz on a unit; the day-1 and day-21 reviews are optional. Ask your agent "What is due today?", or run `tutor-any-lecture progress due --course C`.
+
+### Can I turn the quiz off?
+
+Yes: `tutor-any-lecture profile set outputs "[explanation, cards, map]"` leaves out the pretest and the quiz. The explanation always stays.
+
+### What does Windows need?
+
+Windows x64; Windows PowerShell 5.1 or PowerShell 7 to run `install.ps1` (`bash install.sh` is not for Windows, Git Bash included); uv or Python 3.10+; and git for route C and for the first-use install of routes A and D.
+
+## Upgrading and removing
+
+### Upgrading
+
+Route C: run `git pull` in the checkout, then the installer again (`bash install.sh --yes`, or on Windows `powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -Yes`), which rebuilds the command and copies the skill again. Routes A, B and D: get the skill again, by rerunning `npx skills add hypersupersheep/tutor-any-lecture`, by updating it from Claude Code's `/plugin` menu, or by uploading a new ZIP. Such an update brings a new skill but keeps the old command, so when the skill's Step 0 reports that the command and the skill differ (the `skill_version` check of `tutor-any-lecture doctor --json --skill <skill folder>`), it offers to rerun the skill's installer with `--cli-only` (`-CliOnly` on Windows). Your settings and units are kept.
+
+### Removing
+
+- The command: `uv tool uninstall tutor-any-lecture` when uv installed it; otherwise delete the folder `~/.tutor-any-lecture` (`%LOCALAPPDATA%\tutor-any-lecture` on Windows).
+- The config folder `${XDG_CONFIG_HOME:-$HOME/.config}/tutor-any-lecture` (`%APPDATA%\tutor-any-lecture` on Windows), which holds `cli-path` and `profile.yaml`.
+- The skill copies: `~/.claude/skills/tutor-any-lecture`, `~/.codex/skills/tutor-any-lecture` and `~/.agents/skills/tutor-any-lecture`. For routes A and B, remove the skill with the tool you added it with.
+- The workspace `~/TutorAnyLecture` holds your units and progress: delete it only when you no longer want them.
+
+## Contributing
+
+Contributions are welcome, and a platform adapter is the suggested first one. Please report a security problem privately, never in a public issue.
 
 ## Acknowledgements
 
-[Excalidraw](https://github.com/excalidraw/excalidraw) and [mermaid-to-excalidraw](https://github.com/excalidraw/mermaid-to-excalidraw) · the [Obsidian Excalidraw plugin](https://github.com/zsviczian/obsidian-excalidraw-plugin) · [KaTeX](https://katex.org) · [Qwen3-TTS](https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit) via [mlx-audio](https://github.com/Blaizzy/mlx-audio) · [Whisper](https://github.com/openai/whisper) via [mlx-whisper](https://github.com/ml-explore/mlx-examples) · Patrick Hand and Xiaolai SC fonts · the [Agent Skills](https://github.com/anthropics/skills) format.
+- [PyYAML](https://github.com/yaml/pyyaml), [pdfplumber](https://github.com/jsvine/pdfplumber), [yt-dlp](https://github.com/yt-dlp/yt-dlp), and [imageio-ffmpeg](https://github.com/imageio/imageio-ffmpeg), which brings [FFmpeg](https://ffmpeg.org).
+- [mlx-whisper](https://github.com/ml-explore/mlx-examples) and [faster-whisper](https://github.com/SYSTRAN/faster-whisper), for speech recognition.
+- [anki-card-forge](https://github.com/FrostySL/anki-card-forge), from which the card rules are adapted; its notice is in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+- The [Agent Skills](https://github.com/anthropics/skills) format.
+- For the extras: [mlx-audio](https://github.com/Blaizzy/mlx-audio) with Qwen3-TTS, [Excalidraw](https://github.com/excalidraw/excalidraw), [mermaid-to-excalidraw](https://github.com/excalidraw/mermaid-to-excalidraw), [KaTeX](https://katex.org), and the Patrick Hand, Xiaolai SC and Excalifont fonts that the companion pages load.
 
 ## License
 
-[MIT](LICENSE). Fonts and libraries loaded at render time keep their own licenses.
+[MIT](LICENSE). The libraries and fonts that the companion pages load at render time keep their own licences.
