@@ -16,7 +16,7 @@ from pathlib import Path
 
 from .cards import load_cards, validate_cards
 from .checks import CheckResult
-from .citations import format_seconds, parse, resolve
+from .citations import format_seconds, link_time_problems, link_times, parse, resolve, time_link_platform
 from .conceptmap import load_map, validate_map
 from .items import load_items, validate_items
 from .notecheck import CALLOUT_TYPES, check_note, cited_quotes, marker_sections, measure_note, strip_marker_sections
@@ -60,6 +60,8 @@ URL_RE = re.compile(r"<https?://[^>\s]*>|https?://\S+")
 HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 HTML_TAG_RE = re.compile(r"</?[A-Za-z][^>\n]*>")
 LATIN_WORD_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ɏḀ-ỿ]+")
+# A Markdown link inside a citation group: shown as its text.
+CITATION_LINK_RE = re.compile(r"\[([^\]\n]*)\]\([^()\s]*\)")
 
 # quote_source: editorial marks split a quote; a cited time looks this far either side.
 EDITORIAL_RE = re.compile(r"…|\.\.\.|\[[^\]\n]*\]")
@@ -169,15 +171,30 @@ def _citation_problems(cits, pages, duration, transcript, slides_only) -> dict:
     return _entry("citations", "PASS", [])
 
 
-def _check_citations(cits, pages, duration, transcript, slides_only, md: str) -> dict:
-    """The citation problems, then the quote_source sub-result folded in as "quote_source: <detail>"."""
+def _check_citations(cits, pages, duration, transcript, slides_only, md: str, source) -> dict:
+    """The citation problems, then the quote_source and time_links sub-results folded in
+    as "<sub-name>: <detail>"."""
     entry = _citation_problems(cits, pages, duration, transcript, slides_only)
-    quotes = _check_quote_source(md, transcript, pages)
-    if quotes.status != "PASS":
-        folded = _fold("citations", [quotes])
-        entry["status"] = max(entry["status"], folded["status"], key=SEVERITY.__getitem__)
-        entry["details"] += folded["details"]
+    for sub in (_check_quote_source(md, transcript, pages), _check_time_links(md, source)):
+        if sub.status != "PASS":
+            folded = _fold("citations", [sub])
+            entry["status"] = max(entry["status"], folded["status"], key=SEVERITY.__getitem__)
+            entry["details"] += folded["details"]
     return entry
+
+
+def _check_time_links(md: str, source) -> CheckResult:
+    """WARN: times a video unit has not linked yet, and links that point at another time."""
+    details: list[str] = []
+    if source is not None and source.kind in ("url", "platform") and source.url and time_link_platform(source.url):
+        n = link_times(md, source.url)[1]
+        if n:
+            citations = "time citation is" if n == 1 else "time citations are"
+            details.append(
+                f"{n} {citations} not linked to the video: run tutor-any-lecture cite link --unit DIR"
+            )
+    details += link_time_problems(md)
+    return CheckResult("time_links", "WARN" if details else "PASS", details)
 
 
 # ---------------------------------------------------------------- quote_source
@@ -286,7 +303,7 @@ def _check_quote_source(md: str, transcript, pages) -> CheckResult:
         if not missing:
             continue
         shown = quote if len(quote) <= QUOTE_SHOWN_CHARS else quote[:QUOTE_SHOWN_CHARS] + "…"
-        cited = ", ".join(_dedupe([c.raw for c in cits]))
+        cited = ", ".join(_dedupe([CITATION_LINK_RE.sub(r"\1", c.raw) for c in cits]))
         found = [sources.find(part) for part in missing]
         if all(found):
             details.append(f"quote '{shown}' is not at {cited}; found {found[0]}")
@@ -513,7 +530,7 @@ def run_verify(unit: Path) -> dict:
     sources = "\n".join([transcript.text() if transcript is not None else ""] + [pg.text for pg in pages])
 
     checks = [
-        _check_citations(cits, pages, duration, transcript, slides_only, md),
+        _check_citations(cits, pages, duration, transcript, slides_only, md, source),
         _check_coverage(cits, pages, md),
         _check_terms(note_text, sources),
         _check_numbers(note_text, sources),

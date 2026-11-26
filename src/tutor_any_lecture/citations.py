@@ -18,11 +18,11 @@ from .textstats import INLINE_CODE_RE, fenced_lines
 TIME = r"\d{1,2}:\d{2}(?::\d{2})?"
 TIME_RE = re.compile(TIME)
 # A time token: a bare timestamp, or a Markdown link whose text is the timestamp.
-# The URL is ignored; it contains no spaces or parentheses.
+# The URL (group <n>u) contains no spaces or parentheses.
 
 
 def _token(n: str) -> str:
-    return rf"(?:\[(?P<{n}l>{TIME})\]\([^()\s]*\)|(?P<{n}b>{TIME}))"
+    return rf"(?:\[(?P<{n}l>{TIME})\]\((?P<{n}u>[^()\s]*)\)|(?P<{n}b>{TIME}))"
 
 
 DASH = r"\s*[-–]\s*"
@@ -286,6 +286,53 @@ def link_times(md: str, url: str) -> tuple[str, int]:
         lines[i] = line
         count += len(spans)
     return "\n".join(lines), count
+
+
+# The time in a link's address: seconds (decimals truncated), or the 1h2m3s form.
+_SECONDS_RE = re.compile(r"(\d+)(?:\.\d+)?s?")
+_HMS_RE = re.compile(r"(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?")
+
+
+def _link_seconds(url: str, row: TimeLinkForm) -> int | None:
+    """The whole seconds the address points at, read from the row's parameter; None without one."""
+    parts = _split(url)
+    value = _query_value(parts.fragment if row.in_fragment else parts.query, row.param)
+    if value is None:
+        return None
+    m = _SECONDS_RE.fullmatch(value)
+    if m:
+        return int(m.group(1))
+    m = _HMS_RE.fullmatch(value)
+    if not value or not m:
+        return None
+    h, mins, secs = (int(g) if g else 0 for g in m.groups())
+    return h * 3600 + mins * 60 + secs
+
+
+def link_time_problems(md: str) -> list[str]:
+    """Time links whose address does not point at the time of their text, in document order.
+
+    Every time link in a citation group outside code (as ``link_times`` reads them) whose
+    address is in a row of ``TIME_LINK_FORMS`` is read; other addresses are not.
+    """
+    problems: list[str] = []
+    lines = md.split("\n")
+    for line, fenced in zip(lines, fenced_lines(lines)):
+        if fenced:
+            continue
+        for g in GROUP_RE.finditer(_mask_code(line)):
+            for m in _parts(g.group("a") if g.group("a") is not None else g.group("b")):
+                for n in ("a", "z"):
+                    text, url = m.group(f"{n}l"), m.group(f"{n}u")
+                    row = _form_of(_encoded(url)) if text is not None else None
+                    if row is None:
+                        continue
+                    at = _link_seconds(_encoded(url), row)
+                    if at is None:
+                        problems.append(f"time link {text} has no time in its address")
+                    elif at != int(_seconds(text)):
+                        problems.append(f"time link {text} points at {format_seconds(at)}")
+    return problems
 
 
 def link_unit(unit: Path) -> dict:

@@ -3,6 +3,7 @@ import shutil
 
 import pytest
 from conftest import fx
+from tutor_any_lecture.citations import link_unit
 from tutor_any_lecture.cli import main
 from tutor_any_lecture.unit import UnitPaths
 from tutor_any_lecture.verify import run_verify
@@ -539,3 +540,67 @@ def test_card_with_an_unknown_concept_fails_the_gate(tmp_path):
     cards_entry = entry(run_verify(u), "cards")
     assert cards_entry["status"] == "FAIL"
     assert cards_entry["details"] == ["concept: card-1: concept 'nope' is not a concept id in plan.json"]
+
+
+# ---------------------------------------------------------------- time links
+
+
+YT = "https://www.youtube.com/watch?v=x"
+
+
+def set_source(u, kind, url):
+    """Local helper: give the unit's source.json this kind and address."""
+    path = UnitPaths(u).source
+    source = _read_json(path)
+    source.update(kind=kind, url=url)
+    _write_json(path, source)
+
+
+def replace_in_note(u, old, new):
+    path = UnitPaths(u).explanation
+    md = path.read_text(encoding="utf-8")
+    assert old in md
+    path.write_text(md.replace(old, new), encoding="utf-8", newline="\n")
+
+
+def test_unlinked_times_in_a_video_unit_warn(tmp_path):
+    u = copy_fixture("ok", tmp_path)
+    set_source(u, "url", YT)
+    assert entry(run_verify(u), "citations") == {"name": "citations", "status": "WARN", "details": [
+        "time_links: 3 time citations are not linked to the video: run tutor-any-lecture cite link --unit DIR"]}
+    link_unit(u)
+    assert entry(run_verify(u), "citations") == {"name": "citations", "status": "PASS", "details": []}
+    other = copy_fixture("ok", tmp_path / "other")
+    set_source(other, "url", "https://video.example.com/watch?v=x")
+    assert entry(run_verify(other), "citations") == {"name": "citations", "status": "PASS", "details": []}
+
+
+def test_one_unlinked_time_is_one_citation(tmp_path):
+    u = copy_fixture("ok", tmp_path)
+    set_source(u, "platform", YT)
+    link_unit(u)
+    append_to_note(u, "\n\nThe rate is fixed for the year (slide 1, 0:50).\n")
+    assert entry(run_verify(u), "citations")["details"] == [
+        "time_links: 1 time citation is not linked to the video: run tutor-any-lecture cite link --unit DIR"]
+
+
+def test_a_time_link_that_points_elsewhere_warns(tmp_path):
+    u = copy_fixture("ok", tmp_path)
+    set_source(u, "url", YT)
+    link_unit(u)
+    replace_in_note(u, "&t=42s)", "&t=40s)")
+    assert entry(run_verify(u), "citations") == {"name": "citations", "status": "WARN", "details": [
+        "time_links: time link 0:42 points at 0:40"]}
+    replace_in_note(u, "&t=40s", "")
+    assert entry(run_verify(u), "citations") == {"name": "citations", "status": "WARN", "details": [
+        "time_links: time link 0:42 has no time in its address"]}
+
+
+def test_quote_source_detail_shows_citations_without_addresses(tmp_path):
+    u = copy_fixture("ok", tmp_path)
+    set_source(u, "url", YT)
+    append_to_note(u, '\n\nThe lecturer warned that "banks always round the rate down" (slide 2, 2:40).\n')
+    link_unit(u)
+    assert quote_source_details(run_verify(u)) == [
+        "quote 'banks always round the rate down' cited (slide 2, 2:40) is not in the transcript or the slides"
+    ]

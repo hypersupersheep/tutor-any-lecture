@@ -4,6 +4,7 @@ import pytest
 
 from tutor_any_lecture.citations import (
     TIME_LINK_FORMS,
+    link_time_problems,
     link_times,
     link_unit,
     parse,
@@ -238,3 +239,20 @@ def test_written_form_matches_the_row():
         url = SAMPLE_ADDRESSES[row.name]
         assert time_link_platform(url) == row.name
         assert time_url(url, 822).endswith(row.written.replace("<seconds>", "822"))
+
+
+def test_link_time_problems():
+    md = (
+        "A ([13:42](https://vimeo.com/1#t=822s)). "
+        "B ([13:42](https://www.youtube.com/watch?v=a&t=13m42s)). "
+        "C (slide 2, [13:42](https://h.example.panopto.com/Panopto/Pages/Viewer.aspx?id=a&start=30)). "
+        "D ([13:42](https://video.example.com/x?t=1s)). "
+        "E ([0:05](https://youtu.be/a)). "
+        "F ([0:06](https://youtu.be/a?t=abc)). "
+        "`([0:05](https://youtu.be/a?t=9s))`\n"
+    )
+    assert link_time_problems(md) == [
+        "time link 13:42 points at 0:30",
+        "time link 0:05 has no time in its address",
+        "time link 0:06 has no time in its address",
+    ]
