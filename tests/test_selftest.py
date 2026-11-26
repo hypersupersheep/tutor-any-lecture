@@ -7,7 +7,7 @@ from importlib import resources
 
 import pytest
 
-from tutor_any_lecture import citations, doctor, notecheck, textstats
+from tutor_any_lecture import citations, doctor, notecheck, selftest, textstats
 from tutor_any_lecture.cli import main
 from tutor_any_lecture.selftest import run_selftest
 
@@ -30,8 +30,12 @@ def test_selftest_keep_leaves_unit(tmp_path, tmp_cfg):
 
 
 def test_sample_in_package():
-    sample = resources.files("tutor_any_lecture").joinpath("data", "sample")
-    assert [n for n in SAMPLE_FILES if not sample.joinpath(n).is_file()] == []
+    data = resources.files("tutor_any_lecture").joinpath("data")
+    assert [n for n in SAMPLE_FILES if not data.joinpath("sample", n).is_file()] == []
+    zh = data.joinpath("sample-zh")
+    assert [n for n in ROOT_NAMES if not zh.joinpath(n).is_file()] == []
+    # the Chinese sample shares the lecture and the slides with data/sample/
+    assert [n for n in SOURCE_NAMES if zh.joinpath(n).is_file()] == []
 
 
 def test_sample_gate_entries_pass(tmp_path):
@@ -58,8 +62,9 @@ def test_selftest_refuses_nonempty_dir(tmp_path):
 
 SAMPLE_TOPICS = ["Simple and compound interest", "Growth over n years", "Compounding frequency"]
 # The bundled samples by note language, and each one's folder under data/.
-SAMPLES = {"en": "sample"}
+SAMPLES = {"en": "sample", "zh": "sample-zh"}
 SOURCE_NAMES = ("lecture.vtt", "slides.pdf")
+ROOT_NAMES = ("plan.json", "explanation.md", "items.json", "cards.json", "map.json")
 
 
 def sample_text(sample: str, name: str) -> str:
@@ -80,7 +85,7 @@ def built(tmp_path_factory):
     def build(sample: str):
         if sample not in cache:
             unit = tmp_path_factory.mktemp(f"sample-{sample}") / "unit"
-            assert run_selftest(unit)["ok"] is True
+            assert run_selftest(unit, sample=sample)["ok"] is True
             cache[sample] = unit, json.loads((unit / "verify.json").read_text(encoding="utf-8"))
         return cache[sample]
 
@@ -316,13 +321,163 @@ def test_sample_effective_rate_has_a_numeric_variant():
     assert [a for a in answers if re.search(r"\d+(?:\.\d+)?%", a)] != []
 
 
-def test_sample_variants_are_parallel():
+@pytest.mark.parametrize("sample", SAMPLES)
+def test_sample_variants_are_parallel(sample):
     """A, B and C of each concept share a kind, and all ask for a number or none does."""
-    for cid, variants in sample_json("items.json")["tracked"].items():
+    for cid, variants in sample_json("items.json", sample)["tracked"].items():
         assert len({v["kind"] for v in variants.values()}) == 1, cid
         # a digit in the answer once its citations are removed: the item asks for a number
         numeric = {bool(re.search(r"\d", re.sub(r"\([^)]*\)", "", v["answer"]))) for v in variants.values()}
         assert len(numeric) == 1, cid
+
+
+# ---- S8. the Chinese sample's files and plan ----
+
+
+def test_chinese_sample_plan():
+    plan, en = sample_json("plan.json", "zh"), sample_json("plan.json", "en")
+    assert {k: plan[k] for k in (
+        "course", "unit", "goal", "content_type", "note_language", "lecture_language",
+        "duration_s", "outputs", "output_target", "quote_density",
+    )} == {
+        "course": "Sample", "unit": "compound-interest-zh", "goal": "deep", "content_type": "formula",
+        "note_language": "zh", "lecture_language": "en", "duration_s": 840,
+        "outputs": ["explanation", "pretest", "quiz", "cards", "map"],
+        "output_target": "markdown", "quote_density": "standard",
+    }
+    assert [c["id"] for c in plan["concepts"]] == [c["id"] for c in en["concepts"]]
+    assert plan["tracked"] == en["tracked"]
+    assert [s["title"] for s in plan["sections"]] == ["单利和复利", "多年后的余额", "计息频率"]
+    assert [c["name"] for c in plan["concepts"] if not textstats.CJK_RE.search(c["name"])] == []
+
+
+# ---- S9. the Chinese note, in Chinese forms ----
+
+
+def test_chinese_sample_shows_every_contract_element():
+    md = sample_text("zh", "explanation.md")
+    lines = md.split("\n")
+    assert [line for line in lines if line.startswith("# ")] == ["# 复利"]
+    assert [line for line in lines if line.startswith("阅读说明：")] != []
+    h2 = [line[3:].strip() for line in lines if line.startswith("## ")]
+    titles = [s["title"] for s in sample_json("plan.json", "zh")["sections"]]
+    assert h2 == ["课前测", *titles, "未讲到的内容和勘误"]
+    summaries = re.findall(r"<details><summary>([^<]*)</summary>", md)
+    assert summaries != [] and set(summaries) == {"答案"}
+    assert md.count("<details") == len(summaries)
+    assert_body_elements(notecheck.strip_marker_sections(md), "推导：", r"^\*为什么.+？\*$", "答案", "例题：")
+    bodies = notecheck.marker_sections(md)
+    assert len(bodies["errata"]) == 1
+    errata = bodies["errata"][0].split("\n")
+    for line in ("> [!CAUTION]", "> 转写稿和课件勘误", "> | 时间 | 听到的 | 应为 |"):
+        assert line in errata, line
+    assert len(errata_rows(md)) >= 2
+    assert len(bodies["not-covered"]) == 1
+    assert re.search(r"^- \d+:\d\d–\d+:\d\d[:：]", bodies["not-covered"][0], re.MULTILINE)
+    # terms are bilingual: the Chinese term, then the lecturer's English at its first use in the body
+    prose = notecheck.strip_marker_sections(md)
+    body_lines = prose.split("\n")[prose.split("\n").index("## " + titles[0]):]
+    body = "\n".join(line for line in body_lines if not line.startswith("#"))
+    assert body.index("复利") == body.index("复利 (compound interest)")
+    # quotes are the lecture's English words
+    quotes = quotes_of(prose)
+    assert len(quotes) >= 4
+    assert [q for q in quotes if textstats.CJK_RE.search(q)] == []
+
+
+# ---- S10. items, cards and map in Chinese ----
+
+
+def test_chinese_sample_is_written_in_chinese():
+    cjk = textstats.CJK_RE.search
+    items = sample_json("items.json", "zh")
+    every = [it for variants in items["tracked"].values() for it in variants.values()] + items["practice"]
+    texts = [it[k] for it in every for k in ("prompt", "answer", "rubric")]
+    cards = sample_json("cards.json", "zh")
+    texts += [c[k] for c in cards for k in ("front", "back")]
+    graph = sample_json("map.json", "zh")
+    texts += [n["label"] for n in graph["nodes"]]
+    verbs = [e["verb"] for e in graph["edges"]]
+    assert [t for t in texts + verbs if not cjk(t)] == []
+    assert [v for v in verbs if re.search(r"[A-Za-z]", v)] == []
+
+
+# ---- S11. the gate passes the Chinese sample ----
+
+
+def test_chinese_sample_passes_the_gate(tmp_path):
+    unit = tmp_path / "课程 资料" / "zh"
+    assert run_selftest(unit, sample="zh")["ok"] is True
+    result = json.loads((unit / "verify.json").read_text(encoding="utf-8"))
+    assert result["overall"] == "PASS"
+    assert {c["name"] for c in result["checks"] if c["status"] != "PASS"} <= {"numbers"}
+
+
+# ---- S12. selftest --sample ----
+
+
+def test_selftest_runs_the_chinese_sample_on_request(monkeypatch, tmp_path, tmp_cfg):
+    monkeypatch.setattr(doctor, "run_doctor", lambda: doctor_report(True))
+    unit = tmp_path / "unit"
+    assert main(["selftest", "--keep", str(unit), "--sample", "zh"]) == 0
+    assert "## 课前测" in (unit / "explanation.md").read_text(encoding="utf-8")
+    assert json.loads((unit / "plan.json").read_text(encoding="utf-8"))["note_language"] == "zh"
+
+
+def test_selftest_rejects_an_unknown_sample(tmp_path):
+    with pytest.raises(SystemExit) as exc:
+        main(["selftest", "--sample", "fr"])
+    assert exc.value.code == 2
+    with pytest.raises(ValueError, match="fr"):
+        run_selftest(tmp_path / "u", sample="fr")
+    assert not (tmp_path / "u").exists()
+
+
+def test_read_sample_names_a_missing_chinese_file(monkeypatch):
+    monkeypatch.setattr(selftest, "ROOT_FILES", (*selftest.ROOT_FILES, "missing.json"))
+    with pytest.raises(FileNotFoundError, match="data/sample-zh/missing.json"):
+        selftest._read_sample("zh")
+
+
+def test_read_sample_takes_the_sources_from_the_english_sample():
+    files = selftest._read_sample("zh")
+    data = resources.files("tutor_any_lecture").joinpath("data")
+    assert sorted(files) == sorted(SOURCE_NAMES + ROOT_NAMES)
+    for name in SOURCE_NAMES:
+        assert files[name] == data.joinpath("sample", name).read_bytes()
+    for name in ROOT_NAMES:
+        assert files[name] == data.joinpath("sample-zh", name).read_bytes()
+
+
+# ---- S13. READMEs, CHANGELOG and writing.md follow ----
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def readme_section(path: Path, heading: str) -> str:
+    lines = path.read_text(encoding="utf-8").split("\n")
+    start = lines.index("## " + heading)
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+    return "\n".join(lines[start + 1:end])
+
+
+def test_readmes_and_writing_follow_the_samples():
+    en = readme_section(ROOT / "README.md", "A look at the bundled sample")
+    zh = readme_section(ROOT / "README.zh-CN.md", "内置样例节选")
+    assert "fourteen-minute" in en and "three-minute" not in en
+    assert "十四分钟" in zh
+    assert [w for w in ("三分钟", "3 分钟", "3分钟") if w in zh] == []
+    md = sample_text("en", "explanation.md")
+    first_two = ["\n".join(p) for p in paragraphs(md, "en")[:2]]
+    section = h2_sections(md)[SAMPLE_TOPICS[0]]
+    assert [p for p in first_two if p not in section] == []
+    for text in (en, zh):
+        assert "selftest --keep DIR --sample zh" in text
+        quoted = [line[1:].lstrip(" ") if line.startswith("> ") else line[1:]
+                  for line in text.split("\n") if line.startswith(">")]
+        assert [q for q in quoted if q.strip()] == first_two
+    writing = (ROOT / "skills" / "tutor-any-lecture" / "references" / "writing.md").read_text(encoding="utf-8")
+    assert "For a Chinese note of the same lecture, run `tutor-any-lecture selftest --keep DIR --sample zh`." in writing
 
 
 # ---- failure paths and cleanup ----

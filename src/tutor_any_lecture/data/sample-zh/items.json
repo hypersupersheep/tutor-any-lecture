@@ -1,0 +1,155 @@
+{
+  "tracked": {
+    "compound_interest": {
+      "A": {
+        "id": "ci-A",
+        "concept": "compound_interest",
+        "kind": "contrast",
+        "prompt": "小林把 2000 存进银行，年利率 3%，存了两年。第二年的利息按单利算是多少？按复利算又是多少？",
+        "answer": "单利 60，复利 61.80；复利第二年按整个余额计息，余额里已经有第一年的利息 (slide 1, 1:38–2:12)。",
+        "rubric": "1 分：答出 60 和 61.80，并说明单利只按本金、复利按整个余额计息；0.5 分：两个数只对一个。",
+        "citation": "(slide 1, 1:38–2:12)",
+        "difficulty": 1,
+        "variant": "A"
+      },
+      "B": {
+        "id": "ci-B",
+        "concept": "compound_interest",
+        "kind": "contrast",
+        "prompt": "一笔 5000 元的定期，利率每年 2%。到了第二年，单利和复利分别付给储户多少利息？",
+        "answer": "单利 100，复利 102；复利把第一年的 100 元利息也算进计息的基数 (slide 1, 1:38–2:12)。",
+        "rubric": "1 分：答出 100 和 102，并说明单利只按本金、复利按整个余额计息；0.5 分：两个数只对一个。",
+        "citation": "(slide 1, 1:38–2:12)",
+        "difficulty": 1,
+        "variant": "B"
+      },
+      "C": {
+        "id": "ci-C",
+        "concept": "compound_interest",
+        "kind": "contrast",
+        "prompt": "本金 600、年息 10%：放满两年的话，第二年里单利付多少利息？复利呢？",
+        "answer": "单利 60，复利 66；复利第二年的基数是 660，含第一年的利息 (slide 1, 1:38–2:12)。",
+        "rubric": "1 分：答出 60 和 66，并说明单利只按本金、复利按整个余额计息；0.5 分：两个数只对一个。",
+        "citation": "(slide 1, 1:38–2:12)",
+        "difficulty": 1,
+        "variant": "C"
+      }
+    },
+    "growth_formula": {
+      "A": {
+        "id": "gf-A",
+        "concept": "growth_formula",
+        "kind": "apply",
+        "prompt": "本金 1500，年利率 3%，每年复利一次。5 年后账户里有多少钱？",
+        "answer": "约 1738.91；5 年里每一年都把整个余额，连同之前的利息，乘上同一个 1.03 (slide 2, 5:39–6:14)。",
+        "rubric": "1 分：约 1738.91，即 1500 乘以 1.03 的 5 次方；0.5 分：方法对但算错；0 分：答 1725，按单利算了。",
+        "citation": "(slide 2, 5:39–6:14)",
+        "difficulty": 2,
+        "variant": "A"
+      },
+      "B": {
+        "id": "gf-B",
+        "concept": "growth_formula",
+        "kind": "apply",
+        "prompt": "把 400 元存成利率 8% 的定期，利息每年滚进本金。存满 3 年，连本带利一共多少？",
+        "answer": "约 503.88；3 年里每一年都把整个余额，连同之前的利息，乘上同一个 1.08 (slide 2, 5:39–6:14)。",
+        "rubric": "1 分：约 503.88，即 400 乘以 1.08 的 3 次方；0.5 分：方法对但算错；0 分：答 496，按单利算了。",
+        "citation": "(slide 2, 5:39–6:14)",
+        "difficulty": 2,
+        "variant": "B"
+      },
+      "C": {
+        "id": "gf-C",
+        "concept": "growth_formula",
+        "kind": "apply",
+        "prompt": "账户开户时存入 2500，此后按 4% 的年利率逐年复利。第 2 年年末余额是多少？",
+        "answer": "2704；2 年里每一年都把整个余额，连同之前的利息，乘上同一个 1.04 (slide 2, 5:39–6:14)。",
+        "rubric": "1 分：约 2704，即 2500 乘以 1.04 的 2 次方；0.5 分：方法对但算错；0 分：答 2700，按单利算了。",
+        "citation": "(slide 2, 5:39–6:14)",
+        "difficulty": 2,
+        "variant": "C"
+      }
+    },
+    "effective_rate": {
+      "A": {
+        "id": "ea-A",
+        "concept": "effective_rate",
+        "kind": "apply",
+        "prompt": "某储蓄账户的名义年利率是 4%，每季度付一次息。它的实际年利率是多少？",
+        "answer": "约 4.06%；每季度的利息并入余额，在之后几个季度里也计息 (slide 3, 10:45–11:07)。",
+        "rubric": "1 分：约 4.06%，即 1 加 4% 除以 4，再取 4 次方后减 1；0.5 分：公式对但算错；0 分：答 4%，把名义年利率当成实际年利率。",
+        "citation": "(slide 3, 10:45–11:07)",
+        "difficulty": 2,
+        "variant": "A"
+      },
+      "B": {
+        "id": "ea-B",
+        "concept": "effective_rate",
+        "kind": "apply",
+        "prompt": "一张信用卡写明名义年利率 18%，欠款按月计息。持卡人一年里实际承担的年利率是多少？",
+        "answer": "约 19.56%；每个月的利息都并入欠款，之后每个月再被计息 (slide 3, 10:45–11:07)。",
+        "rubric": "1 分：约 19.56%，即 1 加 18% 除以 12，再取 12 次方后减 1；0.5 分：公式对但算错；0 分：答 18%，把名义年利率当成实际年利率。",
+        "citation": "(slide 3, 10:45–11:07)",
+        "difficulty": 2,
+        "variant": "B"
+      },
+      "C": {
+        "id": "ea-C",
+        "concept": "effective_rate",
+        "kind": "apply",
+        "prompt": "存款名义年利率 10%，半年结一次息。一整年下来，实际年利率是多少？",
+        "answer": "10.25%；上半年的利息并入余额，下半年连它一起计息 (slide 3, 10:45–11:07)。",
+        "rubric": "1 分：约 10.25%，即 1 加 10% 除以 2，再取 2 次方后减 1；0.5 分：公式对但算错；0 分：答 10%，把名义年利率当成实际年利率。",
+        "citation": "(slide 3, 10:45–11:07)",
+        "difficulty": 2,
+        "variant": "C"
+      }
+    }
+  },
+  "practice": [
+    {
+      "id": "first-year",
+      "concept": "compound_interest",
+      "kind": "transfer",
+      "prompt": "两个账户本金一样、年利率也一样，一个按单利、一个按复利。为什么第一年年底两者余额相同，第二年年底就不同了？",
+      "answer": "第一年还没有过去的利息，两者都只按本金计息；从第二年起，复利账户还要按第一年的利息计息 (3:06–3:54)。",
+      "rubric": "1 分：说出第一年没有过去的利息、第二年起利息生息；0.5 分：只说复利增长更快，没说第一年为什么相同。",
+      "citation": "(3:06–3:54)",
+      "difficulty": 1,
+      "variant": null
+    },
+    {
+      "id": "faded-growth",
+      "concept": "growth_formula",
+      "kind": "apply",
+      "prompt": "本金 200，年利率 4%，按年复利，存 3 年。第一年：200 × 1.04 = 208；第二年：208 × 1.04 = 216.32。请接着算完第三年：最后的余额是多少？它等于 1.04 的几次方乘以 200？",
+      "answer": "约 224.97，即 216.32 × 1.04；也就是 200 × 1.04 的 3 次方 (slide 2, 5:03–6:14)。",
+      "rubric": "1 分：224.97 和 3 次方；0.5 分：只答对一项；0 分：答 224，每年加 8。",
+      "citation": "(slide 2, 5:03–6:14)",
+      "difficulty": 2,
+      "variant": null
+    },
+    {
+      "id": "setup-growth",
+      "concept": "growth_formula",
+      "kind": "apply",
+      "prompt": "本金 1000，年利率 6%，按年复利，存 4 年。列出算式并算出最后的余额。",
+      "answer": "约 1262.48：1000 × 1.06 的 4 次方 (slide 2, 6:02–6:14)。",
+      "rubric": "1 分：1262.48 或 1000 × 1.06 的 4 次方；0.5 分：算式对但算错；0 分：答 1240，按单利算了。",
+      "citation": "(slide 2, 6:02–6:14)",
+      "difficulty": 2,
+      "variant": null
+    },
+    {
+      "id": "rank-accounts",
+      "concept": "effective_rate",
+      "kind": "which_method",
+      "prompt": "要给四个付息周期各不相同的存款账户排出高低，你该给每个账户算出哪一个数？",
+      "answer": "各自的实际年利率；付息周期不同，名义年利率不能直接比较 (slide 3, 12:48)。",
+      "rubric": "1 分：实际年利率；0.5 分：只说“真实的利率”，没有说出名称。",
+      "citation": "(slide 3, 12:48)",
+      "difficulty": 1,
+      "variant": null
+    }
+  ]
+}

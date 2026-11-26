@@ -26,7 +26,7 @@ The note is written in the language of the `note_language` setting, by default t
 
 ## A look at the bundled sample
 
-This is part of the note of the bundled synthetic sample, a fourteen-minute mini-lecture on compound interest with three slides, which `tutor-any-lecture selftest` runs through the gate. The whole note is [src/tutor_any_lecture/data/sample/explanation.md](src/tutor_any_lecture/data/sample/explanation.md).
+This is part of the note of the bundled synthetic sample, a fourteen-minute mini-lecture on compound interest with three slides, which `tutor-any-lecture selftest` runs through the gate. The whole note is [src/tutor_any_lecture/data/sample/explanation.md](src/tutor_any_lecture/data/sample/explanation.md). For a Chinese note of the same lecture, run `tutor-any-lecture selftest --keep DIR --sample zh`.
 
 > The lecturer starts from one idea that "sits under almost every price in finance" (0:40). A bank pays a yearly rate on a deposit, and slide 1 gives two ways to work out the payment, which differ only in what the rate is paid on (1:04, 2:54).
 >

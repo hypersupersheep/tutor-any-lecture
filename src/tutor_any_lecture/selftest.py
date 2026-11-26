@@ -1,7 +1,9 @@
 """Run the bundled sample unit through the offline pipeline, up to the delivery gate.
 
-``run_selftest`` copies the sample shipped in ``data/sample/`` into a unit folder and
-runs import → slides → items assign → cards export → map mermaid → verify on it. It
+``run_selftest`` copies one bundled sample into a unit folder and runs import → slides →
+items assign → cards export → map mermaid → verify on it: ``en`` (the default), the
+English note in ``data/sample/``, or ``zh``, a Chinese note of the same lecture in
+``data/sample-zh/``, which shares the lecture and the slides of ``data/sample/``. It
 needs no ASR, no network, no profile and no config dir, so it also runs from an
 installed wheel on a fresh machine.
 """
@@ -26,16 +28,27 @@ from .verify import run_verify
 # Sample files copied to the unit root, and the inputs copied to <unit>/sources/.
 ROOT_FILES = ("plan.json", "explanation.md", "items.json", "cards.json", "map.json")
 SOURCE_FILES = ("lecture.vtt", "slides.pdf")
+# Each sample's folder under data/; every sample takes its SOURCE_FILES from data/sample/.
+SAMPLES = {"en": "sample", "zh": "sample-zh"}
 
 
-def _read_sample() -> dict[str, bytes]:
-    """Every sample file's bytes, by name. Raises FileNotFoundError when one is missing."""
-    sample = resources.files("tutor_any_lecture").joinpath("data", "sample")
+def _check_sample(sample: str) -> None:
+    if sample not in SAMPLES:
+        raise ValueError(f"unknown sample {sample!r}; expected one of {', '.join(SAMPLES)}")
+
+
+def _read_sample(sample: str = "en") -> dict[str, bytes]:
+    """Every file of one sample, its bytes by name: the root files from the sample's folder,
+    the source files from data/sample/. Raises ValueError for an unknown sample and
+    FileNotFoundError when a file is missing."""
+    _check_sample(sample)
+    data = resources.files("tutor_any_lecture").joinpath("data")
     out: dict[str, bytes] = {}
     for name in SOURCE_FILES + ROOT_FILES:
-        f = sample.joinpath(name)
+        folder = SAMPLES["en"] if name in SOURCE_FILES else SAMPLES[sample]
+        f = data.joinpath(folder, name)
         if not f.is_file():
-            raise FileNotFoundError(f"sample file missing from the package: data/sample/{name}")
+            raise FileNotFoundError(f"sample file missing from the package: data/{folder}/{name}")
         out[name] = f.read_bytes()
     return out
 
@@ -111,18 +124,21 @@ def _run(files: dict[str, bytes], unit: Path) -> dict:
     return {"ok": len(steps) == 6 and all(s["ok"] for s in steps), "steps": steps}
 
 
-def run_selftest(tmp: Path | None = None) -> dict:
-    """Generate the sample unit and run the offline pipeline on it.
+def run_selftest(tmp: Path | None = None, sample: str = "en") -> dict:
+    """Generate the unit of one bundled sample (``en`` or ``zh``) and run the offline
+    pipeline on it.
 
     With ``tmp``, the unit is generated in that folder (created if missing) and left
     there; a ``tmp`` that exists and is not an empty directory raises FileExistsError
-    before anything is written. Without it, a temporary folder is used and removed.
+    before anything is written. Without it, a temporary folder is used and removed. An
+    unknown ``sample`` raises ValueError before anything is written.
     """
+    _check_sample(sample)
     if tmp is not None:
         tmp = Path(tmp)
         if tmp.exists() and (not tmp.is_dir() or any(tmp.iterdir())):
             raise FileExistsError(f"{tmp} exists and is not empty; pick a new or empty folder")
-    files = _read_sample()
+    files = _read_sample(sample)
     if tmp is not None:
         tmp.mkdir(parents=True, exist_ok=True)
         return _run(files, tmp)

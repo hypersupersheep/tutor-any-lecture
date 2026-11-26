@@ -471,7 +471,8 @@ def _cmd_selftest(args) -> int:
     from .selftest import run_selftest
 
     # A non-empty --keep folder raises FileExistsError, which main maps to EXIT_ACTION.
-    result = run_selftest(Path(args.keep)) if args.keep is not None else run_selftest()
+    keep = Path(args.keep) if args.keep is not None else None
+    result = run_selftest(keep, sample=args.sample)
     for step in result["steps"]:
         print(f"{'ok' if step['ok'] else 'FAIL':<4}  {step['name']}: {step['detail']}")
     # doctor's view in one line, the failing checks split by kind; the exit code
@@ -688,6 +689,8 @@ def build_parser() -> argparse.ArgumentParser:
     st = sub.add_parser("selftest", help="run the bundled sample unit through the offline pipeline")
     st.add_argument("--keep", type=_path, default=None, metavar="DIR",
                     help="generate the unit in this new or empty folder and keep it")
+    st.add_argument("--sample", choices=("en", "zh"), default="en",
+                    help="which bundled sample: en, an English note (the default), or zh, a Chinese note of the same lecture")
     st.set_defaults(func=_cmd_selftest)
     return parser
 

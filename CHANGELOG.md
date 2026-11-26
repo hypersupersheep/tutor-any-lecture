@@ -11,4 +11,4 @@ Newest first. Version ids are `X.Y.Z` for a release, `X.Y.Z-rc.N` for a release 
 - Get Anki cards for the core ideas, an extra card for each quiz question you missed, and a concept map of the lecture as Mermaid flowcharts.
 - See your quiz results and what is due next on a progress page for each course, written by `progress render` in your note language (English or Chinese), opening with one sentence and a chart of your scores.
 - Every note passes an automatic check before you see it: citations, slide coverage, structure, quiz items, cards and the map are checked, and nothing is delivered while a check fails.
-- Run `tutor-any-lecture doctor` to see whether your computer is ready and how to fix what is missing; a built-in self-test runs a bundled sample lecture through the whole process offline.
+- Run `tutor-any-lecture doctor` to see whether your computer is ready and how to fix what is missing; a built-in self-test runs a bundled sample lecture through the whole process offline, and a second bundled sample shows the same lecture as a Chinese note.

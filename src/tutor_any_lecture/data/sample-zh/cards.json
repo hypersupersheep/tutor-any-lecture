@@ -1,0 +1,51 @@
+[
+  {
+    "id": "c01",
+    "concept": "compound_interest",
+    "front": "复利：利率乘在哪个数上？",
+    "back": "乘在整个余额上，包括以前的利息，而不只是本金。",
+    "citation": "(slide 1, 1:38–1:50)"
+  },
+  {
+    "id": "c02",
+    "concept": "compound_interest",
+    "front": "为什么复利余额和单利余额的差距会越拉越大？",
+    "back": "每年的利息都并入余额并继续生息，所以每一年的基数都比上一年大。",
+    "citation": "(2:02, 8:37)"
+  },
+  {
+    "id": "c03",
+    "concept": "growth_formula",
+    "front": "本金 $P$、年利率 $r$、按年复利，$n$ 年后的余额？",
+    "back": "$P(1+r)^n$，即本金乘以 $1+r$ 的 $n$ 次方。",
+    "citation": "(slide 2, 6:02)"
+  },
+  {
+    "id": "c04",
+    "concept": "growth_formula",
+    "front": "本金 100、年利率 5%、存 10 年：单利和复利各得多少？",
+    "back": "单利 150，复利 162.89。",
+    "citation": "(slide 2, 7:48–8:28)"
+  },
+  {
+    "id": "c05",
+    "concept": "effective_rate",
+    "front": "名义年利率 $r$、一年付息 $m$ 次，实际年利率是多少？",
+    "back": "$(1+r/m)^m - 1$，即一年里余额增长的倍数减去 1。",
+    "citation": "(slide 3, 10:45–10:55)"
+  },
+  {
+    "id": "c06",
+    "concept": "effective_rate",
+    "front": "付息周期不同的账户，该比较哪个利率？",
+    "back": "比较实际年利率，不比较名义年利率；付息越频繁，实际年利率越高。",
+    "citation": "(slide 3, 12:04, 12:48)"
+  },
+  {
+    "id": "c07",
+    "concept": "growth_formula",
+    "front": "复利账户为什么不能写成 $P(1+nr)$？",
+    "back": "那是单利：每年只按本金计息，忘了利息还会生息。",
+    "citation": "(6:48–7:12)"
+  }
+]

@@ -26,7 +26,7 @@ Tutor Any Lecture 由一个 agent skill 和一个命令行工具组成,两者都
 
 ## 内置样例节选
 
-下面是内置合成样例笔记的一部分。这个样例是一段十四分钟的复利小讲座,配三页课件,`tutor-any-lecture selftest` 会把它完整跑过门禁。完整笔记见 [src/tutor_any_lecture/data/sample/explanation.md](src/tutor_any_lecture/data/sample/explanation.md)。
+下面是内置合成样例笔记的一部分。这个样例是一段十四分钟的复利小讲座,配三页课件,`tutor-any-lecture selftest` 会把它完整跑过门禁。完整笔记见 [src/tutor_any_lecture/data/sample/explanation.md](src/tutor_any_lecture/data/sample/explanation.md)。同一节课的中文笔记,运行 `tutor-any-lecture selftest --keep DIR --sample zh` 就能生成。
 
 > The lecturer starts from one idea that "sits under almost every price in finance" (0:40). A bank pays a yearly rate on a deposit, and slide 1 gives two ways to work out the payment, which differ only in what the rate is paid on (1:04, 2:54).
 >

@@ -1,0 +1,84 @@
+{
+  "course": "Sample",
+  "unit": "compound-interest-zh",
+  "goal": "deep",
+  "content_type": "formula",
+  "note_language": "zh",
+  "lecture_language": "en",
+  "duration_s": 840,
+  "outputs": [
+    "explanation",
+    "pretest",
+    "quiz",
+    "cards",
+    "map"
+  ],
+  "sections": [
+    {
+      "title": "单利和复利",
+      "concepts": [
+        "compound_interest"
+      ],
+      "citations": [
+        "(slide 1)",
+        "(0:40–4:39)"
+      ]
+    },
+    {
+      "title": "多年后的余额",
+      "concepts": [
+        "growth_formula"
+      ],
+      "citations": [
+        "(slide 2)",
+        "(4:39–9:35)"
+      ]
+    },
+    {
+      "title": "计息频率",
+      "concepts": [
+        "effective_rate"
+      ],
+      "citations": [
+        "(slide 3)",
+        "(9:35–14:00)"
+      ]
+    }
+  ],
+  "concepts": [
+    {
+      "id": "compound_interest",
+      "name": "复利",
+      "type": "definition",
+      "citations": [
+        "(slide 1)",
+        "(1:38)"
+      ]
+    },
+    {
+      "id": "growth_formula",
+      "name": "多年后的余额",
+      "type": "theorem",
+      "citations": [
+        "(slide 2)",
+        "(6:02)"
+      ]
+    },
+    {
+      "id": "effective_rate",
+      "name": "实际年利率",
+      "type": "definition",
+      "citations": [
+        "(slide 3)",
+        "(10:55)"
+      ]
+    }
+  ],
+  "tracked": [
+    "compound_interest",
+    "growth_formula",
+    "effective_rate"
+  ],
+  "output_target": "markdown",
+  "quote_density": "standard"
+}

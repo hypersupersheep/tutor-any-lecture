@@ -235,4 +235,4 @@ Besides structure, verify checks citations and quotes (above), slide coverage (e
 
 ## Example
 
-For a complete note that passes the gate, run `tutor-any-lecture selftest --keep DIR`: it leaves a generated unit in DIR.
+For a complete note that passes the gate, run `tutor-any-lecture selftest --keep DIR`: it leaves a generated unit in DIR. For a Chinese note of the same lecture, run `tutor-any-lecture selftest --keep DIR --sample zh`.

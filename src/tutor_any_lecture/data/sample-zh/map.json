@@ -1,0 +1,85 @@
+{
+  "nodes": [
+    {
+      "id": "simple",
+      "label": "单利",
+      "type": "definition",
+      "order": 1,
+      "citation": "(slide 1)"
+    },
+    {
+      "id": "compound",
+      "label": "复利",
+      "type": "definition",
+      "order": 2,
+      "citation": "(slide 1)"
+    },
+    {
+      "id": "growth",
+      "label": "n 年后的余额",
+      "type": "theorem",
+      "order": 3,
+      "citation": "(slide 2)"
+    },
+    {
+      "id": "frequency",
+      "label": "一年付息 m 次",
+      "type": "method",
+      "order": 4,
+      "citation": "(slide 3)"
+    },
+    {
+      "id": "effective",
+      "label": "实际年利率",
+      "type": "definition",
+      "order": 5,
+      "citation": "(slide 3)"
+    },
+    {
+      "id": "quoted",
+      "label": "直接比较名义年利率",
+      "type": "pitfall",
+      "order": 6,
+      "citation": "(slide 3)"
+    },
+    {
+      "id": "add_nr",
+      "label": "把 n 年利息直接相加",
+      "type": "pitfall",
+      "order": 7,
+      "citation": "(6:48–7:12)"
+    }
+  ],
+  "edges": [
+    {
+      "from": "compound",
+      "to": "simple",
+      "verb": "增长快于"
+    },
+    {
+      "from": "compound",
+      "to": "growth",
+      "verb": "推出"
+    },
+    {
+      "from": "frequency",
+      "to": "growth",
+      "verb": "重复同一步"
+    },
+    {
+      "from": "frequency",
+      "to": "effective",
+      "verb": "提高"
+    },
+    {
+      "from": "effective",
+      "to": "quoted",
+      "verb": "取代"
+    },
+    {
+      "from": "add_nr",
+      "to": "simple",
+      "verb": "其实是"
+    }
+  ]
+}
