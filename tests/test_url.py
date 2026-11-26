@@ -317,6 +317,49 @@ def test_no_audio_only_format_needs_user_file(monkeypatch, fake_asr, tmp_path, p
     assert not UnitPaths(tmp_path).transcript.exists()
 
 
+FAILED_AUDIO_TEXT = (
+    "The audio download failed (Requested format is not available). "
+    "Ways forward: provide the video or audio file, or provide a transcript file."
+)
+
+
+def test_failed_audio_download_names_the_failure(tmp_cfg, monkeypatch, fake_asr, tmp_path, profile_on, capsys):
+    _install(monkeypatch, info(lang="en"), audio_error=True)
+    with pytest.raises(NeedsUserFile) as exc:
+        acquire_url("https://y/x", tmp_path / "direct", profile_on, False)
+    assert str(exc.value) == FAILED_AUDIO_TEXT
+    assert "public_video_audio" not in str(exc.value)
+
+    # Through the command, with the consent given the way the learner gives it.
+    assert main(["profile", "set", "public_video_audio", "on", "--i-understand"]) == 0
+    capsys.readouterr()
+    assert main(["acquire", "url", "--url", "https://y/x", "--unit", str(tmp_path / "unit")]) == 3
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 1
+    assert json.loads(lines[0]) == {"status": "needs_user_file", "message": FAILED_AUDIO_TEXT}
+
+
+def test_empty_audio_download_names_the_failure(monkeypatch, fake_asr, tmp_path, profile_on):
+    fake = _install(monkeypatch, info(lang="en"))
+
+    class NoFile(fake):
+        """The audio download ends without error and without a file."""
+
+        def download(self, url_list):
+            if self.params.get("skip_download"):
+                return super().download(url_list)
+            return 0
+
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", NoFile)
+    with pytest.raises(NeedsUserFile) as exc:
+        acquire_url("https://y/x", tmp_path, profile_on, False)
+    assert str(exc.value) == (
+        "The audio download left no file. Ways forward: provide the video or audio file, or provide a transcript file."
+    )
+    assert fake_asr.calls == []
+    assert not UnitPaths(tmp_path).transcript.exists()
+
+
 def test_broken_cc_falls_back_to_auto(monkeypatch, tmp_path, profile_off):
     fake = _install(
         monkeypatch,

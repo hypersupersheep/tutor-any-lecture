@@ -105,6 +105,10 @@ class NeedsUserFile(Exception):
         )
 
 
+# The ways forward when the audio download itself failed: the switch is already on.
+_FILE_WAYS = "Ways forward: provide the video or audio file, or provide a transcript file."
+
+
 # --- caption choice ----------------------------------------------------------
 
 
@@ -247,14 +251,15 @@ def _asr_from_audio(
         dl = tmp / "dl"
         # Audio only: no "/best" fallback that could select a stream with video.
         opts = _opts(format="bestaudio", outtmpl=str(dl / "%(id)s.%(ext)s"))
+        # The switch is on here, so the ways forward offered are the two files only.
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.download([url])
-        except yt_dlp.utils.DownloadError:
-            raise NeedsUserFile() from None
+        except yt_dlp.utils.DownloadError as e:
+            raise NeedsUserFile(f"The audio download failed ({_reason(e)}). {_FILE_WAYS}") from None
         files = sorted(p for p in dl.iterdir() if p.is_file()) if dl.is_dir() else []
         if not files:
-            raise NeedsUserFile()
+            raise NeedsUserFile(f"The audio download left no file. {_FILE_WAYS}")
         # Outside dl/, so it cannot collide with a download that is itself a .wav.
         wav = tmp / "audio.wav"
         ffmpeg.extract_audio(files[0], wav)
