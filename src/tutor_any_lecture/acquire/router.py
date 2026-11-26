@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from ..source import SLIDE_DECK_SUFFIXES
 from ..unit import UnitPaths
 from .panopto import load_extract
 
@@ -18,7 +19,7 @@ _BY_SUFFIX = {
     **{s: "video" for s in (".mp4", ".mkv", ".mov", ".webm", ".avi", ".m4v")},
     **{s: "audio" for s in (".mp3", ".m4a", ".wav", ".aac", ".flac", ".ogg")},
     **{s: "transcript" for s in (".srt", ".vtt", ".txt")},
-    **{s: "slides" for s in (".pdf", ".pptx")},
+    **{s: "slides" for s in SLIDE_DECK_SUFFIXES},
     **{s: "images" for s in (".jpg", ".jpeg", ".png", ".heic")},
 }
 _CLASSES = ("video", "audio", "transcript", "slides", "images", "other")

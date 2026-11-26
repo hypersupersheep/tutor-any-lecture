@@ -1,4 +1,4 @@
-"""Slides: PDF pages → sources/slides/pages.json, footer labels, and slide terms."""
+"""Slides: PDF pages or PowerPoint slides → sources/slides/pages.json, footer labels, and slide terms."""
 
 from __future__ import annotations
 
@@ -8,6 +8,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import __version__
+from .office import OfficePackage, child, children, local_name, namespace, namespaced_attribute
 from .plan import read_json
 from .source import SourceInfo, add_slide_digest, sha256_file
 from .transcript import AcquireError
@@ -19,10 +21,11 @@ FOOTER_RE = re.compile(r"^\s*(\d+)\s*/\s*\d+\s*$")
 
 @dataclass
 class Page:
-    n: int  # 1-based PDF page number
+    n: int  # 1-based PDF page number, or the slide's position in a .pptx deck
     label: str | None
     text: str
     image: str | None = None
+    notes: str | None = None  # a .pptx slide's speaker notes ("" for none); None for a PDF page
 
 
 def _last_nonempty_line(text: str) -> str | None:
@@ -88,25 +91,170 @@ def extract_pdf(pdf: Path, unit: Path, images: bool = False) -> list[Page]:
                     raise AcquireError(f"could not render page {n} of {pdf.name}") from e
             pages.append(Page(n, _footer_label(text), text, image))
 
-    payload = [dataclasses.asdict(p) for p in pages]
+    _write_pages(paths, pages)
+    _record_deck(paths, pdf, {"pdfplumber": importlib.metadata.version("pdfplumber")})
+    return pages
+
+
+def _write_pages(paths: UnitPaths, pages: list[Page]) -> None:
+    """Write pages.json; ``notes`` only where it is not ``None``, so a PDF's entries keep their keys."""
+    payload = [
+        {k: v for k, v in dataclasses.asdict(p).items() if not (k == "notes" and v is None)} for p in pages
+    ]
     paths.pages.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
 
-    digest = sha256_file(pdf)
+
+def _record_deck(paths: UnitPaths, deck: Path, tool_versions: dict) -> None:
+    """Add the deck's sha256 to source.json, or write a slides-only source.json when there is none."""
+    digest = sha256_file(deck)
     if paths.source.exists():
-        add_slide_digest(paths.source, pdf.name, digest)
+        add_slide_digest(paths.source, deck.name, digest)
     else:
         SourceInfo(
             kind="slides-only",
-            title=pdf.stem,
+            title=deck.stem,
             url=None,
             platform=None,
             duration=None,
             lecture_language=None,
             acquisition="slides",
             health={},
-            tool_versions={"pdfplumber": importlib.metadata.version("pdfplumber")},
-            inputs_sha256={pdf.name: digest},
+            tool_versions=tool_versions,
+            inputs_sha256={deck.name: digest},
         ).write(paths.source)
+
+
+# Placeholders whose text is not the slide's: the slide number, the date, the footer.
+_SKIPPED_PLACEHOLDERS = frozenset({"sldNum", "dt", "ftr"})
+# OMML, how an equation is stored: never read, so its m:t is not taken for an a:t.
+_MATH_NAMESPACES = frozenset({
+    "http://schemas.openxmlformats.org/officeDocument/2006/math",
+    "http://purl.oclc.org/ooxml/officeDocument/math",
+})
+_PRESENTATION = "ppt/presentation.xml"
+
+
+def _placeholder_type(sp) -> str | None:
+    """The ``p:ph`` type of a shape (``"obj"`` when the placeholder names none); ``None`` for no placeholder."""
+    ph = child(child(child(sp, "nvSpPr"), "nvPr"), "ph")
+    if ph is None:
+        return None
+    return ph.get("type", "obj")
+
+
+def _first_choice(alternate):
+    """The first ``mc:Choice`` of an ``mc:AlternateContent``; ``mc:Fallback`` is never read."""
+    return child(alternate, "Choice")
+
+
+def _paragraph_lines(p) -> list[str]:
+    """One ``a:p``: the ``a:t`` of its runs and fields, a line ended at each ``a:br``."""
+    lines: list[str] = []
+    current: list[str] = []
+
+    def walk(container) -> None:
+        for el in container:
+            if namespace(el.tag) in _MATH_NAMESPACES:
+                continue
+            name = local_name(el.tag)
+            if name in ("r", "fld"):
+                t = child(el, "t")
+                if t is not None and t.text:
+                    current.append(t.text)
+            elif name == "br":
+                lines.append("".join(current))
+                current.clear()
+            elif name == "AlternateContent":
+                choice = _first_choice(el)
+                if choice is not None:
+                    walk(choice)
+
+    walk(p)
+    lines.append("".join(current))
+    return lines
+
+
+def _body_lines(tx_body) -> list[str]:
+    return [line for p in children(tx_body, "p") for line in _paragraph_lines(p)]
+
+
+def _tree_lines(container, keep) -> list[str]:
+    """The text lines of the shapes in ``container`` (an spTree, a group, an mc:Choice), in document order.
+
+    ``keep`` takes a shape's placeholder type and says whether its text is read.
+    Pictures, charts and SmartArt are not read; a table's cells are, row by row.
+    """
+    lines: list[str] = []
+    for el in container:
+        name = local_name(el.tag)
+        if name == "sp":
+            if keep(_placeholder_type(el)):
+                lines += _body_lines(child(el, "txBody"))
+        elif name == "grpSp":
+            lines += _tree_lines(el, keep)
+        elif name == "graphicFrame":
+            table = child(child(child(el, "graphic"), "graphicData"), "tbl")
+            for row in children(table, "tr"):
+                for cell in children(row, "tc"):
+                    lines += _body_lines(child(cell, "txBody"))
+        elif name == "AlternateContent":
+            choice = _first_choice(el)
+            if choice is not None:
+                lines += _tree_lines(choice, keep)
+    return lines
+
+
+def _shape_text(root, keep) -> str:
+    """The text of a slide or notes slide: stripped lines, blank ones dropped, joined with "\\n"."""
+    tree = child(child(root, "cSld"), "spTree")
+    if tree is None:
+        return ""
+    return "\n".join(line.strip() for line in _tree_lines(tree, keep) if line.strip())
+
+
+def _read_deck(pkg: OfficePackage) -> list[Page]:
+    """Every slide of the deck, in the order of ``p:sldIdLst``, each ``r:id`` resolved through the relationships."""
+    rels = pkg.relationships(_PRESENTATION)
+    ids = children(child(pkg.xml(_PRESENTATION), "sldIdLst"), "sldId")
+    if not ids:
+        raise AcquireError(f"{pkg.name} has no slides")
+    pages: list[Page] = []
+    for n, sld_id in enumerate(ids, start=1):
+        rel = rels.get(namespaced_attribute(sld_id, "id"))  # r:id; the unqualified id is not read
+        slide = pkg.xml(rel[1], required=False) if rel is not None and rel[0].endswith("/slide") else None
+        if slide is None:
+            raise AcquireError(f"{pkg.name} is not a readable .pptx file: slide {n} is missing")
+        text = _shape_text(slide, lambda kind: kind not in _SKIPPED_PLACEHOLDERS)
+        notes = ""
+        for rel_type, target in pkg.relationships(rel[1]).values():
+            if rel_type.endswith("/notesSlide"):
+                notes_slide = pkg.xml(target, required=False)
+                if notes_slide is not None:
+                    notes = _shape_text(notes_slide, lambda kind: kind == "body")
+                break
+        pages.append(Page(n, None, text, None, notes))
+    return pages
+
+
+def extract_pptx(pptx: Path, unit: Path) -> list[Page]:
+    """Read every slide of ``pptx`` into the unit's pages.json: text and speaker notes, no images.
+
+    The whole deck is read before anything is created in the unit, so a broken file
+    (not a zip, password-protected, a missing or damaged part) raises ``AcquireError``
+    and writes nothing. source.json is handled as ``extract_pdf`` handles it.
+    """
+    pptx = Path(pptx)
+    if not pptx.is_file():
+        raise FileNotFoundError(f"PPTX not found: {pptx}")
+    paths = UnitPaths(unit)
+    if paths.source.exists():
+        SourceInfo.read(paths.source)  # a malformed source.json stops the run here, unchanged
+    with OfficePackage(pptx, ".pptx") as pkg:
+        pages = _read_deck(pkg)
+    paths.ensure()
+    paths.pages.parent.mkdir(exist_ok=True)
+    _write_pages(paths, pages)
+    _record_deck(paths, pptx, {"tutor-any-lecture": __version__})
     return pages
 
 
@@ -131,14 +279,14 @@ def _page(d, k: int) -> Page:
         raise ValueError(f"{where} is missing {', '.join(missing)}")
     if not isinstance(d["n"], int) or isinstance(d["n"], bool):
         raise ValueError(f"{where}: n must be a whole number, got {d['n']!r}")
-    for key in ("label", "image"):
+    for key in ("label", "image", "notes"):
         if not isinstance(d.get(key), (str, type(None))):
             raise ValueError(f"{where}: {key} must be text or null, got {d[key]!r}")
     if d["label"] is not None and not d["label"].isdecimal():
         raise ValueError(f"{where}: label must be digits or null, got {d['label']!r}")
     if not isinstance(d["text"], str):
         raise ValueError(f"{where}: text must be text, got {d['text']!r}")
-    return Page(d["n"], d["label"], d["text"], d.get("image"))
+    return Page(d["n"], d["label"], d["text"], d.get("image"), d.get("notes"))
 
 
 def max_label(pages: list[Page]) -> int:

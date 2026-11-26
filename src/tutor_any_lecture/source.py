@@ -70,12 +70,17 @@ class SourceInfo:
             raise ValueError(f"source.json: {e}") from None
 
 
-def _is_slide_deck(name) -> bool:
-    """An ``inputs_sha256`` key that names the slide deck: the PDF that ``slides --pdf`` read.
+# The suffixes of the slide decks the ``slides`` command reads (--pdf, --pptx).
+SLIDE_DECK_SUFFIXES = (".pdf", ".pptx")
 
-    No acquisition reads a PDF, so the suffix tells the deck's entry from the transcript's.
+
+def _is_slide_deck(name) -> bool:
+    """An ``inputs_sha256`` key that names the slide deck: the PDF or PPTX ``slides`` read.
+
+    No acquisition reads a PDF or a PPTX, so the suffix tells the deck's entry from the
+    transcript's.
     """
-    return isinstance(name, str) and name.lower().endswith(".pdf")
+    return isinstance(name, str) and name.lower().endswith(SLIDE_DECK_SUFFIXES)
 
 
 def slide_digests(path: Path) -> dict[str, str]:
