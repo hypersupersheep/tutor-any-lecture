@@ -727,3 +727,14 @@ def test_cli_acquire_local_names_the_rung(monkeypatch, tmp_path, tmp_cfg, capsys
     code = main(["acquire", "local", "--file", str(src), "--unit", str(tmp_path / "课程 资料" / "第2周")])
     out = json.loads(capsys.readouterr().out)
     assert code == 0 and out["acquisition"] == "asr"
+
+
+def test_documents_name_the_subtitle_rung():
+    root = Path(__file__).resolve().parents[1]
+    refs = root / "skills" / "tutor-any-lecture" / "references"
+    adapter = (refs / "adapters" / "local.md").read_text(encoding="utf-8")
+    assert '"acquisition": "embedded"' in adapter and "PGS" in adapter
+    assert '"embedded"' in (refs / "gate.md").read_text(encoding="utf-8")
+    changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
+    entry = changelog.split("\n## ", 2)[1]   # the newest version's entry
+    assert "subtitle track inside a video file" in entry

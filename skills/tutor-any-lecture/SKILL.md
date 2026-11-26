@@ -121,7 +121,7 @@ Extras are optional and never part of the gate.
 - [teaching](references/teaching.md): plan.json and items.json shapes, variants, pretest, post quiz, reviews, cards, map.
 - [gate](references/gate.md): the nine checks, statuses, exit codes, acquisition JSON.
 - [profile](references/profile.md): settings, value sets, the consent gate, plan resolution.
-- [local](references/adapters/local.md): local video or audio, local ASR, key frames from a video without slides.
+- [local](references/adapters/local.md): local video or audio: a subtitle track inside the file, else local ASR; key frames from a video without slides.
 - [url](references/adapters/url.md): public video links, captions first.
 - [import](references/adapters/import.md): SRT, VTT, JSON, timestamped text and DOCX transcripts.
 - [panopto](references/adapters/panopto.md): Panopto recordings through the browser.
