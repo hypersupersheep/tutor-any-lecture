@@ -18,3 +18,5 @@
 The unit folder in the workspace, `<workspace>/courses/<course>/<unit>/`, stays the place where every command and `tutor-any-lecture verify --unit DIR` run. After verify reports PASS, copy the note into the vault under `<obsidian_vault>/<course>/<unit>/`. Copy only after PASS, and copy again after every later fix and re-verify.
 
 Edits belong in the workspace copy. If the vault copy has changed since the last copy (the learner may have annotated it), ask before overwriting it.
+
+For the map drawings of an obsidian unit, run `tutor-any-lecture map render --unit DIR --obsidian` and copy each `.excalidraw.md` it writes beside the note in the vault; the Excalidraw plugin opens it.

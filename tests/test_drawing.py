@@ -529,3 +529,30 @@ def test_cli_map_render_keeps_an_edited_drawing(tmp_path, capsys):
     assert not (unit / "map-a.excalidraw").exists()  # every target is checked before the first write
     assert main(render_argv(unit, "--force")) == 0
     assert read_scene(edited)["type"] == "excalidraw"
+
+
+# ---- D1: the documents ---------------------------------------------------------------
+
+
+def test_documents_describe_map_render():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    skill = root / "skills" / "tutor-any-lecture"
+
+    def read(*parts):
+        return skill.joinpath(*parts).read_text(encoding="utf-8")
+
+    text = read("SKILL.md")
+    assert "`tutor-any-lecture map render --unit DIR`" in text
+    assert "--obsidian" in text and "and the drawings of map render" in text
+    assert "excalidraw-concept-map" not in text
+    text = read("references", "teaching.md")
+    assert '"key"?' in text and "map-<view>.excalidraw" in text and "--force" in text
+    text = read("references", "gate.md")
+    assert "for `map mermaid` or `map render`" in text and "an `order` used twice" in text
+    assert "map-<view>.excalidraw" in read("references", "output-targets", "markdown.md")
+    assert "tutor-any-lecture map render --unit DIR --obsidian" in read("references", "output-targets", "obsidian.md")
+    changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
+    newest = changelog.split("\n## ", 2)[1]
+    assert "editable Excalidraw drawings" in newest

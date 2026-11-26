@@ -81,7 +81,8 @@ Run `tutor-any-lecture cite link --unit DIR` first, then `tutor-any-lecture card
 
 After the gate passes, when "quiz" and "pretest" are in plan.outputs, run the pretest in chat before the learner sees the note: the `items` of `tutor-any-lecture items next --unit DIR --phase pre`, one at a time. Ask how sure the learner is before you say whether the answer was right; then grade; then log both with `tutor-any-lecture progress log --unit DIR --item ID --phase pre --score S --confidence K`. Say that a low pretest score is normal. After the last item, tell the learner which sections to read closely ([teaching](references/teaching.md), Pretest).
 
-Only then deliver the files: explanation.md, cards.tsv and the map files (`overview-<view>.mmd` for each view, or `overview.mmd`); where they go per `output_target` is in [markdown](references/output-targets/markdown.md) and [obsidian](references/output-targets/obsidian.md). With "quiz" listed, ask the learner to read the note and to tell you when they have.
+Map drawing: with "map" in plan.outputs, after the gate run `tutor-any-lecture map render --unit DIR` (add `--obsidian` when output_target is obsidian); it writes an editable Excalidraw file per view and keeps an existing one unless you add `--force`, which you never do once the learner may have edited it.
+Only then deliver the files: explanation.md, cards.tsv and the map files (`overview-<view>.mmd` for each view, or `overview.mmd`, and the drawings of map render); where they go per `output_target` is in [markdown](references/output-targets/markdown.md) and [obsidian](references/output-targets/obsidian.md). With "quiz" listed, ask the learner to read the note and to tell you when they have.
 
 ## Post quiz
 
@@ -104,7 +105,7 @@ Reviews are counted from the day the post quiz is complete, that is, when every 
 
 Extras are optional and never part of the gate.
 - The audio lesson is experimental in this version (Apple Silicon only, its rules are written in Chinese) and is not offered unless the learner asks. Then follow the [audio script rules](references/audio-script-rules.md) and run `scripts/tts_synthesize.py` directly with any Python that has `mlx-audio` and numpy installed, with ffmpeg and ffprobe on PATH; `<python>` in that file means that interpreter. If mlx-audio is missing, tell the user to install it (`pip install mlx-audio`); never install it silently.
-- Review sheet and hand-drawn overview map: the separate companion skills handwritten-notes-pdf and excalidraw-concept-map.
+- Review sheet: the separate companion skill handwritten-notes-pdf.
 
 ## Guardrails
 

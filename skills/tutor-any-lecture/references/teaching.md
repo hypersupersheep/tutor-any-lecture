@@ -188,14 +188,17 @@ GUIDs are stable (derived from course, unit and card id), so re-importing cards.
 
 ## Overview map
 
-map.json is `{"nodes": [{"id", "label", "type", "order"?, "citation"?}], "edges": [{"from", "to", "verb"}], "views": [{"id", "nodes"}]?}`.
+map.json is `{"nodes": [{"id", "label", "type", "order"?, "key"?, "citation"?}], "edges": [{"from", "to", "verb"}], "views": [{"id", "nodes"}]?}`.
 - Node types: definition, theorem, method, example, pitfall.
 - A node id uses letters, digits and underscores, starts with a letter, and is not `end`.
 - Every edge names existing nodes and has a verb.
+- `order` numbers the main line in lecture order, each value used once. `key: true` marks the idea the rest of the view depends on, at most one per view.
 - Node labels and edge verbs are written in plan.note_language: in English, verbs such as "defines", "is used in", "fails when"; in Chinese, "定义", "用于", "不适用于".
 - At most 12 nodes per view. A map of more than 12 nodes needs views, and then every node belongs to at least one view.
 
 `tutor-any-lecture map validate --unit DIR` checks it. `tutor-any-lecture map mermaid --unit DIR` writes one Mermaid file per view, `overview-<view>.mmd` (a view id must be usable in a file name), and prints `{"paths": […]}`; a map without views goes whole into `overview.mmd` and prints `{"path"}`. `--view ID` writes only that view, to `overview.mmd`; an unknown view exits 2. Deliver the per-view files of a map with views, never a whole map of more than 12 nodes.
+
+`tutor-any-lecture map render --unit DIR` draws the map as editable Excalidraw files: `map-<view>.excalidraw` for each view, or `map.excalidraw` for a map without views or with `--view ID`. `--obsidian` writes `.excalidraw.md` files in their place, for the Obsidian Excalidraw plugin. An existing drawing is kept: the command exits 3 and writes nothing unless you add `--force`, which you never do once the learner may have edited it. The main line runs down one column in order, each other node sits beside the main-line node it joins, shape and stroke tell the five kinds apart, a key node is highlighted, and the legend is in Chinese when plan.note_language is zh, otherwise in English.
 
 ## Suspects and the errata section
 

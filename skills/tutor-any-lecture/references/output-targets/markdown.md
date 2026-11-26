@@ -23,6 +23,8 @@ Every unit lives at `<workspace>/courses/<course>/<unit>/` with fixed file names
 | `map.json` | you | the concept map |
 | `overview-<view>.mmd` | `map mermaid` | one Mermaid flowchart per view of the map, when map.json has views |
 | `overview.mmd` | `map mermaid` | the whole map as a Mermaid flowchart, when map.json has no views (or the one view asked for with `--view`) |
+| `map-<view>.excalidraw` | `map render` | one editable Excalidraw drawing per view of the map, when map.json has views |
+| `map.excalidraw` | `map render` | the whole map as an editable Excalidraw drawing, when map.json has no views (or the one view asked for with `--view`) |
 | `verify.json` | `verify` | the gate's result |
 
 Progress is per course, outside the unit folders:
@@ -39,6 +41,6 @@ Progress is per course, outside the unit folders:
 
 ## Delivering
 
-After verify passes and the pretest is done (see SKILL.md), tell the learner where the unit folder is and what to open: `explanation.md` to read, `cards.tsv` to import into Anki (File, Import), and the map in any Mermaid viewer: each `overview-<view>.mmd` when the map has views, otherwise `overview.mmd`.
+After verify passes and the pretest is done (see SKILL.md), tell the learner where the unit folder is and what to open: `explanation.md` to read, `cards.tsv` to import into Anki (File, Import), and the map in any Mermaid viewer: each `overview-<view>.mmd` when the map has views, otherwise `overview.mmd`. The drawings open in Excalidraw (excalidraw.com or the desktop app), where the learner can move and edit them: each `map-<view>.excalidraw` when the map has views, otherwise `map.excalidraw`.
 
 **Notion** (`output_target: notion`): plan.json says markdown, and the files are the same. The learner imports `explanation.md` with Notion's Markdown import; alerts arrive as quotes and `<details>` blocks may need re-folding by hand.
