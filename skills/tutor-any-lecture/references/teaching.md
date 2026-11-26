@@ -62,7 +62,7 @@ Every item, tracked or practice, is an object with exactly the nine keys `id`, `
 
 Label each item by what it really asks. An item that asks the learner to state a definition or a formula, or to repeat the lecture's own worked example, is `recall`; an `apply` item gives new numbers or a new case.
 
-The variants of one concept share one rubric: write it once for A and, for B, C, D and E, change only the specifics (the numbers, the case). The worked answer in the note's pretest section answers the pretest variant only (the one `items next --phase pre` prints), never the others.
+The variants of one concept share one rubric: write it once for A and, for B, C, D and E, change only the specifics (the numbers, the case). The answer in the note's pretest section answers the pretest variant only (the one `items next --phase pre` prints), never the others, in at most two sentences: the result and the idea it rests on, with its citation. It shows no worked steps (no `=`, no intermediate result), so the post and day-7 variants cannot be answered by copying it; the worked steps belong in the section's prose, on the lecturer's own example (see [writing](writing.md), No restating).
 
 `tracked` holds the plan's tracked concepts only, each with A, B and C, so the bank is at least 3 × the tracked count plus the practice items. A short synthetic example (variants B and C of `bias` have the same shape as A, with their own ids and prompts, `"variant": "B"` and `"variant": "C"`):
 
@@ -117,16 +117,14 @@ At least 50% of all items, tracked and practice together, are apply/transfer kin
 
 Goal quick: a quiz session asks 5–8 items. items.json still carries A, B and C for every tracked concept and at least 50% apply/transfer items; the `variants` and `apply_share` checks do not relax for quick.
 
-**Examples.** Worked example, then a faded example (the last steps left for the learner), then setup only.
-
-**Why prompts.** One "why does this step hold" prompt per derivation, answer folded, the answer quoting the lecturer with a citation.
+**Examples and why prompts.** After a worked example of the lecturer's, the section's `tal:check` asks a faded example (a parallel case whose first steps the prompt works, the last ones left for the learner), then a setup-only item (the parallel case alone); both are practice items of kind `apply`. Every derivation ends with one "why does this step hold" prompt, its answer folded and quoting the lecturer with a citation. Their forms are in [writing](writing.md), Derivations, examples and teaching order.
 
 ## Asking one item
 
 The same protocol for every phase: pre, post, d1, d7, d21 and practice.
 1. Ask one item at a time. The learner answers in their own words.
 2. Before you say whether the answer was right, ask how sure they are: 1 guessing, 2 unsure, 3 sure.
-3. Grade 0, 0.5 or 1 against the rubric. Then show the cited answer; never before the attempt.
+3. Grade 0, 0.5 or 1 against the rubric, and name the rubric line you applied. Then show the cited answer; never before the attempt.
 4. Log the score and the confidence together: `tutor-any-lecture progress log --unit DIR --item ID --phase P --score S --confidence K [--exposure E] [--date YYYY-MM-DD] [--answer TEXT]` (no `--course`: course and unit come from plan.json). It appends one line to `<workspace>/progress/<course>.jsonl`, with the item's prompt and the concepts its phase holds, and prints that attempt with `path`, the log file. `--answer TEXT` keeps the learner's answer (surrounding spaces dropped); the progress page shows it beside a confident wrong answer. An answer given on another day (a review done late, or logged afterwards) takes that day as `--date`, so gain and retention count the right days; the default is today. An unknown item id exits 2; a date not written YYYY-MM-DD exits 2.
 
 **Each item in its own phase.** A practice item is logged only with `--phase practice`, a D variant only with d1, an E variant only with d21, and an A, B or C variant only in the phase of pre, post and d7 that assignment.json gives its letter. Any other `--phase` exits 1 with `item ID belongs to phase OWN, not GIVEN` and writes nothing. An A, B or C item needs assignment.json: a missing one exits 1 and names the file.
@@ -137,11 +135,16 @@ A line of the log that cannot be read (not JSON, a missing key, a value outside 
 
 ## Pretest
 
-The pretest is asked in chat after the gate passes and before the learner is given the note (explanation.md is delivered only once the pretest is logged), whether or not they attended, when plan.outputs lists both "pretest" and "quiz". Without "quiz" there is no pretest and no post quiz, and nothing is logged for that unit: a logged pretest with no post quiz would leave a `post` entry due for ever. Before the first question, and again when reporting the score, tell the learner that a low pretest score is normal: guessing first makes the lecture stick better. The score changes the reading focus, which folded supplements to suggest, and the next unit's `level`; it never triggers a rewrite of the note. Ask the `pre` items as above, and record how the learner met the lecture with `--exposure` when they tell you (none, attended, watched; unknown otherwise). Then ask the learner to read the note and to say when they have.
+The pretest is asked in chat after the gate passes and before the learner is given the note (explanation.md is delivered only once the pretest is logged), whether or not they attended, when plan.outputs lists both "pretest" and "quiz". Without "quiz" there is no pretest and no post quiz, and nothing is logged for that unit: a logged pretest with no post quiz would leave a `post` entry due for ever. Before the first question, and again when reporting the score, tell the learner that a low pretest score is normal: guessing first makes the lecture stick better. Ask the `pre` items as above, and record how the learner met the lecture with `--exposure` when they tell you (none, attended, watched; unknown otherwise). Then ask the learner to read the note and to say when they have.
+
+The score changes three things, and it never triggers a rewrite of the note:
+- **Reading focus.** After the last item, name the sections that plan.json's `sections` give for each concept scored below 1, in note order, as the ones to read closely. When every concept scored 1, say the note can be read at the usual pace.
+- **Folded supplements.** Point to the folded why answers in those sections (see [writing](writing.md), Derivations, examples and teaching order).
+- **The next unit's level.** With the profile's `level` at auto, a unit is written for a beginner when the pretest mean is below 0.4, for an intermediate learner from 0.4 to 0.8 inclusive, and for an advanced one above 0.8. The pretest mean is the mean, over concepts, of each concept's `pre` score in the newest earlier unit of the same course in `<workspace>/progress/<course>.jsonl` (the unit whose `pre` lines come last in that log), on the 0 to 1 scale of the logged scores; the progress page shows the same mean times 100. With no such unit, the conversation alone decides, and a level set in the profile always wins. The level changes how much background a note explains, never its citations, faithfulness or length window.
 
 ## Post quiz
 
-When the learner says they have read the note, get the items with `tutor-any-lecture items next --unit DIR --phase post`, ask and log each one as above with `--phase post`, then run `tutor-any-lecture cards add-misses --unit DIR` (when "cards" is in plan.outputs). The reviews are counted from the day the post quiz is complete: the latest of the days on which each of its concepts got its first post attempt. Until then nothing but that post quiz is due, and no learning gain can be measured.
+When the learner says they have read the note, ask them, before the first item, to answer with the note closed. Get the items with `tutor-any-lecture items next --unit DIR --phase post`, ask and log each one as above with `--phase post`, then run `tutor-any-lecture cards add-misses --unit DIR` (when "cards" is in plan.outputs). The reviews are counted from the day the post quiz is complete: the latest of the days on which each of its concepts got its first post attempt. Until then nothing but that post quiz is due, and no learning gain can be measured.
 
 ## Reviews and "quiz me"
 
@@ -153,7 +156,7 @@ When the learner says they have read the note, get the items with `tutor-any-lec
 
 For an entry, DIR is `<workspace>/courses/<course>/<unit>`. Anything the learner wants beyond what is due is practice: practice items, logged with `--phase practice`. Practice misses make no cards.
 
-**Interleaving.** From a course's third unit on, a quiz may add up to two items from earlier units of the same course. Only practice items are reused, never a tracked variant, and each is logged against its own unit (`--unit` that unit's folder) with `--phase practice`.
+**Interleaving.** From a course's third unit on, a quiz may add up to two items from earlier units of the same course whose plan.json lists "quiz". Only practice items are reused, never a tracked variant, and each is logged against its own unit (`--unit` that unit's folder) with `--phase practice`.
 
 `tutor-any-lecture progress render --course C [--date YYYY-MM-DD] [--lang CODE]` writes the progress page `<workspace>/progress/<course>.md` and, beside it, the chart `<workspace>/progress/<course>.svg` that the page embeds, and prints `{"paths": [page, chart], "lang"}`. The page opens with one sentence built from its numbers (normalized gain, retention, or a phase's average), then has a table of units (pre → post, gain, post → day 7, retention), a table per unit of each concept's pre, post and day-7 scores (concepts by their plan.json names), what is due on the given day (default today), and confident-but-wrong answers with the start of each item's prompt and of the learner's answer. Every score is on one 0 to 100 scale, and gain and retention are percentages. The chart shows each unit's and each concept's scores as dots on that scale (○ pretest, ● post quiz, ◆ day-7 review; marks of equal scores stand side by side), drawn in the bundled palette's colours. A partial phase shows as "k of n" in its cell (k of its n concepts have an attempt), stays out of every mean, gain and retention until it is complete, and its due line ends `, k of n answered`. The page's language is `--lang` when given, else the note language of the course's newest unit whose plan.json is found, else English. English and Chinese have page text; any other language gives the English page and one line on stderr that says so.
 
@@ -188,7 +191,8 @@ GUIDs are stable (derived from course, unit and card id), so re-importing cards.
 map.json is `{"nodes": [{"id", "label", "type", "order"?, "citation"?}], "edges": [{"from", "to", "verb"}], "views": [{"id", "nodes"}]?}`.
 - Node types: definition, theorem, method, example, pitfall.
 - A node id uses letters, digits and underscores, starts with a letter, and is not `end`.
-- Every edge names existing nodes and has a verb ("defines", "is used in", "fails when").
+- Every edge names existing nodes and has a verb.
+- Node labels and edge verbs are written in plan.note_language: in English, verbs such as "defines", "is used in", "fails when"; in Chinese, "定义", "用于", "不适用于".
 - At most 12 nodes per view. A map of more than 12 nodes needs views, and then every node belongs to at least one view.
 
 `tutor-any-lecture map validate --unit DIR` checks it. `tutor-any-lecture map mermaid --unit DIR` writes one Mermaid file per view, `overview-<view>.mmd` (a view id must be usable in a file name), and prints `{"paths": […]}`; a map without views goes whole into `overview.mmd` and prints `{"path"}`. `--view ID` writes only that view, to `overview.mmd`; an unknown view exits 2. Deliver the per-view files of a map with views, never a whole map of more than 12 nodes.

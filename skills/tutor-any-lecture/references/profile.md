@@ -28,7 +28,7 @@ In file order, with defaults:
 | `note_language` | `auto` | a language code, or auto | language of the note; auto means the language of the conversation |
 | `lecture_language` | `auto` | a language code, or auto | language of the lecture, for captions and ASR; auto means detected |
 | `terms` | `bilingual` | bilingual, note, original | how technical terms are written (see [writing](writing.md)) |
-| `level` | `auto` | auto, beginner, intermediate, advanced | how much background the note explains; auto means judged from the conversation and, later, from the pretest scores |
+| `level` | `auto` | auto, beginner, intermediate, advanced | how much background the note explains; auto means judged from the conversation and from the newest earlier unit's pretest mean (see [teaching](teaching.md), Pretest) |
 | `goal` | `deep` | deep, exam, quick | length, coverage and quiz size (table below) |
 | `quote_density` | `standard` | light, standard, dense | how densely a Chinese, Japanese or Korean note quotes a lecture in another script: the quote-ratio window 0.15–0.6, 0.4–1.2 or 1.0–2.0 (see [writing](writing.md)); written into plan.json |
 | `outputs` | `[explanation, pretest, quiz, cards, map]` | a list that holds explanation | which outputs a unit gets |

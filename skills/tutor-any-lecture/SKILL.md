@@ -48,7 +48,7 @@ Infer what the user wants (which lecture, which outputs, how deep) and the setti
 4. When there is a PDF, run `tutor-any-lecture slides --pdf F --unit DIR` before any transcription (the ASR prompt uses its terms). Slides alone make a slides-only unit: its note cites slides only, never times.
 5. Acquisition commands print one JSON object; exit 0 is `ok`. On exit 1 read `status`: `unhealthy` means the transcript (captions too) was kept with its `health` numbers: show them and tell the learner before planning on that transcript; `error` carries a `message`: show it to the learner. Exit 3 needs the user: `needs_user_file` (offer a media file, a transcript file or public video audio), consent, speech recognition (Step 0), a bigger `--budget-minutes`, or `--force` to overwrite. Details: [gate](references/gate.md).
 6. A video's audio is downloaded only when the profile has `public_video_audio` on with a recorded consent ([url](references/adapters/url.md)), whatever the platform. The tool never uses the learner's login, so a recording behind a sign-in is out of reach: use the platform's captions, or a file the learner downloaded.
-7. With a transcript, run `tutor-any-lecture slides suspects --unit DIR`. Suspects feed the errata section; the transcript is never edited.
+7. With a transcript and slides, run `tutor-any-lecture slides suspects --unit DIR`; a unit without slides skips it. Suspects feed the errata section; the transcript is never edited.
 
 ## Read and plan
 
@@ -96,7 +96,7 @@ Reviews are counted from the day the post quiz is complete, that is, when every 
 - Run `tutor-any-lecture progress due --course C`. Each entry names a `unit` and a `phase`; DIR is `<workspace>/courses/<course>/<unit>` (if that folder is missing, look for the plan.json under the workspace whose `course` and `unit` match; otherwise ask the learner).
 - A `post` entry means that unit's post quiz is still owed: run Post quiz. For d1, d7 or d21, run `tutor-any-lecture items next --unit DIR --phase P`. For d1 and d21, first write the D or E variants its `missing` names, then run `tutor-any-lecture items validate --unit DIR` and ask them only when it exits 0 (or skip the optional review). Ask and log with `--phase P` as in Post quiz, then run `cards add-misses` (when "cards" is in plan.outputs).
 - An entry whose `remaining` is a list was stopped part-way: ask only the items of those concepts.
-- Anything the learner wants beyond what is due is practice: items of the `practice` list of items.json only (`tutor-any-lecture items get --unit DIR --id ID` fetches one by id), logged with `--phase practice`. A tracked item is logged only in its own phase; `progress log` refuses any other. From a course's third unit on, a quiz may add up to two practice items from earlier units, each logged against its own unit.
+- Anything the learner wants beyond what is due is practice: items of the `practice` list of items.json only (`tutor-any-lecture items get --unit DIR --id ID` fetches one by id), logged with `--phase practice`. A tracked item is logged only in its own phase; `progress log` refuses any other. From a course's third unit on, a quiz may add up to two practice items from earlier units whose plan.json lists "quiz", each logged against its own unit.
 - `tutor-any-lecture progress render --course C [--date YYYY-MM-DD] [--lang CODE]` writes the progress page and its chart, in `--lang` or else the newest unit's note language. Grading, confidence, variants and interleaving: [teaching](references/teaching.md).
 
 ## Optional extras
