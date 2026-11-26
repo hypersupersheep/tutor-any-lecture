@@ -438,6 +438,29 @@ def test_terms_ignore_marker_sections(tmp_path):
     assert "not in the transcript or slides: Monte Carlo" in entry(run_verify(u), "terms")["details"]
 
 
+def test_a_page_not_yet_transcribed_warns(tmp_path):
+    not_yet = "slide 2 is not yet transcribed: read sources/slides/photo-002.jpg, then run slides text --page 2"
+
+    def unit(name, image, extra_page=False):
+        u = copy_fixture("slides_only", tmp_path / name)
+        path = UnitPaths(u).pages
+        pages = _read_json(path)
+        pages[1].update(text="", image=image)
+        if extra_page:
+            pages.append({"n": 4, "label": "4", "text": "Annuities", "image": None})
+        _write_json(path, pages)
+        return u
+
+    assert entry(run_verify(unit("photo", "photo-002.jpg")), "coverage") == {
+        "name": "coverage", "status": "WARN", "details": [not_yet]}
+    assert entry(run_verify(unit("none", None)), "coverage") == {"name": "coverage", "status": "PASS", "details": []}
+    assert entry(run_verify(unit("frame", "../keyframes/frame-002.jpg")), "coverage") == {
+        "name": "coverage", "status": "PASS", "details": []}
+    assert entry(run_verify(unit("uncited", "photo-002.jpg", extra_page=True)), "coverage") == {
+        "name": "coverage", "status": "FAIL",
+        "details": ["slide 4 is neither cited nor listed in the not-covered section", not_yet]}
+
+
 def test_not_covered_singular_takes_one_number(tmp_path):
     u = five_slide_unit(tmp_path / "a", "- slide 3 - 5 worked examples skipped\n")
     assert entry(run_verify(u), "coverage") == {"name": "coverage", "status": "FAIL", "details": [

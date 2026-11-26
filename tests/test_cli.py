@@ -346,6 +346,16 @@ def setup_slides_photos(tmp_path):
     return ["slides", "--photos", *map(str, photos), "--unit", str(tmp_path / "unit")]
 
 
+def setup_slides_text(tmp_path):
+    from tutor_any_lecture.cli import main as run_main
+
+    unit = tmp_path / "unit"
+    assert run_main(setup_slides_photos(tmp_path)) == 0
+    page_text = tmp_path / "page-1.txt"
+    page_text.write_text("Compound interest\n", encoding="utf-8", newline="\n")
+    return ["slides", "text", "--unit", str(unit), "--page", "1", "--file", str(page_text)]
+
+
 def setup_slides_suspects(tmp_path):
     return ["slides", "suspects", "--unit", str(ok_unit(tmp_path))]
 
@@ -372,6 +382,7 @@ WRITERS = {
     "slides-pdf": setup_slides_pdf,
     "slides-pptx": setup_slides_pptx,
     "slides-photos": setup_slides_photos,
+    "slides-text": setup_slides_text,
     "slides-suspects": setup_slides_suspects,
     "progress-render": setup_progress_render,
 }

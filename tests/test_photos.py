@@ -288,3 +288,98 @@ def test_a_rerun_removes_old_copies_only(tmp_path, capsys):
     assert code == 0 and err == ""
     assert [p.read_bytes() for p in own] == before
     assert [e["image"] for e in stored_pages(unit)] == ["photo-001.jpg", "photo-002.jpg", "photo-003.jpg"]
+
+
+# ---- P7. slides text gives one page its text ----
+
+def photo_unit(tmp_path, capsys):
+    """A unit made from three photos, its pages without text."""
+    unit = unit_of(tmp_path)
+    assert run_photos(photos(tmp_path, "1.jpg", "2.jpg", "3.jpg"), unit, capsys)[0] == 0
+    return unit
+
+
+def text_file(tmp_path, name, data):
+    path = tmp_path / name
+    path.write_bytes(data)
+    return path
+
+
+def run_text(unit, page, file, capsys, *extra):
+    return run(["slides", "text", "--unit", unit, "--page", page, "--file", file, *extra], capsys)
+
+
+def test_slides_text_sets_one_page(tmp_path, capsys):
+    unit = photo_unit(tmp_path, capsys)
+    page_text = text_file(tmp_path, "第2页.txt", b"\xef\xbb\xbfCompound interest\r\nr = 5%\r\n\r\n")
+    code, out, err = run_text(unit, 2, page_text, capsys)
+    assert code == 0 and err == ""
+    assert json.loads(out) == {"status": "ok", "page": 2, "remaining": [1, 3], "path": str(UnitPaths(unit).pages)}
+    entries = stored_pages(unit)
+    assert entries[1]["text"] == "Compound interest\nr = 5%"
+    assert [e["text"] for e in entries[::2]] == ["", ""]
+    assert not any("time" in e for e in entries)
+
+
+def test_slides_text_records_and_keeps_a_time(tmp_path, capsys):
+    unit = photo_unit(tmp_path, capsys)
+    page_text = text_file(tmp_path, "p2.txt", b"Compound interest\n")
+    assert run_text(unit, 2, page_text, capsys, "--time", "754.5")[0] == 0
+    assert stored_pages(unit)[1]["time"] == 754.5
+    other = text_file(tmp_path, "p2b.txt", b"Discounting\n")
+    assert run_text(unit, 2, other, capsys, "--force")[0] == 0
+    entries = stored_pages(unit)
+    assert entries[1]["text"] == "Discounting" and entries[1]["time"] == 754.5
+    assert "time" not in entries[0] and "time" not in entries[2]
+
+
+def test_slides_text_errors(tmp_path, capsys):
+    unit = photo_unit(tmp_path, capsys)
+    pages_json = UnitPaths(unit).pages
+    good = text_file(tmp_path, "p.txt", b"Compound interest\n")
+
+    def error(argv_unit, page, file, message, *extra):
+        before = pages_json.read_bytes() if pages_json.exists() else None
+        code, out, err = run_text(argv_unit, page, file, capsys, *extra)
+        assert code == 1 and err == ""
+        assert json.loads(out) == {"status": "error", "message": message}
+        assert (pages_json.read_bytes() if pages_json.exists() else None) == before
+
+    missing = tmp_path / "missing.txt"
+    error(unit, 1, missing, f"text file not found: {missing}")
+    error(unit, 1, text_file(tmp_path, "latin.txt", b"caf\xe9\n"), "latin.txt is not UTF-8 text")
+    error(unit, 1, text_file(tmp_path, "blank.txt", b"\xef\xbb\xbf \r\n\t\r\n"), "blank.txt holds no text")
+    error(unit, 9, good, "pages.json has no page 9")
+    bare = tmp_path / "bare"
+    UnitPaths(bare).ensure()
+    error(bare, 1, good, f"{UnitPaths(bare).pages} not found; run slides --photos or slides --pdf first")
+
+    entries = stored_pages(unit)
+    entries[0]["time"] = -1
+    pages_json.write_text(json.dumps(entries) + "\n", encoding="utf-8", newline="\n")
+    error(unit, 2, good, "pages.json: entry 0: time must be seconds (a number from 0) or null, got -1")
+    del entries[0]["time"]
+    pages_json.write_text(json.dumps(entries) + "\n", encoding="utf-8", newline="\n")
+
+    assert run_text(unit, 1, good, capsys)[0] == 0
+    before = pages_json.read_bytes()
+    code, out, err = run_text(unit, 1, good, capsys)
+    assert code == 3 and out == ""
+    assert err.splitlines() == ["page 1 already has text; rerun with --force to replace it"]
+    assert pages_json.read_bytes() == before
+
+    pdf = make_pdf(tmp_path / "deck", ["Compound interest\n1/1"])
+    given = [str(p) for p in photos(tmp_path, "a.jpg", "b.jpg", "c.jpg")]
+    text_argv = ["text", "--unit", str(unit), "--page", "2", "--file", str(good)]
+    for parent in (["--pdf", str(pdf)], ["--pptx", str(tmp_path / "deck.pptx")], ["--photos", *given, "--unit", str(unit)]):
+        code, out, err = run(["slides", *parent, *text_argv], capsys)
+        assert code == 2 and out == ""
+        assert len(err.splitlines()) == 1 and "slides text" in err
+    assert pages_json.read_bytes() == before
+
+    for time in ("-1", "x", "nan", "inf"):
+        with pytest.raises(SystemExit) as exc:
+            main(["slides", "text", "--unit", str(unit), "--page", "2", "--file", str(good), "--time", time])
+        assert exc.value.code == 2
+        assert capsys.readouterr().out == ""
+    assert pages_json.read_bytes() == before

@@ -32,7 +32,7 @@ from .notecheck import (
     strip_marker_sections,
 )
 from .plan import load_plan, read_json, read_text
-from .slides import load_pages, max_label
+from .slides import PHOTO_COPY_RE, load_pages, max_label
 from .source import SourceInfo
 
 # verify removes code exactly as check_note and units() do.
@@ -492,7 +492,16 @@ def _check_coverage(cits, pages, md) -> dict:
         for n in sorted({_slide_number(p) for p in pages})
         if not any(lo <= n <= hi for lo, hi in spans)
     ]
-    return _entry("coverage", "FAIL" if details else "PASS", details)
+    # A photo copy that no one has read yet. A page with no image, or with another image (a
+    # key frame), may stay blank: an agent that cannot see leaves it so, and that is no defect.
+    not_yet = [
+        f"slide {_slide_number(p)} is not yet transcribed: read sources/slides/{p.image}, "
+        f"then run slides text --page {p.n}"
+        for p in sorted(pages, key=lambda p: (_slide_number(p), p.n))
+        if p.image is not None and PHOTO_COPY_RE.fullmatch(p.image) and not p.text.strip()
+    ]
+    status = "FAIL" if details else "WARN" if not_yet else "PASS"
+    return _entry("coverage", status, details + not_yet)
 
 
 def _normalise(text: str) -> str:

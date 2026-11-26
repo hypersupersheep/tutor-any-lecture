@@ -419,6 +419,49 @@ def extract_photos(photos, unit: Path, force: bool = False) -> list[Page]:
     return pages
 
 
+def _read_page_text(path: Path) -> str:
+    """The text an agent wrote for one page: UTF-8 (a BOM allowed), line ends made ``\\n``, stripped."""
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"text file not found: {path}")
+    try:
+        text = path.read_bytes().decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise ValueError(f"{path.name} is not UTF-8 text") from None
+    text = text.replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
+        raise ValueError(f"{path.name} holds no text")
+    return text
+
+
+def set_page_text(unit: Path, n: int, text_file: Path, time: float | None = None, force: bool = False) -> list[Page]:
+    """Give page ``n`` of the unit's pages.json the text in ``text_file`` (and its ``time``, when given).
+
+    Any page may be given, from photos, a PDF or a deck; the other keys of every entry stay.
+    A page that already has text is replaced only with ``force`` (else ``FileExistsError``).
+    Returns every page, as written.
+    """
+    text = _read_page_text(text_file)
+    path = UnitPaths(unit).pages
+    if not path.is_file():
+        raise FileNotFoundError(f"{path} not found; run slides --photos or slides --pdf first")
+    pages = load_pages(unit)
+    index = next((i for i, p in enumerate(pages) if p.n == n), None)
+    if index is None:
+        raise ValueError(f"pages.json has no page {n}")
+    if pages[index].text.strip() and not force:
+        raise FileExistsError(f"page {n} already has text; rerun with --force to replace it")
+    changes = {"text": text} if time is None else {"text": text, "time": float(time)}
+    pages[index] = dataclasses.replace(pages[index], **changes)
+    write_pages(path, pages)
+    return pages
+
+
+def remaining_pages(pages: list[Page]) -> list[int]:
+    """The ``n`` of the pages that have an image and no text yet, ascending."""
+    return sorted(p.n for p in pages if p.image is not None and not p.text.strip())
+
+
 def load_pages(unit: Path) -> list[Page]:
     """The pages stored in the unit's pages.json, or ``[]`` when there is none."""
     path = UnitPaths(unit).pages

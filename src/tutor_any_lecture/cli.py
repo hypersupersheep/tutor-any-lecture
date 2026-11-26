@@ -374,6 +374,27 @@ def _slides_photos(args) -> int:
     return EXIT_OK
 
 
+def _cmd_slides_text(args) -> int:
+    if args.pdf is not None or args.pptx is not None or args.photos is not None:
+        # "slides --photos ... text": two commands in one; run neither.
+        print(_SLIDES_USAGE, file=sys.stderr)
+        return EXIT_USAGE
+
+    from .slides import remaining_pages, set_page_text
+    from .unit import UnitPaths
+
+    # A page that already has text (FileExistsError) propagates to main: exit 3, one stderr line.
+    pages, failed = _input_error(
+        lambda: set_page_text(Path(args.unit), args.page, Path(args.file), args.time, args.force), needs_force=True
+    )
+    if failed is not None:
+        return failed
+    _print_json({
+        "status": "ok", "page": args.page, "remaining": remaining_pages(pages), "path": str(UnitPaths(args.unit).pages),
+    })
+    return EXIT_OK
+
+
 def _cmd_slides_suspects(args) -> int:
     if args.pdf is not None or args.pptx is not None or args.photos is not None:
         # "slides --pdf F suspects" or "slides --pptx F suspects": two commands in one; run neither.
@@ -613,6 +634,17 @@ def _positive_number(value: str) -> float:
     return number
 
 
+def _seconds(value: str) -> float:
+    """argparse type for --time: a finite number of seconds from 0."""
+    try:
+        number = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a number: {value!r}") from None
+    if not math.isfinite(number) or number < 0:
+        raise argparse.ArgumentTypeError(f"must be a finite number of seconds from 0: {value!r}")
+    return number
+
+
 def build_parser() -> argparse.ArgumentParser:
     """The only place subcommands are registered. Builds a fresh parser on every call."""
     parser = argparse.ArgumentParser(
@@ -709,6 +741,14 @@ def build_parser() -> argparse.ArgumentParser:
                         help="with --photos: replace pages whose text was already given")
     slides.set_defaults(func=_cmd_slides)
     slides_sub = slides.add_subparsers(dest="slides_command")
+    text = slides_sub.add_parser("text", help="give one page the text read from its photo (or replace a page's text)")
+    text.add_argument("--unit", type=_path, required=True, help="the unit folder")
+    text.add_argument("--page", type=int, required=True, metavar="N", help="the page's number n in pages.json")
+    text.add_argument("--file", type=_path, required=True, metavar="F", help="a UTF-8 text file with the page's text")
+    text.add_argument("--time", type=_seconds, default=None, metavar="S",
+                      help="the second of the recording at which the page is shown, when known")
+    text.add_argument("--force", action="store_true", help="replace text the page already has")
+    text.set_defaults(func=_cmd_slides_text)
     suspects = slides_sub.add_parser("suspects", help="flag transcript words that look like misheard slide terms")
     suspects.add_argument("--unit", type=_path, required=True, help="the unit folder")
     suspects.set_defaults(func=_cmd_slides_suspects)
