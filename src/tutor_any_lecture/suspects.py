@@ -17,6 +17,8 @@ from .unit import UnitPaths
 
 THRESHOLD = 0.8
 CJK_RANGES = ((0x3040, 0x30FF), (0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xAC00, 0xD7AF))
+# Word endings cut off to find a plain inflection of a slide term ("payments", "included").
+INFLECTION_ENDINGS = ("ing", "ed", "es", "s", "e", "d")
 
 
 def norm(s: str) -> str:
@@ -66,6 +68,19 @@ def _tokens(text: str) -> list[str]:
     return tokens
 
 
+def _stems(word: str) -> set[str]:
+    """``word`` and ``word`` minus each of ``INFLECTION_ENDINGS`` it ends with, when 4+ characters remain.
+
+    Two words whose stems meet are inflections of one another ("includes" and "included"
+    share "include"); a word that differs in its middle ("schedual") shares none.
+    """
+    stems = {word}
+    for ending in INFLECTION_ENDINGS:
+        if word.endswith(ending) and len(word) - len(ending) >= 4:
+            stems.add(word[: -len(ending)])
+    return stems
+
+
 def _best_match(key: str, matchers: list[tuple[str, difflib.SequenceMatcher]]) -> tuple[str, float]:
     """The slide term closest to ``key`` and its ratio; ties go to the earlier term.
 
@@ -87,11 +102,14 @@ def _best_match(key: str, matchers: list[tuple[str, difflib.SequenceMatcher]]) -
 def flag_suspects(transcript: Transcript, pages: list[Page], lang: str) -> list[dict]:
     """Transcript tokens close to, but not found in, the slides.
 
-    ``lang`` is kept for the interface; tokens are chosen by script, so it has no effect in M1.
+    A word (not a CJK n-gram) whose stems meet the stems of a slide term is a plain
+    inflection of that term ("payments" for "payment"), not a suspect.
+    ``lang`` is kept for the interface; tokens are chosen by script, so it has no effect.
     """
     terms = term_list(pages)
     if not terms:
         return []
+    term_stems = set().union(*(_stems(norm(t)) for t in terms))
     # Token first, term second, as in SequenceMatcher(None, norm(token), norm(term), autojunk=False).
     matchers = [(t, difflib.SequenceMatcher(None, "", norm(t), autojunk=False)) for t in terms]
     slide_text = norm("\n".join(p.text for p in pages))
@@ -113,6 +131,9 @@ def flag_suspects(transcript: Transcript, pages: list[Page], lang: str) -> list[
                     cache[key] = (term, ratio) if ratio >= THRESHOLD else None
             hit = cache[key]
             if hit is None:
+                continue
+            # Decided by the token as heard: a CJK n-gram has no inflections.
+            if not _is_cjk(token[0]) and _stems(key) & term_stems:
                 continue
             reported.add(key)
             found.append({"time": float(segment.start), "heard": token, "nearest": hit[0], "ratio": round(hit[1], 3)})

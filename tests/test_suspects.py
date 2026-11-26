@@ -32,6 +32,15 @@ def test_flags_near_miss():
     assert found[0]["ratio"] == pytest.approx(0.9)
 
 
+
+def test_inflections_of_a_slide_term_are_not_suspects():
+    transcript = Transcript(
+        [Segment(0.0, 4.0, "the payments were includes"), Segment(5.0, 8.0, "a schedual of payment")], "en"
+    )
+    found = flag_suspects(transcript, [Page(1, None, "Annuity payment schedule\nincluded")], "en")
+    assert [s["heard"] for s in found] == ["schedual"]
+
+
 def test_no_slide_terms_no_suspects():
     transcript = Transcript([Segment(0.0, 2.0, "the martingail property")], None)
     assert flag_suspects(transcript, [Page(1, None, "a b c")], "") == []
