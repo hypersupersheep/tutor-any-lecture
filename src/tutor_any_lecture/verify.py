@@ -104,7 +104,8 @@ LECTURER_WORDS = (("lecturer", "professor", "teacher", "instructor"), ("讲师",
 # numbers, read after NFKC: ASCII digits with an optional decimal part, optional spaces or
 # tabs, then a unit; or 百分之 before the number (a percent); or a currency sign and the
 # first digit after it. A number is compared by its key: the number as written plus the
-# unit's key. English forms ignore case and end at a word boundary; the rest are as written.
+# unit's key. English forms ignore ASCII case only (so Turkish ı or İ is never read as i)
+# and end at a word boundary; the rest are as written.
 NUMBER_UNITS = {
     "%": ("%", "percent"),
     "bp": ("bp", "bps", "基点"),
@@ -117,7 +118,8 @@ NUMBER_UNITS = {
 }
 _UNIT_KEY = {form: key for key, forms in NUMBER_UNITS.items() for form in forms}
 _UNIT_FORMS_RE = "|".join(
-    re.escape(form) + (r"\b" if form.isascii() and form.isalpha() else "")
+    # (?ai:...) folds ASCII case inside the form only; \b after it keeps Unicode word rules
+    rf"(?ai:{re.escape(form)})\b" if form.isascii() and form.isalpha() else re.escape(form)
     for form in sorted(_UNIT_KEY, key=len, reverse=True)  # longest first: 个星期 before 星期
 )
 _NUMBER = r"[0-9]+(?:\.[0-9]+)?"
@@ -125,7 +127,6 @@ NUMBER_RE = re.compile(
     rf"百分之(?P<percent_of>{_NUMBER})"
     rf"|(?<![0-9])(?P<number>{_NUMBER})[ \t]*(?P<unit>{_UNIT_FORMS_RE})"
     r"|[£$€¥]\s?\d",
-    re.IGNORECASE,
 )
 # Not numbers: a calendar year (1000 to 2999 before 年 or 년) and an ordinal (right after 第).
 CALENDAR_YEAR_UNITS = ("年", "년")

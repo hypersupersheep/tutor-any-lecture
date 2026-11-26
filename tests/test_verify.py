@@ -793,3 +793,12 @@ def test_numbers_are_shown_as_written(tmp_path):
     append_to_note(u, "\n\nIt took 20  years (slide 1).\n")
     assert entry(run_verify(u), "numbers") == {
         "name": "numbers", "status": "WARN", "details": ["in the note, not in the sources: 20 years"]}
+
+
+def test_english_units_ignore_ascii_case_only(tmp_path):
+    # Turkish dotless ı and dotted İ equal i only when case is folded beyond ASCII: they are
+    # not unit forms and must not crash the check. ASCII case is still ignored.
+    u = copy_fixture("ok", tmp_path)
+    add_segment(u, 170.0, 175.0, "It took 5 MINUTES.")
+    append_to_note(u, "\n\nIt took 5 Minutes, then 7 mınutes and 9 MİNUTES (2:52).\n")
+    assert entry(run_verify(u), "numbers") == {"name": "numbers", "status": "PASS", "details": []}
