@@ -204,6 +204,95 @@ def parse_stamped_txt(text: str, duration: float | None) -> list[Segment]:
     return segments
 
 
+# A meeting export's time: [h:]m:s, with an optional fraction whose first three digits are ms.
+_RANGE_TIME = r"(?:(\d+):)?(\d{1,2}):(\d{1,2})(?:[.,](\d{1,7}))?"
+_RANGE = re.compile(rf"{_RANGE_TIME}\s*-->\s*{_RANGE_TIME}")
+# A header: a speaker (optional) and a start time [h:]m:ss, alone on its line.
+_HEADER = re.compile(r"(?:(.+?)\s+)?((?:\d+:)?\d+:\d{2})")
+_SPEAKER_NUMBER = re.compile(r"\d{1,3}")
+_TRANSCRIPTION_NOTICES = ("started transcription", "stopped transcription")
+
+
+def _range_seconds(h: str | None, m: str, s: str, fraction: str | None) -> float:
+    # Only the first three digits of the fraction count, padded on the right: ".5" is 500 ms.
+    return _ms_to_seconds(h, m, s, (fraction or "")[:3].ljust(3, "0"))
+
+
+def _is_speaker(name: str) -> bool:
+    """1 to 60 characters and 1 to 6 words, not starting lowercase, a digit only in a last word of 1 to 3 digits.
+
+    One pair of surrounding ``[]`` or ``()`` is removed first. The guards keep sentences
+    ("the meeting ends at 5:30"), dates ("03/11/2026 14:00") and numbered lines
+    ("Week 12 starts 9:00") out of the headers, and let "Speaker 2" in.
+    """
+    if len(name) >= 2 and (name[0], name[-1]) in (("[", "]"), ("(", ")")):
+        name = name[1:-1].strip()
+    words = name.split()
+    if not 1 <= len(name) <= 60 or not 1 <= len(words) <= 6 or name[0].islower():
+        return False
+    if any(c.isdigit() for word in words[:-1] for c in word):
+        return False
+    last = words[-1]
+    return not any(c.isdigit() for c in last) or _SPEAKER_NUMBER.fullmatch(last) is not None
+
+
+def _header_seconds(line: str) -> float | None:
+    """The start time of a header line (``Alice Smith   0:03``, ``[Alice Smith] 00:00:03``, ``0:03``), else None."""
+    m = _HEADER.fullmatch(line)
+    if m is None or (m.group(1) is not None and not _is_speaker(m.group(1))):
+        return None
+    return clock_seconds(m.group(2))
+
+
+def parse_meeting_export(lines: list[str], duration: float | None) -> list[Segment]:
+    """The lines of a meeting transcript export (a Teams DOCX, a Zoom TXT), read in one layout.
+
+    Range layout, when any line is ``<t> --> <t>``: the lines up to the next range are its
+    text, the first of them the speaker when there are two or more. Header layout, else,
+    when any line is a speaker and a start time, or a time alone: the lines up to the next
+    header are its text, and a segment ends where the next starts. Stamped layout, else:
+    ``parse_stamped_txt``. Speaker names never reach the text; lines before the first time,
+    and the "started transcription" and "stopped transcription" notices, are dropped.
+    """
+    lines = [line.strip() for line in lines]
+    lines = [line for line in lines if line and not line.casefold().endswith(_TRANSCRIPTION_NOTICES)]
+
+    ranges = [_RANGE.fullmatch(line) for line in lines]
+    if any(ranges):
+        segments: list[Segment] = []
+        starts = [i for i, m in enumerate(ranges) if m is not None]
+        for k, i in enumerate(starts):
+            block = lines[i + 1:starts[k + 1] if k + 1 < len(starts) else len(lines)]
+            if len(block) >= 2:
+                block = block[1:]  # the speaker
+            text = _collapse(" ".join(block))
+            if text:
+                m = ranges[i]
+                start, end = _range_seconds(*m.group(1, 2, 3, 4)), _range_seconds(*m.group(5, 6, 7, 8))
+                segments.append(Segment(start, end, text))
+        return segments
+
+    headers = [_header_seconds(line) for line in lines]
+    if any(start is not None for start in headers):
+        stamped: list[list] = []  # [start, text]
+        for line, start in zip(lines, headers):
+            if start is not None:
+                stamped.append([start, ""])
+            elif stamped:
+                stamped[-1][1] += " " + line
+        kept = [(start, _collapse(t)) for start, t in stamped if _collapse(t)]
+        segments = []
+        for i, (start, t) in enumerate(kept):
+            if i + 1 < len(kept):
+                end = kept[i + 1][0]
+            else:  # as parse_stamped_txt ends its last segment
+                end = max(start, min(start + 5, duration or start + 5))
+            segments.append(Segment(start, end, t))
+        return segments
+
+    return parse_stamped_txt("\n".join(lines), duration)
+
+
 def parse_whisper_json(obj) -> list[Segment]:
     """Accepts ``{"segments": [...]}`` or a bare list of segment objects.
 

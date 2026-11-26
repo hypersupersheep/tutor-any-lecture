@@ -1,4 +1,5 @@
-"""Write minimal Office packages (.pptx) as zips of XML parts. Test fixture; no dependencies."""
+"""Write minimal Office packages (.pptx, .docx) as zips of XML parts. Test fixture; no dependencies."""
+import re
 import struct
 import zipfile
 from pathlib import Path
@@ -157,4 +158,47 @@ def make_pptx(
             )
             parts[f"ppt/notesSlides/notesSlide{number}.xml"] = _notes_slide(notes[number], strict)
     parts["ppt/_rels/presentation.xml.rels"] = _rels(presentation_rels)
+    return office_zip(folder, name, parts)
+
+
+_WORDPROCESSINGML = {
+    False: "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+    True: "http://purl.oclc.org/ooxml/wordprocessingml/main",  # Strict OOXML
+}
+
+
+def _docx_paragraph(text: str) -> str:
+    runs = []
+    for piece in re.split(r"(\t|\n)", text):
+        if piece == "\t":
+            runs.append("<w:tab/>")
+        elif piece == "\n":
+            runs.append("<w:br/>")
+        elif piece:
+            runs.append(f'<w:t xml:space="preserve">{escape(piece)}</w:t>')
+    return f"<w:p><w:r>{''.join(runs)}</w:r></w:p>"
+
+
+def make_docx(folder: Path, paragraphs: list[str], name: str = "transcript.docx", strict: bool = False) -> Path:
+    """A .docx whose ``word/document.xml`` body holds one ``w:p`` per entry of ``paragraphs``.
+
+    A paragraph is a str (``\\t`` written as ``w:tab``, ``\\n`` as ``w:br``, every ``w:t``
+    with ``xml:space="preserve"``) or raw XML starting with ``<w:``, put into ``w:body``
+    as written. ``strict`` uses the Strict OOXML namespaces.
+    """
+    body = "".join(p if p.startswith("<w:") else _docx_paragraph(p) for p in paragraphs)
+    parts = {
+        "[Content_Types].xml": (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            "</Types>"
+        ),
+        "_rels/.rels": _rels([("rId1", _rel_type(strict, "officeDocument"), "word/document.xml")]),
+        "word/document.xml": (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            f'<w:document xmlns:w="{_WORDPROCESSINGML[strict]}"><w:body>{body}</w:body></w:document>'
+        ),
+    }
     return office_zip(folder, name, parts)

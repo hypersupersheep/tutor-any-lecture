@@ -156,3 +156,47 @@ class OfficePackage:
                 resolved = posixpath.normpath(posixpath.join(folder, target))
             found[rid] = (rel.get("Type") or "", resolved)
         return found
+
+
+# Inside a paragraph, these subtrees hold no text of it: a nested paragraph (a text box's
+# content) gives lines of its own, and properties hold tab stops (w:tabs/w:tab), not tabs.
+_NOT_PARAGRAPH_TEXT = frozenset({"p", "pPr", "rPr"})
+
+
+def _paragraph_text(paragraph: ET.Element) -> str:
+    """The text of one ``w:p``: ``w:t`` texts, ``w:tab`` as a tab, ``w:br``/``w:cr`` as a newline.
+
+    ``w:delText`` and ``w:instrText`` are other names, so deleted text and field codes are
+    not read. Walked with a stack, so a deeply nested part cannot exhaust the recursion limit.
+    """
+    parts: list[str] = []
+    stack = list(reversed(paragraph))
+    while stack:
+        element = stack.pop()
+        name = local_name(element.tag)
+        if name in _NOT_PARAGRAPH_TEXT:
+            continue
+        if name == "t":
+            parts.append(element.text or "")
+        elif name == "tab":
+            parts.append("\t")
+        elif name in ("br", "cr"):
+            parts.append("\n")
+        stack.extend(reversed(element))
+    return "".join(parts)
+
+
+def docx_lines(path: Path) -> list[str]:
+    """The text lines of a .docx's ``word/document.xml``, stripped, blank lines dropped.
+
+    Every ``w:p`` in document order (table cells included) gives its lines; a paragraph
+    nested in a text box comes after the paragraph that holds it, apart from its text.
+    """
+    with OfficePackage(path, ".docx") as pkg:
+        root = pkg.xml("word/document.xml")
+    lines: list[str] = []
+    # iter() walks in document order, a parent before what it holds.
+    for element in root.iter():
+        if local_name(element.tag) == "p":
+            lines.extend(_paragraph_text(element).split("\n"))
+    return [line.strip() for line in lines if line.strip()]
