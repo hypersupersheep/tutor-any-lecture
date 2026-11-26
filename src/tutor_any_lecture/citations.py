@@ -227,7 +227,7 @@ def time_link_platform(url: str) -> str | None:
     return row.name if row is not None else None
 
 
-def no_time_links(url: str) -> str:
+def _no_time_links(url: str) -> str:
     """``no time links for <host>``: the lower-case host, or the address itself when it has none."""
     parts = _split(_encoded(url))
     host = parts.hostname if parts is not None else None
@@ -246,7 +246,7 @@ def time_url(url: str, seconds: float) -> str:
     encoded = _encoded(url)
     row = _form_of(encoded)
     if row is None:
-        raise ValueError(no_time_links(url))
+        raise ValueError(_no_time_links(url))
     time = f"{row.param}={int(seconds)}{row.suffix}"
     rest = encoded.partition("#")[0]
     if row.in_fragment:
@@ -359,7 +359,7 @@ def link_unit(unit: Path) -> dict:
     elif not source.url:
         reason = "source.json has no video address"
     elif time_link_platform(source.url) is None:
-        reason = f"{no_time_links(source.url)}: the times stay plain"
+        reason = f"{_no_time_links(source.url)}: the times stay plain"
     else:
         md = read_text(paths.explanation, "explanation.md")
         linked, count = link_times(md, source.url)
