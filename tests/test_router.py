@@ -83,9 +83,39 @@ def test_slide_source_precedence(tmp_path):
     touch(tmp_path / "c", "1.jpg", "2.jpg", "v.mp4")
     touch(tmp_path / "d", "a.mp3")
     assert route(tmp_path / "a")["slide_source"] == "pptx"
-    assert route(tmp_path / "b")["slide_source"] == "photos-deferred"
+    assert route(tmp_path / "b")["slide_source"] == "photos"
     assert route(tmp_path / "c")["slide_source"] == "keyframes-deferred"
     assert route(tmp_path / "d")["slide_source"] == "none"
+
+
+def test_three_photos_plan_a_photo_step(tmp_path):
+    folder = tmp_path / "课程 资料"
+    touch(folder, "IMG_10.jpg", "img_2.JPG", "IMG_1.png", "v.mp4")
+    root = folder.resolve()
+    ordered = [str(root / n) for n in ("IMG_1.png", "img_2.JPG", "IMG_10.jpg")]
+
+    def photo_step(plan):
+        (step,) = [s for s in plan["steps"] if s["argv"][1:3] == ["slides", "--photos"]]
+        return step
+
+    plan = route(folder)
+    assert plan["slide_source"] == "photos"
+    assert kinds(plan["steps"]) == [["slides", "--photos"], ["acquire", "local"]]
+    step = photo_step(plan)
+    assert step == {
+        "argv": ["tutor-any-lecture", "slides", "--photos", *ordered, "--unit", "<unit>"],
+        "network": False, "gpu": False, "reads": ordered,
+        "writes": ["<unit>/sources/slides/pages.json", "<unit>/sources/source.json"], "runnable": True,
+    }
+
+    touch(folder, "x.heic")
+    plan = route(folder)
+    assert plan["slide_source"] == "photos"
+    again = photo_step(plan)
+    assert again["argv"] == step["argv"] and again["reads"] == ordered
+    assert str(root / "x.heic") not in again["reads"]
+    assert str(root / "x.heic") in plan["files"]["images"]
+    assert all(s["runnable"] for s in plan["steps"])
 
 
 def test_deferred_step_not_runnable(tmp_path):

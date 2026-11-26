@@ -11,7 +11,8 @@ import json
 from pathlib import Path
 
 from ..office import docx_lines
-from ..source import SLIDE_DECK_SUFFIXES
+from ..slides import photo_order
+from ..source import SLIDE_DECK_SUFFIXES, SLIDE_PHOTO_SUFFIXES
 from ..transcript import parse_meeting_export, parse_txt
 from ..unit import UnitPaths
 from .panopto import load_extract
@@ -147,6 +148,8 @@ def route(folder: Path, unit: Path | None = None) -> dict:
             pptx.append(f)
 
     transcripts = files["transcript"]
+    # The images slides --photos reads (JPEG and PNG, never HEIC), in its page order.
+    photos = [str(p) for p in photo_order(f for f in files["images"] if Path(f).suffix.lower() in SLIDE_PHOTO_SUFFIXES)]
     # Video and audio together, in file-name order.
     media = sorted(files["video"] + files["audio"], key=lambda s: Path(s).name)
 
@@ -154,6 +157,8 @@ def route(folder: Path, unit: Path | None = None) -> dict:
         slide_source = "pdf"
     elif pptx:
         slide_source = "pptx"
+    elif len(photos) >= 3:
+        slide_source = "photos"
     elif len(files["images"]) >= 3:
         slide_source = "photos-deferred"
     elif files["video"]:
@@ -176,6 +181,9 @@ def route(folder: Path, unit: Path | None = None) -> dict:
 
     def pptx_argv(f: str) -> list[str]:
         return [T, "slides", "--pptx", f, "--unit", u]
+
+    def photos_argv(fs: list[str]) -> list[str]:
+        return [T, "slides", "--photos", *fs, "--unit", u]
 
     def local_argv(f: str) -> list[str]:
         return [T, "acquire", "local", "--file", f, "--unit", u]
@@ -201,6 +209,9 @@ def route(folder: Path, unit: Path | None = None) -> dict:
         # A PDF wins over a deck; slides --pptx records its digest as slides --pdf does.
         f = pptx[0]
         steps.append(step(pptx_argv(f), [f], [w(paths.pages), w(paths.source)]))
+    elif slide_source == "photos":
+        # No deck: the photos are the slides, and slides --photos records their digests too.
+        steps.append(step(photos_argv(photos), list(photos), [w(paths.pages), w(paths.source)]))
     if not transcripts and len(media) == 1:
         f = media[0]
         # The first transcription may download the ASR model.
