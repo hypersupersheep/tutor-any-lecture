@@ -35,7 +35,9 @@ class UnknownView(ValueError):
 
 
 class MapInvalid(Exception):
-    """Raised by ``export_mermaid`` when the map fails a check; ``results`` holds them all."""
+    """Raised by ``export_mermaid`` when the map fails a check after ``schema``; ``results`` holds them all.
+
+    A failing ``schema`` is a ValueError instead (see ``_raise_on_schema``)."""
 
     def __init__(self, results: list[CheckResult]) -> None:
         super().__init__("map.json failed validation")
@@ -178,8 +180,13 @@ def validate_map(m) -> list[CheckResult]:
     ]
 
 
+# Mermaid entity codes: a label can be rendered as HTML, where < > & would be read as markup.
+# "#" itself is not escaped.
+_ESCAPES = str.maketrans({"&": "#amp;", "<": "#lt;", ">": "#gt;", '"': "#quot;"})
+
+
 def _quote(text: str) -> str:
-    return '"' + text.replace('"', "#quot;") + '"'
+    return '"' + text.translate(_ESCAPES) + '"'
 
 
 def to_mermaid(m, view_id: str | None = None) -> str:
@@ -215,9 +222,20 @@ def format_results(results: list[CheckResult]) -> str:
     return "\n".join(lines)
 
 
+def _raise_on_schema(results: list[CheckResult]) -> None:
+    """ValueError ("map.json: <details joined by '; '>") when ``schema`` fails: a file of the
+    wrong structure is one line on stderr, like a file that is not JSON."""
+    schema = next(r for r in results if r.name == "schema")
+    if schema.status == "FAIL":
+        raise ValueError("map.json: " + "; ".join(schema.details))
+
+
 def validate_unit(unit: Path) -> list[CheckResult]:
-    """Validate the unit's map.json. Raises what ``load_map`` raises."""
-    return validate_map(load_map(UnitPaths(unit).map))
+    """Validate the unit's map.json. Raises what ``load_map`` raises, and ValueError when
+    the ``schema`` check fails."""
+    results = validate_map(load_map(UnitPaths(unit).map))
+    _raise_on_schema(results)
+    return results
 
 
 def view_file(unit: Path, view_id: str) -> Path:
@@ -233,7 +251,8 @@ def view_file(unit: Path, view_id: str) -> Path:
 
 
 def export_mermaid(unit: Path, view_id: str | None = None) -> Path | list[Path]:
-    """Write the map as Mermaid; writes nothing if the map fails.
+    """Write the map as Mermaid; writes nothing if the map fails: ValueError when
+    ``schema`` fails, MapInvalid when a later check does.
 
     With ``view_id``, or for a map without views: overview.mmd (that view, or the whole
     map), and its path is returned. A map with views and no ``view_id``: one file per
@@ -242,6 +261,7 @@ def export_mermaid(unit: Path, view_id: str | None = None) -> Path | list[Path]:
     paths = UnitPaths(unit)
     m = load_map(paths.map)
     results = validate_map(m)
+    _raise_on_schema(results)
     if any(r.status == "FAIL" for r in results):
         raise MapInvalid(results)
     views = m.get("views") or []

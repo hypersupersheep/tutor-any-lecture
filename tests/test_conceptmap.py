@@ -272,3 +272,38 @@ def test_mermaid_view_id_must_be_a_file_name(tmp_path, capsys):
     captured = capsys.readouterr()
     assert captured.out == "" and "a/b" in captured.err and captured.err.count("\n") == 1
     assert list(unit.glob("*.mmd")) == []
+
+
+# ---- a malformed map.json, HTML characters in labels (Task 9b) --------------
+
+
+def test_cli_map_schema_error_is_one_line(tmp_path, capsys):
+    unit = tmp_path / "课程 资料" / "第1周"
+    write_map(unit, {"nodes": 5})
+    for command in ("validate", "mermaid"):
+        assert main(["map", command, "--unit", str(unit)]) == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == "map.json: nodes is missing or not a list; edges is missing or not a list\n"
+    twins = tmp_path / "twins"
+    write_map(twins, {
+        "nodes": [
+            {"id": "a", "label": "A", "type": "definition"},
+            {"id": "a", "label": "B", "type": "method"},
+        ],
+        "edges": [],
+    })
+    for command in ("validate", "mermaid"):
+        assert main(["map", command, "--unit", str(twins)]) == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == "map.json: a: duplicate id\n"
+    assert list(unit.glob("*.mmd")) == [] and list(twins.glob("*.mmd")) == []
+
+
+def test_mermaid_escapes_html_characters():
+    m = map_with_edge(verb="is < than")
+    m["nodes"][0]["label"] = "P(X<x) & Q>0"
+    s = to_mermaid(m)
+    assert 'a["P(X#lt;x) #amp; Q#gt;0"]' in s
+    assert 'a -- "is #lt; than" --> b' in s

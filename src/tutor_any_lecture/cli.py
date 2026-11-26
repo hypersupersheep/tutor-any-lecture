@@ -466,7 +466,7 @@ def _cmd_progress_render(args) -> int:
 def _cmd_map_validate(args) -> int:
     from . import conceptmap
 
-    # An unreadable or malformed map.json raises ValueError, which main maps to EXIT_FAIL.
+    # An unreadable map.json, or one of the wrong structure, raises ValueError, which main maps to EXIT_FAIL.
     results = conceptmap.validate_unit(Path(args.unit))
     print(conceptmap.format_results(results))
     return EXIT_FAIL if any(r.status == "FAIL" for r in results) else EXIT_OK
@@ -475,7 +475,7 @@ def _cmd_map_validate(args) -> int:
 def _cmd_map_mermaid(args) -> int:
     from . import conceptmap
 
-    # An unreadable or malformed map.json raises ValueError, which main maps to EXIT_FAIL.
+    # An unreadable map.json, or one of the wrong structure, raises ValueError, which main maps to EXIT_FAIL.
     try:
         path = conceptmap.export_mermaid(Path(args.unit), args.view)
     except conceptmap.MapInvalid as e:
