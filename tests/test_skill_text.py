@@ -403,3 +403,19 @@ def test_writing_has_one_math_rule():
 def test_writing_skeleton_answers_have_blank_lines():
     answer = "   <details><summary>Answer</summary>\n\n   <cited answer>\n\n   </details>"
     assert read(REFERENCES / "writing.md").count(answer) == 2
+
+
+def test_documents_state_how_cjk_is_read():
+    sentence = (
+        "In a Chinese, Japanese or Korean deck, the slide terms are the runs of 2 to 10 characters of one script"
+        " (Han, katakana or Hangul) between spaces, punctuation and changes of script, hiragana runs left out;"
+        " a suspect is a stretch of the transcript as long as a slide term of 4 to 10 characters that differs"
+        " from it in one character and is not on the slides, such as 弃权定价 heard for 期权定价."
+    )
+    assert sentence in read(TEACHING)
+    writing = read(REFERENCES / "writing.md")
+    assert "Han characters, kana and Hangul syllables" in writing
+    assert (
+        "The CJK windows were set on Chinese notes; for Japanese and Korean notes they are estimates,"
+        " and every length rule is a WARN."
+    ) in writing
