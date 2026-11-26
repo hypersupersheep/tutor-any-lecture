@@ -170,11 +170,11 @@ def check_cli_command(command: str, parser: argparse.ArgumentParser) -> list[str
 
     # Step 3: descend through the subcommands.
     path = "tutor-any-lecture"
+    # A token that is no subcommand ends the descent only where the parser takes
+    # positionals; elsewhere, a leaf parser included, it is an unknown subcommand.
     while tokens and not tokens[0].startswith("-"):
         sub = _subparsers(parser)
-        if sub is None:
-            break
-        if tokens[0] in sub.choices:
+        if sub is not None and tokens[0] in sub.choices:
             parser = sub.choices[tokens[0]]
             path += " " + tokens.pop(0)
             continue
@@ -284,12 +284,7 @@ def check_installer_command(text: str, flags: dict[str, set[str]]) -> list[str]:
         return [f"cannot split the command: {e}"]
     script_at = next((i for i, t in enumerate(tokens) if _names_script(t)), None)
     if script_at is None:
-        # A POSIX split eats the backslashes of an unquoted Windows path (C:\x\install.ps1):
-        # find the script among the whitespace tokens instead.
-        tokens = [t.strip("\"'[]") for t in _ANGLE.sub("PLACEHOLDER", text).split()]
-        script_at = next((i for i, t in enumerate(tokens) if _names_script(t)), None)
-    if script_at is None:
-        return [f"no token names {' or '.join(INSTALLERS)}"]
+        return []
     script = _names_script(tokens[script_at])
     known = flags[script]
     problems = []

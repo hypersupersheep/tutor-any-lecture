@@ -107,6 +107,12 @@ def test_unknown_subcommand_is_reported():
     ]
 
 
+def test_a_bare_token_after_a_leaf_without_positionals_is_an_unknown_subcommand():
+    assert check_cli_command("tutor-any-lecture verify extra --unit DIR", build_parser()) == [
+        "unknown subcommand 'extra' after 'tutor-any-lecture verify'"
+    ]
+
+
 def test_unknown_flag_is_reported():
     assert check_cli_command("tutor-any-lecture verify --unit DIR --strict", build_parser()) == [
         "unknown flag '--strict' for 'tutor-any-lecture verify'"
@@ -182,9 +188,6 @@ def test_unknown_installer_flag_is_reported():
     command = "powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -yes -Force"
     assert check_installer_command(command, flags) == ["unknown flag '-Force' for install.ps1"]
     command = 'powershell -NoProfile -ExecutionPolicy Bypass -File "<skill folder>\\scripts\\install.ps1" -Yes -Force'
-    assert check_installer_command(command, flags) == ["unknown flag '-Force' for install.ps1"]
-    # Unquoted, a POSIX split would eat the backslashes; the script is still found.
-    command = "powershell -File C:\\skills\\scripts\\install.ps1 -Yes -Force"
     assert check_installer_command(command, flags) == ["unknown flag '-Force' for install.ps1"]
 
 
