@@ -405,7 +405,8 @@ def _cmd_progress_render(args) -> int:
     from . import config, progress
 
     ws = Path(args.workspace) if args.workspace is not None else config.workspace()
-    path = progress.render_progress(args.course, ws, date.today())
+    day = args.date if args.date is not None else date.today()
+    path = progress.render_progress(args.course, ws, day)
     _print_json({"path": str(path)})
     return EXIT_OK
 
@@ -658,6 +659,7 @@ def build_parser() -> argparse.ArgumentParser:
     pd.set_defaults(func=_cmd_progress_due)
     pr = progress_sub.add_parser("render", help="write the course's progress page")
     pr.add_argument("--course", required=True, help="the course name, as in plan.json")
+    pr.add_argument("--date", type=_day, default=None, help="the day for \"Due today\", YYYY-MM-DD (default: today)")
     pr.add_argument("--workspace", type=_path, default=None, help="the workspace folder (default: the profile's)")
     pr.set_defaults(func=_cmd_progress_render)
     map_ = sub.add_parser("map", help="check the concept map, export it as a Mermaid flowchart")

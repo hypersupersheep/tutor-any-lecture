@@ -23,8 +23,10 @@ EXPOSURES = ("none", "attended", "watched", "unknown")
 # Phases shown on the page and in the headline, with their headline labels.
 TRACKED_PHASES = ("pre", "post", "d7")
 HEADLINE_LABELS = {"pre": "pre", "post": "post", "d7": "day 7"}
-# Review phases: days after the first post attempt, and whether the review is optional.
+# Review phases: days after the post quiz is complete, and whether the review is optional.
 REVIEWS = (("d1", 1, True), ("d7", 7, False), ("d21", 21, True))
+# The optional d21 is no longer offered this many days after it is due.
+D21_LAPSE_DAYS = 14
 # The order of entries due on the same day: the post quiz first, then the reviews.
 DUE_ORDER = {"post": 0, **{phase: n for n, (phase, _, _) in enumerate(REVIEWS, start=1)}}
 STRIP_COLUMNS = 21
@@ -34,7 +36,11 @@ PAIRED_NOTE = (
 )
 STRIP_MARKS = (("pre", "○"), ("post", "●"), ("d7", "◆"))  # marks sharing a column stand side by side
 STRIP_LEGEND = "Each strip runs from 0 to 100 in 21 columns: ○ pre, ● post, ◆ day 7; marks of equal scores stand side by side."
-# How much of an item's prompt the confident-but-wrong list shows.
+PARTIAL_NOTE = (
+    'A phase shown as "k of n" is partial: k of its n tracked concepts have an attempt so far, '
+    "and it stays out of every mean, gain and retention until the rest are answered."
+)
+# How much of an item's prompt (and of the learner's answer) the confident-but-wrong list shows.
 PROMPT_SHOWN = 60
 
 
@@ -281,33 +287,112 @@ def _mean(values) -> float:
 
 
 def _phase_means(attempts) -> dict[str, float]:
-    """Mean score per phase, phases in order of first appearance."""
+    """Mean score per phase over every attempt, phases in order of first appearance."""
     by_phase: dict[str, list[float]] = {}
     for a in attempts:
         by_phase.setdefault(a.phase, []).append(a.score)
     return {phase: _mean(scores) for phase, scores in by_phase.items()}
 
 
+def _day(a: Attempt) -> date:
+    """The attempt's day: the date as written in ts, no timezone conversion."""
+    return datetime.fromisoformat(a.ts).date()
+
+
+@dataclass
+class _PhaseState:
+    """What the log holds for one unit and one phase."""
+
+    first_days: dict[str, date]  # each concept with an attempt: its first day in the phase
+    assigned: list[str] | None  # the concepts the phase holds, from the newest line that says
+
+    def _expected(self) -> list[str]:
+        return sorted(set(self.assigned or ()))
+
+    @property
+    def remaining(self) -> list[str]:
+        """The assigned concepts with no attempt yet, sorted."""
+        return [c for c in self._expected() if c not in self.first_days]
+
+    @property
+    def complete(self) -> bool:
+        # With no line naming the phase's concepts (a log written before they were kept),
+        # one attempt completes the phase, as it did then.
+        return not self.remaining
+
+    @property
+    def size(self) -> int:
+        return len(self._expected())
+
+    @property
+    def answered(self) -> int:
+        return self.size - len(self.remaining)
+
+    def completion_day(self) -> date:
+        """The latest of the assigned concepts' first days; the phase's first day without them."""
+        expected = self._expected()
+        if not expected:
+            return min(self.first_days.values())
+        return max(self.first_days[c] for c in expected)
+
+
+def _phase_states(attempts) -> dict[str, dict[str, _PhaseState]]:
+    """For each unit, in order of first appearance, the state of every phase it has an attempt in, practice aside."""
+    states: dict[str, dict[str, _PhaseState]] = {}
+    for a in attempts:
+        if a.phase == "practice":
+            continue
+        st = states.setdefault(a.unit, {}).setdefault(a.phase, _PhaseState({}, None))
+        day = _day(a)
+        if a.concept not in st.first_days or day < st.first_days[a.concept]:
+            st.first_days[a.concept] = day
+        if a.assigned is not None:  # file order: the newest line that names them wins
+            st.assigned = a.assigned
+    return states
+
+
+def _partial(states, unit: str, phase: str) -> bool:
+    st = states.get(unit, {}).get(phase)
+    return st is not None and not st.complete
+
+
 def unit_scores(attempts) -> dict[str, dict[str, float]]:
-    """For each unit, the mean score of each phase; practice attempts are ignored."""
-    by_unit: dict[str, list[Attempt]] = {}
+    """For each unit, the mean score of each complete phase: the mean over concepts of each
+    concept's mean there. Practice attempts and partial phases are left out, and so is a unit
+    with no complete phase.
+    """
+    states = _phase_states(attempts)
+    by_unit: dict[str, dict[str, dict[str, list[float]]]] = {}
     for a in attempts:
         if a.phase != "practice":
-            by_unit.setdefault(a.unit, []).append(a)
-    return {unit: _phase_means(atts) for unit, atts in by_unit.items()}
+            by_unit.setdefault(a.unit, {}).setdefault(a.phase, {}).setdefault(a.concept, []).append(a.score)
+    out: dict[str, dict[str, float]] = {}
+    for unit, phases in by_unit.items():
+        means = {
+            phase: _mean(_mean(scores) for scores in concepts.values())
+            for phase, concepts in phases.items()
+            if states[unit][phase].complete
+        }
+        if means:
+            out[unit] = means
+    return out
 
 
 def paired_scores(attempts, first: str, second: str) -> dict[str, dict[str, float]]:
     """For each unit, the mean ``first`` and ``second`` scores over the concepts attempted in both phases.
 
-    A concept's score in a phase is the mean of its attempts there. A unit with no such concept is left out.
+    A concept's score in a phase is the mean of its attempts there. A unit with no such concept,
+    or with either phase partial, is left out.
     """
+    states = _phase_states(attempts)
     by_unit: dict[str, dict[str, dict[str, list[float]]]] = {}
     for a in attempts:
         if a.phase in (first, second):
             by_unit.setdefault(a.unit, {}).setdefault(a.concept, {}).setdefault(a.phase, []).append(a.score)
     out: dict[str, dict[str, float]] = {}
     for unit, concepts in by_unit.items():
+        if _partial(states, unit, first) or _partial(states, unit, second):
+            continue
         both = [phases for phases in concepts.values() if first in phases and second in phases]
         if both:
             out[unit] = {phase: _mean(_mean(c[phase]) for c in both) for phase in (first, second)}
@@ -357,40 +442,50 @@ def retention(scores) -> float | None:
     return d7 / post
 
 
-def _first_days(attempts, phase: str) -> dict[str, date]:
-    """Each unit's first day with an attempt in ``phase``: the date as written in ts, no timezone conversion."""
-    first: dict[str, date] = {}
-    for a in attempts:
-        if a.phase == phase:
-            day = datetime.fromisoformat(a.ts).date()
-            if a.unit not in first or day < first[a.unit]:
-                first[a.unit] = day
-    return first
+def _due_entry(unit: str, phase: str, when: date, optional: bool, st: _PhaseState | None) -> dict:
+    """One due entry; a partial phase says how many concepts are answered and which remain."""
+    partial = st is not None and not st.complete
+    return {
+        "unit": unit,
+        "phase": phase,
+        "due": when.isoformat(),
+        "optional": optional,
+        "answered": st.answered if partial else 0,
+        "remaining": st.remaining if partial else None,
+    }
 
 
 def due(attempts, today: date) -> list[dict]:
-    """What is due by ``today`` and not yet attempted.
+    """What is due by ``today`` and not yet complete.
 
-    The post quiz of a unit with a pre attempt and no post attempt, due on its first pre
-    day; then d1, d7 and d21 after each unit's first post day. The optional d1 lapses
-    once the unit's d7 is due or done.
+    A phase is complete when each of its assigned concepts has an attempt (for lines that
+    name none, after one attempt). The post quiz is listed until it is complete, due on the
+    unit's first pre day (its first post day without a pretest). Reviews d1, d7 and d21 are
+    due 1, 7 and 21 days after the day the post quiz became complete. The optional d1
+    lapses once the unit's d7 is due or started; the optional d21, 14 days after it is due.
     """
-    done: dict[str, set[str]] = {}
-    for a in attempts:
-        done.setdefault(a.unit, set()).add(a.phase)
-    post_day = _first_days(attempts, "post")
     out = []
-    for unit, start in _first_days(attempts, "pre").items():
-        if unit not in post_day and start <= today:
-            out.append({"unit": unit, "phase": "post", "due": start.isoformat(), "optional": False})
-    for unit, start in post_day.items():
-        d7_reached = "d7" in done[unit] or start + timedelta(days=7) <= today
+    for unit, phases in _phase_states(attempts).items():
+        post = phases.get("post")
+        if post is None or not post.complete:
+            # Due on the first pre day, or the first post day of a unit with no pretest.
+            first = phases["pre"] if "pre" in phases else post
+            if first is not None:
+                start = min(first.first_days.values())
+                if start <= today:
+                    out.append(_due_entry(unit, "post", start, False, post))
+            continue
+        done = post.completion_day()
+        d7_reached = "d7" in phases or done + timedelta(days=7) <= today
         for phase, days, optional in REVIEWS:
-            when = start + timedelta(days=days)
+            when = done + timedelta(days=days)
+            st = phases.get(phase)
             if phase == "d1" and d7_reached:
                 continue
-            if phase not in done[unit] and when <= today:
-                out.append({"unit": unit, "phase": phase, "due": when.isoformat(), "optional": optional})
+            if phase == "d21" and when + timedelta(days=D21_LAPSE_DAYS) <= today:
+                continue
+            if (st is None or not st.complete) and when <= today:
+                out.append(_due_entry(unit, phase, when, optional, st))
     out.sort(key=lambda e: (e["due"], e["unit"], DUE_ORDER[e["phase"]]))
     return out
 
@@ -430,7 +525,8 @@ def _prompt_start(prompt: str) -> str:
 
 def _wrong_line(a: Attempt) -> str:
     prompt = f' "{_prompt_start(a.prompt)}"' if a.prompt else ""
-    return f"- {a.unit}: {a.item_id} ({a.concept}){prompt}, {a.phase}, {a.citation}"
+    answer = f'; answered "{_prompt_start(a.answer)}"' if a.answer and a.answer.strip() else ""
+    return f"- {a.unit}: {a.item_id} ({a.concept}){prompt}, {a.phase}, {a.citation}{answer}"
 
 
 def _fence(lines: list[str]) -> str:
@@ -443,6 +539,10 @@ def _headline(scores: dict[str, dict[str, float]], tracked: list[str], gains, re
     """
     if not tracked:
         return "No tracked attempts yet."
+    # Only units with a complete phase have means; the others show "k of n" in the table.
+    tracked = [u for u in tracked if any(p in scores.get(u, {}) for p in TRACKED_PHASES)]
+    if not tracked:
+        return "No complete phase yet."
     segments: list[tuple[int, str]] = []  # (index of the first phase, text), joined in phase order
     covered: set[str] = set()
     gain_means = _gain_means(gains)
@@ -470,23 +570,31 @@ def _pair(first: float | None, second: float | None) -> str:
     return f"{_fmt(first)} → {_fmt(second)}"
 
 
-def _unit_row(unit: str, s: dict[str, float], gains, retained) -> str:
+def _unit_row(unit: str, s: dict[str, float], states: dict[str, _PhaseState], gains, retained) -> str:
     """One table row: pre → post, gain, post → day 7, retention.
 
     Where a unit has concepts attempted in both phases of a pair, the pair shows their means
     and the gain or retention beside it is computed from them; otherwise it shows the mean of
-    every attempt in each phase, and the gain or retention is missing.
+    every attempt in each phase, or "k of n" for a partial phase, and the gain or retention
+    is missing.
     """
+
+    def value(phase: str) -> str:
+        st = states.get(phase)
+        if st is not None and not st.complete:
+            return f"{st.answered} of {st.size}"
+        return _fmt(s.get(phase))
+
     if unit in gains:
         pre_post = _pair(gains[unit]["pre"], gains[unit]["post"])
         gain = normalized_gain({unit: gains[unit]})
     else:
-        pre_post, gain = _pair(s.get("pre"), s.get("post")), None
+        pre_post, gain = f"{value('pre')} → {value('post')}", None
     if unit in retained:
         post_d7 = _pair(retained[unit]["post"], retained[unit]["d7"])
         ret = retention({unit: retained[unit]})
     else:
-        post_d7, ret = _pair(s.get("post"), s.get("d7")), None
+        post_d7, ret = f"{value('post')} → {value('d7')}", None
     cells = [unit.replace("|", "\\|"), pre_post, _fmt(gain), post_d7, _fmt(ret)]
     return "| " + " | ".join(cells) + " |"
 
@@ -503,6 +611,13 @@ def _concept_lines(attempts, unit: str) -> list[str]:
     return lines
 
 
+def _due_line(e: dict) -> str:
+    line = f"- {e['unit']}: {e['phase']}{' (optional)' if e['optional'] else ''}, due {e['due']}"
+    if e["remaining"] is not None:
+        line += f", {e['answered']} of {e['answered'] + len(e['remaining'])} answered"
+    return line
+
+
 def render_progress(course: str, workspace: Path, today: date) -> Path:
     """Write the progress page ``<workspace>/progress/<course>.md`` and return its path.
 
@@ -514,17 +629,22 @@ def render_progress(course: str, workspace: Path, today: date) -> Path:
     scores = unit_scores(attempts)
     gains = paired_scores(attempts, "pre", "post")
     retained = paired_scores(attempts, "post", "d7")
-    tracked = [u for u, s in scores.items() if any(p in s for p in TRACKED_PHASES)]
+    states = _phase_states(attempts)
+    # Every unit with an attempt in pre, post or d7, complete or not, in order of first appearance.
+    tracked = [u for u, phases in states.items() if any(p in phases for p in TRACKED_PHASES)]
 
     blocks = [f"# Progress — {course}", _headline(scores, tracked, gains, retained)]
     if tracked:
         table = ["| unit | pre → post | gain | post → day 7 | retention |", "|---|---|---|---|---|"]
-        table += [_unit_row(u, scores[u], gains, retained) for u in tracked]
-        strips = [f"{_strip(*(scores[u].get(p) for p in TRACKED_PHASES))}  {u}" for u in tracked]
+        table += [_unit_row(u, scores.get(u, {}), states[u], gains, retained) for u in tracked]
+        # A partial phase has no score, so its mark is left out of the strip.
+        strips = [f"{_strip(*(scores.get(u, {}).get(p) for p in TRACKED_PHASES))}  {u}" for u in tracked]
+        partial = any(_partial(states, u, p) for u in tracked for p in TRACKED_PHASES)
         blocks += [
             "## Units",
             "\n".join(table),
             PAIRED_NOTE,
+            *([PARTIAL_NOTE] if partial else []),
             STRIP_LEGEND,
             _fence(strips),
             "## By concept",
@@ -532,10 +652,7 @@ def render_progress(course: str, workspace: Path, today: date) -> Path:
         for u in tracked:
             blocks += [f"### {u}", _fence(_concept_lines(attempts, u))]
 
-    due_lines = [
-        f"- {e['unit']}: {e['phase']}{' (optional)' if e['optional'] else ''}, due {e['due']}"
-        for e in due(attempts, today)
-    ]
+    due_lines = [_due_line(e) for e in due(attempts, today)]
     blocks += ["## Due today", "\n".join(due_lines) or "None."]
     wrong_lines = [_wrong_line(a) for a in confident_but_wrong(attempts)]
     blocks += ["## Confident but wrong", "\n".join(wrong_lines) or "None."]

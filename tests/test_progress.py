@@ -152,8 +152,8 @@ def test_due_entry_keys_and_order():
     att = mk_post(unit="u1", day=date(2026, 11, 20))
     att.append(attempt(ts="2026-11-21T09:00:00+00:00", item_id="c1-D", variant="D", phase="d1"))
     assert due(att, date(2026, 12, 11)) == [
-        {"unit": "u1", "phase": "d7", "due": "2026-11-27", "optional": False},
-        {"unit": "u1", "phase": "d21", "due": "2026-12-11", "optional": True},
+        {"unit": "u1", "phase": "d7", "due": "2026-11-27", "optional": False, "answered": 0, "remaining": None},
+        {"unit": "u1", "phase": "d21", "due": "2026-12-11", "optional": True, "answered": 0, "remaining": None},
     ]
     assert due(att, date(2026, 11, 26)) == []
 
@@ -327,7 +327,7 @@ def test_cli_due_prints_json(tmp_path, capsys):
     code = main(["progress", "due", "--course", "C", "--date", "2026-11-27", "--workspace", str(tmp_path)])
     assert code == 0
     assert json.loads(capsys.readouterr().out) == [
-        {"unit": "u1", "phase": "d7", "due": "2026-11-27", "optional": False},
+        {"unit": "u1", "phase": "d7", "due": "2026-11-27", "optional": False, "answered": 0, "remaining": None},
     ]
 
 
@@ -491,7 +491,7 @@ def test_due_lists_post_after_pretest():
                                                variant="A", concept="c3", phase="pre", score=0)]
     att += mk_post(unit="u2", day=date(2026, 11, 20))
     assert due(att, date(2026, 11, 20)) == [
-        {"unit": "u1", "phase": "post", "due": "2026-11-20", "optional": False},
+        {"unit": "u1", "phase": "post", "due": "2026-11-20", "optional": False, "answered": 0, "remaining": None},
     ]
     assert due(att, date(2026, 11, 19)) == []
 
@@ -499,7 +499,9 @@ def test_due_lists_post_after_pretest():
 def test_optional_d1_expires_at_d7():
     att = mk_post(unit="u1", day=date(2026, 11, 20))
     assert [x["phase"] for x in due(att, date(2026, 11, 26))] == ["d1"]
-    assert due(att, date(2026, 11, 27)) == [{"unit": "u1", "phase": "d7", "due": "2026-11-27", "optional": False}]
+    assert due(att, date(2026, 11, 27)) == [
+        {"unit": "u1", "phase": "d7", "due": "2026-11-27", "optional": False, "answered": 0, "remaining": None},
+    ]
     early_d7 = att + [attempt(ts="2026-11-25T10:00:00+00:00", item_id="c1-C", variant="C", phase="d7")]
     assert due(early_d7, date(2026, 11, 25)) == []
 
@@ -769,3 +771,231 @@ def test_cli_log_prints_the_log_path(tmp_path, capsys):
     line = (ws / "progress" / "C.jsonl").read_text(encoding="utf-8").split("\n")[0]
     assert list(json.loads(line)) == [f.name for f in dataclasses.fields(Attempt)]
     assert len(dataclasses.fields(Attempt)) == 14
+
+
+# ---- a phase is done when every assigned concept has an attempt (M2a Task 5) ---
+
+FIVE = ["c1", "c2", "c3", "c4", "c5"]
+
+
+def at(day, phase, concept, score=1, **over):
+    """One attempt at `concept` in `phase` on `day` (YYYY-MM-DD), assigned the five concepts."""
+    letter = {"pre": "A", "post": "B", "d7": "C", "d1": "D", "d21": "E"}[phase]
+    return attempt(ts=f"{day}T10:00:00+00:00", item_id=f"{concept}-{letter}", variant=letter,
+                   concept=concept, phase=phase, score=score, **{"assigned": FIVE, **over})
+
+
+def test_post_must_be_complete_before_reviews():
+    att = [at("2026-11-01", "pre", c, 0) for c in FIVE] + [at("2026-11-01", "post", c) for c in FIVE[:2]]
+    assert [x["phase"] for x in due(att, date(2026, 11, 2))] == ["post"]
+    att += [at("2026-11-03", "post", c) for c in FIVE[2:]]
+    assert [(x["phase"], x["due"]) for x in due(att, date(2026, 11, 4))] == [("d1", "2026-11-04")]
+
+
+def test_partial_post_without_pretest_is_offered():
+    att = [at("2026-11-01", "post", c) for c in FIVE[:2]]
+    assert due(att, date(2026, 11, 2)) == [
+        {"unit": "u1", "phase": "post", "due": "2026-11-01", "optional": False, "answered": 2,
+         "remaining": ["c3", "c4", "c5"]},
+    ]
+
+
+def test_optional_d21_lapses_after_two_weeks():
+    att = mk_post(unit="u1", day=date(2026, 11, 20))
+    assert [x["phase"] for x in due(att, date(2026, 12, 24))] == ["d7", "d21"]
+    assert [x["phase"] for x in due(att, date(2026, 12, 25))] == ["d7"]
+    att.append(at("2026-12-11", "d21", "c1", assigned=["c1", "c2"]))
+    (d21,) = [x for x in due(att, date(2026, 12, 24)) if x["phase"] == "d21"]
+    assert (d21["answered"], d21["remaining"]) == (1, ["c2"])
+    assert [x["phase"] for x in due(att, date(2026, 12, 25))] == ["d7"]
+
+
+def test_unit_score_averages_concepts():
+    att = [
+        attempt(concept="c1", score=0),
+        attempt(concept="c1", score=1),
+        attempt(item_id="c2-B", concept="c2", score=1),
+    ]
+    assert unit_scores(att) == {"u1": {"post": 0.75}}
+
+
+def test_partial_phase_is_left_out_of_the_means():
+    three = ["c1", "c2", "c3"]
+    att = [at("2026-11-20", "post", c, assigned=three) for c in three]
+    att.append(at("2026-11-27", "d7", "c1", 0.5, assigned=three))
+    assert "d7" not in unit_scores(att)["u1"]
+    assert unit_scores(att)["u1"] == {"post": 1.0}
+    assert paired_scores(att, "post", "d7") == {}
+
+
+def test_only_partial_phases_give_no_headline(tmp_path):
+    write_attempts(tmp_path, [at("2026-11-20", "pre", c, 0) for c in FIVE[:2]])
+    lines = render_progress("C", tmp_path, date(2026, 11, 20)).read_text(encoding="utf-8").splitlines()
+    assert lines[2] == "No complete phase yet."
+    assert "| u1 | 2 of 5 → — | — | — → — | — |" in lines
+    assert PARTIAL_NOTE in lines
+
+
+PARTIAL_NOTE = (
+    'A phase shown as "k of n" is partial: k of its n tracked concepts have an attempt so far, '
+    "and it stays out of every mean, gain and retention until the rest are answered."
+)
+
+
+def five_concept_unit(tmp_path):
+    """Course "C", unit "U5": c1 to c5 tracked, variants A, B, C each, assigned pre A, post B, d7 C."""
+    u = tmp_path / "unit five"
+    u.mkdir()
+    concepts = [{"id": c, "name": f"Concept {c}", "type": "definition", "citations": ["(slide 1)"]} for c in FIVE]
+    plan = {
+        "course": "C", "unit": "U5", "goal": "deep", "content_type": "concept",
+        "note_language": "en", "lecture_language": "en", "duration_s": 180,
+        "outputs": ["explanation", "pretest", "quiz", "cards", "map"], "sections": [],
+        "concepts": concepts, "tracked": FIVE, "output_target": "markdown",
+    }
+    tracked = {
+        c: {
+            v: {"id": f"{c}-{v}", "concept": c, "kind": "apply", "prompt": f"Prompt {c}-{v}?", "answer": "A.",
+                "rubric": "R.", "citation": "(slide 1)", "difficulty": 2, "variant": v}
+            for v in "ABC"
+        }
+        for c in FIVE
+    }
+    assignment = {"seed": "C|U5", "concepts": {c: {"pre": "A", "post": "B", "d7": "C"} for c in FIVE}}
+    write_json(u / "plan.json", plan)
+    write_json(u / "items.json", {"tracked": tracked, "practice": []})
+    write_json(u / "assignment.json", assignment)
+    return u
+
+
+def log_scores(u, ws, phase, scores, day, concepts=FIVE):
+    letter = {"pre": "A", "post": "B", "d7": "C"}[phase]
+    for c, score in zip(concepts, scores):
+        assert main(["progress", "log", "--unit", str(u), "--item", f"{c}-{letter}", "--phase", phase,
+                     "--score", str(score), "--confidence", "2", "--date", day, "--workspace", str(ws)]) == 0
+
+
+def test_interrupted_day_7_review_is_offered_again(tmp_path, capsys):
+    u = five_concept_unit(tmp_path)
+    ws = tmp_path / "ws"
+    log_scores(u, ws, "pre", [0, 0, 1, 0, 0], "2026-11-01")
+    log_scores(u, ws, "post", [1, 1, 1, 0.5, 1], "2026-11-01")
+    log_scores(u, ws, "d7", [1, 0.5], "2026-11-08")
+    capsys.readouterr()
+    due_argv = ["progress", "due", "--course", "C", "--workspace", str(ws), "--date"]
+    render_argv = ["progress", "render", "--course", "C", "--workspace", str(ws), "--date"]
+    assert main([*due_argv, "2026-11-09"]) == 0
+    assert capsys.readouterr().out == (
+        '[{"unit": "U5", "phase": "d7", "due": "2026-11-08", "optional": false, "answered": 2, '
+        '"remaining": ["c3", "c4", "c5"]}]\n'
+    )
+    assert main([*render_argv, "2026-11-09"]) == 0
+    capsys.readouterr()
+    page = (ws / "progress" / "C.md").read_text(encoding="utf-8")
+    lines = page.splitlines()
+    assert lines[2] == "Across 1 units: pre 0.20 → post 0.90, normalized gain 0.88."
+    assert "| U5 | 0.20 → 0.90 | 0.88 | 0.90 → 2 of 5 | — |" in lines
+    assert lines[lines.index(PAIRED_NOTE_TEXT) + 2] == PARTIAL_NOTE
+    assert "- U5: d7, due 2026-11-08, 2 of 5 answered" in lines
+    (strip,) = [x for x in lines if x.endswith("  U5")]
+    assert "○" in strip and "●" in strip and "◆" not in strip
+
+    log_scores(u, ws, "d7", [1, 0.5, 0.5], "2026-11-10", concepts=FIVE[2:])
+    capsys.readouterr()
+    assert main([*due_argv, "2026-11-10"]) == 0
+    assert capsys.readouterr().out == "[]\n"
+    assert main([*render_argv, "2026-11-10"]) == 0
+    lines = (ws / "progress" / "C.md").read_text(encoding="utf-8").splitlines()
+    assert "| U5 | 0.20 → 0.90 | 0.88 | 0.90 → 0.70 | 0.78 |" in lines
+    assert PARTIAL_NOTE not in lines
+
+
+PAIRED_NOTE_TEXT = (
+    "Gain and retention compare only the concepts attempted in both phases, "
+    "and the means beside them are over those concepts."
+)
+
+
+def test_confident_wrong_shows_the_answer(tmp_path):
+    u = unit_dir(tmp_path)
+    ws = tmp_path / "ws"
+    assert main(["progress", "log", "--unit", str(u), "--item", "c1-B", "--phase", "post", "--score", "0",
+                 "--confidence", "3", "--answer", "six percent", "--workspace", str(ws)]) == 0
+    lines = render_progress("C", ws, date.today()).read_text(encoding="utf-8").splitlines()
+    start = lines.index("## Confident but wrong") + 2
+    assert lines[start] == '- U1: c1-B (c1) "Prompt c1-B?", post, (slide 2, 01:00); answered "six percent"'
+
+
+def test_cli_render_takes_a_date(tmp_path, capsys):
+    write_attempts(tmp_path, mk_post(unit="u1", day=date(2026, 11, 20)))
+    argv = ["progress", "render", "--course", "C", "--workspace", str(tmp_path), "--date"]
+
+    def due_today(day):
+        assert main([*argv, day]) == 0
+        lines = (tmp_path / "progress" / "C.md").read_text(encoding="utf-8").splitlines()
+        return lines[lines.index("## Due today") + 2]
+
+    assert due_today("2026-11-21") == "- u1: d1 (optional), due 2026-11-21"
+    assert due_today("2026-11-20") == "None."
+    with pytest.raises(SystemExit) as e:
+        main([*argv, "2026-02-30"])
+    assert e.value.code == 2
+
+
+def test_log_from_the_earlier_code_works_everywhere(tmp_path, capsys):
+    import shutil
+
+    from conftest import fx
+
+    u = tmp_path / "unit"
+    shutil.copytree(fx("units", "ok"), u)
+    ws = tmp_path / "ws"
+    base = dict(course="demo-course", unit="unit-01", citation="(slide 1)", exposure="unknown", confidence=2)
+
+    def line(item_id, variant, concept, phase, score, prompt=None, **over):
+        obj = {"ts": "2026-11-20T10:00:00+00:00", "course": base["course"], "unit": base["unit"],
+               "item_id": item_id, "variant": variant, "concept": concept, "phase": phase, "score": score,
+               "confidence": over.get("confidence", 2), "citation": base["citation"], "exposure": "unknown"}
+        if prompt is not None:
+            obj["prompt"] = prompt
+        return json.dumps(obj)
+
+    write_raw(ws / "progress" / "demo-course.jsonl", [
+        line("ci-A", "A", "compound-interest", "pre", 0),
+        line("cf-A", "A", "compounding-frequency", "pre", 1, prompt="Q cf-A?"),
+        line("ci-B", "B", "compound-interest", "post", 0, prompt="Q ci-B?", confidence=3),
+        line("cf-C", "C", "compounding-frequency", "post", 1, prompt="Q cf-C?"),
+    ])
+    wsarg = ["--workspace", str(ws)]
+
+    def run(argv):
+        code = main([*argv, *wsarg])
+        captured = capsys.readouterr()
+        assert captured.err == "", argv
+        return code, captured.out
+
+    code, out = run(["progress", "due", "--course", "demo-course", "--date", "2026-11-21"])
+    assert code == 0
+    assert json.loads(out) == [
+        {"unit": "unit-01", "phase": "d1", "due": "2026-11-21", "optional": True, "answered": 0, "remaining": None},
+    ]
+    code, _ = run(["progress", "render", "--course", "demo-course", "--date", "2026-11-21"])
+    assert code == 0
+    page = (ws / "progress" / "demo-course.md").read_text(encoding="utf-8")
+    assert "| unit-01 | 0.50 → 0.50 | 0.00 | 0.50 → — | — |" in page.splitlines()
+    code, _ = run(["progress", "log", "--unit", str(u), "--item", "ci-C", "--phase", "d7", "--score", "1",
+                   "--confidence", "2", "--date", "2026-11-27"])
+    assert code == 0
+    att = load_attempts("demo-course", ws)
+    assert len(att) == 5
+    assert all(a.answer is None and a.assigned is None for a in att[:4])
+    assert att[4].assigned == ["compound-interest", "compounding-frequency"]
+    code, out = run(["progress", "due", "--course", "demo-course", "--date", "2026-11-27"])
+    assert code == 0
+    (entry,) = json.loads(out)
+    assert (entry["phase"], entry["due"], entry["answered"], entry["remaining"]) == (
+        "d7", "2026-11-27", 1, ["compounding-frequency"]
+    )
+    code, out = run(["cards", "add-misses", "--unit", str(u)])
+    assert code == 0
+    assert json.loads(out)["added"] == 1
