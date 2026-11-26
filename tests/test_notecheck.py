@@ -407,3 +407,10 @@ def test_math_forms_github_does_not_render_warn():
     assert math_form(sample_note()) == ("PASS", [])
     names = [r.name for r in check_note(MATH_NOTE, "en", "deep", 90, "markdown")]
     assert names[names.index("bullets") + 1] == "math_form"
+
+
+def test_quote_densities_have_one_source():
+    from tutor_any_lecture import notecheck, plan
+
+    assert notecheck.QUOTE_DENSITIES is plan.QUOTE_DENSITIES
+    assert tuple(notecheck.THRESHOLDS["cross_language_quote_ratio"]) == plan.QUOTE_DENSITIES

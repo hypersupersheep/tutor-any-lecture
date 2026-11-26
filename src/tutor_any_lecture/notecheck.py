@@ -12,6 +12,7 @@ import re
 
 from .checks import NOT_APPLIED, CheckResult
 from .citations import Citation, parse
+from .plan import QUOTE_DENSITIES
 from .textstats import (
     ANGLE_URL_RE,
     BARE_URL_RE,
@@ -46,13 +47,13 @@ THRESHOLDS = {
     "bold_max": 15,
     "highlights_max": 8,
     "bullet_share_max": 0.10,
-    # Quoted characters per unit of prose, for a CJK note of a non-CJK lecture, by quote_density.
+    # Quoted characters per unit of prose, for a CJK note of a non-CJK lecture, by quote_density
+    # (its keys are plan.QUOTE_DENSITIES, in that order).
     "cross_language_quote_ratio": {"light": (0.15, 0.6), "standard": (0.4, 1.2), "dense": (1.0, 2.0)},
     "same_language_quote_share": (0.10, 0.40),
 }
 
 GOALS = ("deep", "exam", "quick")
-QUOTE_DENSITIES = tuple(THRESHOLDS["cross_language_quote_ratio"])
 MARKER_NAMES = ("pretest", "check", "not-covered", "errata")
 SINGLE_MARKERS = ("pretest", "not-covered", "errata")
 CALLOUT_TYPES = {"NOTE", "IMPORTANT", "WARNING", "CAUTION"}

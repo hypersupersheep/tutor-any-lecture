@@ -52,7 +52,8 @@ class Profile:
     terms: str = "bilingual"
     level: str = "auto"
     goal: str = "deep"
-    # How densely a note in another language than the lecture quotes it; written into plan.json.
+    # Picks the quote-ratio window of a Chinese, Japanese or Korean note of a lecture in another
+    # script (every other note ignores it); written into plan.json.
     quote_density: str = DEFAULT_QUOTE_DENSITY
     outputs: list[str] = field(default_factory=lambda: ["explanation", "pretest", "quiz", "cards", "map"])
     output_target: str = "markdown"

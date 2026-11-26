@@ -887,3 +887,12 @@ def test_stock_phrases_skip_quotations_code_and_links(tmp_path):
     append_to_note(u, "\n> [!NOTE]\n> In summary, the rate compounds.\n")
     assert entry(run_verify(u), "banned_phrases") == {
         "name": "banned_phrases", "status": "WARN", "details": ["banned phrase: in summary"]}
+
+
+def test_measures_line_says_n_a_without_prose():
+    from tutor_any_lecture.notecheck import measure_note
+    from tutor_any_lecture.verify import format_measures
+
+    line = format_measures(measure_note("## A\n\nplain words\n", "zh", "deep", 90.0, "en"))
+    assert "quote ratio n/a (0.4-1.2)" in line
+    assert "None" not in line

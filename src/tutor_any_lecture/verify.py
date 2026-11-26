@@ -732,7 +732,8 @@ def _span_text(window) -> str:
 def format_measures(m: dict) -> str:
     """The ``measures:`` line verify prints after its table (ASCII only).
 
-    A ``length`` without a ``total`` was not applied for the note's language.
+    A ``length`` without a ``total`` was not applied for the note's language; a quote
+    ratio or share without a value (no prose to measure against) prints ``n/a``.
     """
     if m["length"]["total"] is None:
         length = f"length {NOT_APPLIED}"
@@ -750,7 +751,9 @@ def format_measures(m: dict) -> str:
         ]
     for key, name in (("quote_ratio", "quote ratio"), ("quote_share", "quote share")):
         if m[key] is not None:
-            parts.append(f"{name} {m[key]['value']} ({_span_text(m[key]['window'])})")
+            # A value of None: no prose to measure against.
+            value = "n/a" if m[key]["value"] is None else m[key]["value"]
+            parts.append(f"{name} {value} ({_span_text(m[key]['window'])})")
     h2 = m["h2"]
     parts.append(f"H2 {h2['count']}" + (f" (<= {h2['max']})" if h2["max"] is not None else ""))
     return "measures: " + "; ".join(parts)

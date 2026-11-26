@@ -9,7 +9,8 @@ from pathlib import Path
 
 GOALS = ("deep", "exam", "quick")
 OUTPUT_TARGETS = ("markdown", "obsidian")
-# How densely a note in another language than the lecture quotes it; optional in plan.json.
+# Picks the quote-ratio window of a Chinese, Japanese or Korean note of a lecture in another
+# script; every other note ignores it. Optional in plan.json.
 QUOTE_DENSITIES = ("light", "standard", "dense")
 DEFAULT_QUOTE_DENSITY = "standard"
 TRACKED_MAX = 5
