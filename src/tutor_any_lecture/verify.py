@@ -19,7 +19,15 @@ from .checks import CheckResult
 from .citations import format_seconds, link_time_problems, link_times, parse, resolve, time_link_platform
 from .conceptmap import load_map, validate_map
 from .items import load_items, validate_items
-from .notecheck import CALLOUT_TYPES, check_note, cited_quotes, marker_sections, measure_note, strip_marker_sections
+from .notecheck import (
+    CALLOUT_TYPES,
+    THRESHOLDS,
+    check_note,
+    cited_quotes,
+    marker_sections,
+    measure_note,
+    strip_marker_sections,
+)
 from .plan import load_plan, read_json, read_text
 from .slides import load_pages, max_label
 from .source import SourceInfo
@@ -73,7 +81,6 @@ WORD_EDGE_BEFORE = rf"(?<![^ {_CJK_CHARS}])"
 WORD_EDGE_AFTER = rf"(?![^ {_CJK_CHARS}])"
 QUOTE_WINDOW_S = 60
 QUOTE_MIN_WORDS = 3
-QUOTE_MIN_CJK_CHARS = 6
 QUOTE_SHOWN_CHARS = 40
 
 # numbers: a quantity with a unit, or a currency sign and the first digit after it.
@@ -235,7 +242,7 @@ def _quote_parts(quote: str) -> list[str]:
     for raw in EDITORIAL_RE.split(text):
         part = _quote_norm(raw)
         if CJK_RE.search(part):
-            long_enough = len(part.replace(" ", "")) >= QUOTE_MIN_CJK_CHARS
+            long_enough = len(part.replace(" ", "")) >= THRESHOLDS["quote_min_cjk_chars"]
         else:
             long_enough = len(part.split()) >= QUOTE_MIN_WORDS
         if long_enough:
@@ -297,13 +304,17 @@ def _check_quote_source(md: str, transcript, pages) -> CheckResult:
     for quote, cits in cited_quotes(md):
         parts = _quote_parts(quote)
         places = [t for t in (sources.cited(c) for c in cits) if t is not None]
-        if not parts or not places:
-            continue  # nothing to check, or only times in a unit without a transcript
+        if not places:
+            continue  # only times in a unit without a transcript
+        shown = quote if len(quote) <= QUOTE_SHOWN_CHARS else quote[:QUOTE_SHOWN_CHARS] + "…"
+        cited = ", ".join(_dedupe([CITATION_LINK_RE.sub(r"\1", c.raw) for c in cits]))
+        if not parts:
+            details.append(f"quote '{shown}' cited {cited} has no part of three words or six CJK characters to check")
+            worst = max(worst, "WARN", key=SEVERITY.__getitem__)
+            continue
         missing = [part for part in parts if not any(_part_at(part, place) >= 0 for place in places)]
         if not missing:
             continue
-        shown = quote if len(quote) <= QUOTE_SHOWN_CHARS else quote[:QUOTE_SHOWN_CHARS] + "…"
-        cited = ", ".join(_dedupe([CITATION_LINK_RE.sub(r"\1", c.raw) for c in cits]))
         found = [sources.find(part) for part in missing]
         if all(found):
             details.append(f"quote '{shown}' is not at {cited}; found {found[0]}")

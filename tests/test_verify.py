@@ -319,7 +319,7 @@ def test_quote_with_ellipsis_and_brackets_passes(tmp_path):
     add_segment(u, 178.0, 180.0, "Remember: the balance on your statement already has interest included.")
     append_to_note(
         u,
-        '\n\nThe statement shows "the balance … [that is] interest included" (2:59).\n\n'
+        '\n\nThe statement shows "the balance on your statement … [that is] already has interest included" (2:59).\n\n'
         "> With compound interest … the interest you earned [it is] added to the balance (1:15)\n",
     )
     r = run_verify(u)
@@ -352,6 +352,7 @@ def test_cjk_quote_ignores_spaces(tmp_path):
 def test_time_only_quote_without_transcript_has_no_quote_source(tmp_path):
     u = copy_fixture("slides_only", tmp_path)
     append_to_note(u, "\n\n> The balance is updated once a month by the bank. (0:30)\n")
+    append_to_note(u, '\nThe lecturer said "rate … balance … interest" (0:30).\n')
     c = entry(run_verify(u), "citations")
     assert c["status"] == "FAIL" and quote_source_details(run_verify(u)) == []
 
@@ -603,4 +604,27 @@ def test_quote_source_detail_shows_citations_without_addresses(tmp_path):
     link_unit(u)
     assert quote_source_details(run_verify(u)) == [
         "quote 'banks always round the rate down' cited (slide 2, 2:40) is not in the transcript or the slides"
+    ]
+
+
+# ---------------------------------------------------------------- quotation marks; short quotes
+
+
+def test_guillemet_quote_is_checked_against_the_transcript(tmp_path):
+    u = copy_fixture("ok", tmp_path)
+    append_to_note(u, "\n\nThe lecturer warned that «banks always round the rate down» (slide 2, 2:40).\n")
+    r = run_verify(u)
+    assert entry(r, "citations")["status"] == "FAIL"
+    assert quote_source_details(r) == [
+        "quote 'banks always round the rate down' cited (slide 2, 2:40) is not in the transcript or the slides"
+    ]
+
+
+def test_quote_with_no_checkable_part_warns(tmp_path):
+    u = copy_fixture("ok", tmp_path)
+    append_to_note(u, '\n\nThe lecturer said "rate … balance … interest" (1:15).\n')
+    r = run_verify(u)
+    assert entry(r, "citations")["status"] == "WARN"
+    assert quote_source_details(r) == [
+        "quote 'rate … balance … interest' cited (1:15) has no part of three words or six CJK characters to check"
     ]

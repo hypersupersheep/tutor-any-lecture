@@ -12,7 +12,17 @@ import re
 
 from .checks import CheckResult
 from .citations import Citation, parse
-from .textstats import INLINE_CODE_RE, fenced_lines, is_cjk_language, strip_code, units
+from .textstats import (
+    ANGLE_URL_RE,
+    BARE_URL_RE,
+    CJK_RE,
+    INLINE_CODE_RE,
+    MD_LINK_URL_RE,
+    fenced_lines,
+    is_cjk_language,
+    strip_code,
+    units,
+)
 
 THRESHOLDS = {
     "length_per_min": {"deep": {"cjk": (44, 89), "words": (26, 53)},
@@ -27,6 +37,8 @@ THRESHOLDS = {
     "long_paragraph": {"cjk": 300, "words": 180},
     "quotes_per_paragraph": 3,
     "quote_min_chars": 15,
+    # A quoted span that holds a CJK character is a quote from this many characters.
+    "quote_min_cjk_chars": 6,
     "bold_max": 15,
     "highlights_max": 8,
     "bullet_share_max": 0.10,
@@ -52,7 +64,30 @@ TOC_OBSIDIAN_RE = re.compile(r"^\s*(?:[-*+]|\d+\.)\s+\[\[#([^\]|]*)")
 TOC_MARKDOWN_RE = re.compile(r"^\s*(?:[-*+]|\d+\.)\s+\[[^\]]*\]\(#([^)]*)\)")
 NUMBERED_ITEM_RE = re.compile(r"^\s*\d+[.)]\s+")
 PARA_BREAK_RE = re.compile(r"^(#|\||>|\s*[-*] |\s*\d+\. |---)")
-INLINE_QUOTE_RE = re.compile(r'"([^"\n]*)"|“([^”\n]*)”|「([^」\n]*)」')
+# The (open, close) quotation mark pairs. On one line marks pair left to right, never
+# nested: an opening mark takes the first closing mark of its pair after it.
+QUOTE_PAIRS = (
+    ('"', '"'), ("“", "”"), ("„", "“"), ("„", "”"), ("«", "»"), ("»", "«"),
+    ("‘", "’"), ("‚", "‘"), ("‹", "›"), ("「", "」"), ("『", "』"), ("＂", "＂"),
+)
+
+
+def _inline_quote_pattern(pairs) -> re.Pattern:
+    """One alternative per opening mark, its text in a group, up to the first of its closing marks.
+
+    An ’ followed by a letter or digit is an apostrophe and closes nothing.
+    """
+    closers: dict[str, list[str]] = {}
+    for o, c in pairs:
+        closers.setdefault(o, []).append(c)
+    alternatives = []
+    for o, cs in closers.items():
+        close = "|".join(r"’(?![^\W_])" if c == "’" else re.escape(c) for c in cs)
+        alternatives.append(f"{re.escape(o)}(.*?)(?:{close})")
+    return re.compile("|".join(alternatives))
+
+
+INLINE_QUOTE_RE = _inline_quote_pattern(QUOTE_PAIRS)
 BLOCKQUOTE_PREFIX_RE = re.compile(r"^(\s*>)+")
 BOLD_RE = re.compile(r"\*\*[^*\n]+\*\*")
 HIGHLIGHT_RE = re.compile(r"==[^=\n]+==")
@@ -189,16 +224,22 @@ def _is_quote_line(line: str) -> bool:
 
 
 def _inline_quotes(line: str) -> list[str]:
-    """Quoted spans of 15 or more characters on one line that is not a '>' line."""
+    """The quoted spans on one line that is not a '>' line."""
     return [] if _is_quote_line(line) else _quoted_spans(line)
 
 
+def _is_quote(inner: str) -> bool:
+    """A quoted span counts as a quote from 15 characters, or from 6 when it holds a CJK character."""
+    key = "quote_min_cjk_chars" if CJK_RE.search(inner) else "quote_min_chars"
+    return len(inner) >= THRESHOLDS[key]
+
+
 def _quoted_spans(line: str) -> list[str]:
-    """Quoted spans of 15 or more characters on one line, marks paired left to right."""
+    """The quoted spans long enough to be quotes on one line, marks paired left to right."""
     out = []
     for m in INLINE_QUOTE_RE.finditer(line):
         inner = next(g for g in m.groups() if g is not None)
-        if len(inner) >= THRESHOLDS["quote_min_chars"]:
+        if _is_quote(inner):
             out.append(inner)
     return out
 
@@ -223,6 +264,16 @@ def _without_citations(text: str) -> str:
     for c in parse(text):
         text = text.replace(c.raw, " ")
     return " ".join(text.split())
+
+
+def _measured(text: str) -> str:
+    """``text`` as the quote measures count it: no citation groups, a Markdown link or image
+    as its text only, no angle or bare URLs. Other markup stays."""
+    for raw in dict.fromkeys(c.raw for c in parse(text)):
+        text = text.replace(raw, " ")
+    text = MD_LINK_URL_RE.sub(lambda m: m.group(1).lstrip("!")[1:-1], text)
+    text = ANGLE_URL_RE.sub(" ", text)
+    return BARE_URL_RE.sub(" ", text)
 
 
 def _hold_inline_code(md: str) -> tuple[str, list[str]]:
@@ -274,7 +325,7 @@ def cited_quotes(md: str) -> list[tuple[str, list[Citation]]]:
     Read as check_note reads them: fenced code and the marker sections are left out, and
     code is never a quote or a citation. Inline code inside a quote stays in its text as
     written. A blockquote that is not a callout is cited inside or on its next non-empty
-    line. An inline quote of 15 or more characters is cited by its paragraph; in a list
+    line. An inline quote (``_is_quote``) is cited by its paragraph; in a list
     item by the item (its bullet line and its indented continuation lines); on another
     line outside paragraphs (a table row, a heading) by that line; inside a callout by the
     whole callout. Citation groups are removed from the quote text. Blockquotes come
@@ -413,17 +464,22 @@ def _check_args(goal: str, quote_density: str) -> None:
 
 
 def _counts(p: str, p_lines: list[str], w_lines: list[str], lang: str) -> dict:
-    """The raw numbers the per-minute and quote rules use, from the prose P and the note W."""
+    """The raw numbers the per-minute and quote rules use, from the prose P and the note W.
+
+    Quotes are found on the raw lines; quoted characters and the prose's non-space
+    characters are both counted on the ``_measured`` text, so citations and link
+    addresses count on neither side.
+    """
     inline_all = [q for line in p_lines for q in _inline_quotes(line)]
     blocks = [(a, b) for a, b in _blockquotes(p_lines) if not CALLOUT_START_RE.match(p_lines[a])]
     return {
         "units": units(p, lang),
         "times": sum(1 for c in parse(p) if c.kind == "time"),
         "quotes": len(inline_all) + len(blocks),
-        "quote_chars": sum(_nonspace(q) for q in inline_all) + sum(
-            _nonspace(BLOCKQUOTE_PREFIX_RE.sub("", line)) for a, b in blocks for line in p_lines[a:b]
+        "quote_chars": sum(_nonspace(_measured(q)) for q in inline_all) + sum(
+            _nonspace(_measured(BLOCKQUOTE_PREFIX_RE.sub("", line))) for a, b in blocks for line in p_lines[a:b]
         ),
-        "nonspace": _nonspace(p),
+        "nonspace": _nonspace(_measured(p)),
         "h2": sum(1 for line in w_lines if line.startswith("## ")),
     }
 

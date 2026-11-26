@@ -1,7 +1,17 @@
+from importlib import resources
+
 import pytest
 from conftest import fx, names_by_status, status_of
 
-from tutor_any_lecture.notecheck import check_note, marker_sections, strip_marker_sections
+from tutor_any_lecture.citations import link_times
+from tutor_any_lecture.notecheck import (
+    QUOTE_PAIRS,
+    check_note,
+    cited_quotes,
+    marker_sections,
+    measure_note,
+    strip_marker_sections,
+)
 from tutor_any_lecture.textstats import units
 
 BAD_NOTE = fx("notes", "bad_note.md").read_text(encoding="utf-8")
@@ -37,7 +47,7 @@ CODE_NOTE = (
 )
 
 # 68 CJK characters of prose (2 in the heading, 3 x 22 in the paragraph); the blockquote has
-# 51 non-whitespace characters (38 without the citation), so the ratio is 0.75 (or 0.56): below 1.0
+# 38 non-whitespace characters once its citation is left out, so the ratio is 0.56: below 1.0
 ZH_NOTE = (
     "## 复利\n\n"
     + "本金每一期都把利息并入,下一期按更大的本金计息。" * 3
@@ -101,7 +111,7 @@ def test_code_is_ignored():
 
 
 def test_quote_rule_follows_lecture_language():
-    # A ratio of 0.75 is below the dense window (1.0-2.0) and inside the standard one (0.4-1.2).
+    # A ratio of 0.56 is below the dense window (1.0-2.0) and inside the standard one (0.4-1.2).
     dense = check_note(ZH_NOTE, "zh", "deep", 90, "markdown", "en", quote_density="dense")
     assert status_of(dense, "quote_ratio") == "WARN" and status_of(dense, "quote_share") == "PASS"
     assert status_of(check_note(ZH_NOTE, "zh", "deep", 90, "markdown", "en"), "quote_ratio") == "PASS"
@@ -248,3 +258,71 @@ def test_length_ceiling_has_a_floor():
     cjk = "## 复利\n\n" + "利" * 700 + "\n"
     assert status_of(check_note(cjk, "zh", "deep", 3, "markdown"), "length") == "PASS"
     assert status_of(check_note(cjk + "利" * 200 + "\n", "zh", "deep", 3, "markdown"), "length") == "WARN"
+
+
+# ---- quote measures without citations or addresses ---------------------------
+
+YT = "https://www.youtube.com/watch?v=abc"
+PANOPTO = "https://example.hosted.panopto.com/Panopto/Pages/Viewer.aspx?id=0f3c9a2e-1b4d-4e5f-8a6b-7c8d9e0f1a2b"
+
+
+def share(md):
+    return measure_note(md, "en", "deep", 3.0, "en")["quote_share"]["value"]
+
+
+def test_quote_measures_are_the_same_before_and_after_cite_link():
+    md = resources.files("tutor_any_lecture").joinpath("data", "sample", "explanation.md").read_text(encoding="utf-8")
+    plain = measure_note(md, "en", "deep", 3.0, "en")
+    assert plain["quote_share"]["value"] == 0.32
+    for url in (YT, PANOPTO):
+        linked, count = link_times(md, url)
+        assert count > 0
+        assert measure_note(linked, "en", "deep", 3.0, "en") == plain
+
+
+def test_quote_share_leaves_citations_and_link_addresses_out():
+    inline = "## A\n\nxxxxxxxxxx “abcdefghijklmnopqrst” (0:30)\n"
+    assert share(inline) == 0.57
+    assert share(link_times(inline, YT)[0]) == 0.57
+    block = "## A\n\n" + "x" * 40 + "\n\n> " + "y" * 20 + " (0:30)\n"
+    assert share(block) == 0.31
+    assert share(link_times(block, YT)[0]) == 0.31
+    assert share("## A\n\n[xxxxxxxxxx](https://example.org/a/long/address) “abcdefghijklmnopqrst” (0:30)\n") == 0.57
+
+
+def test_quote_ratio_leaves_citations_out():
+    md = "## A\n\n" + "利" * 100 + "\n\n> " + "x" * 40 + " (slide 2, [0:40](https://www.youtube.com/watch?v=abc&t=40s))\n"
+    assert measure_note(md, "zh", "deep", 3.0, "en")["quote_ratio"]["value"] == 0.4
+
+
+# ---- quotation marks of other languages; short CJK quotes ----------------------
+
+
+def quotes_in(sentence):
+    return [q for q, _ in cited_quotes("## A\n\n" + sentence + "\n")]
+
+
+@pytest.mark.parametrize("o, c", QUOTE_PAIRS)
+def test_quotation_marks_of_other_languages_are_quotes(o, c):
+    md = f"## A\n\nThe lecturer put it {o}interest earns interest too{c} plainly.\n"
+    assert status_of(check_note(md, "en", "deep", 90, "markdown"), "uncited_quote") == "FAIL"
+    cited = md.replace(" plainly.", " plainly (0:30).")
+    assert [q for q, _ in cited_quotes(cited)] == ["interest earns interest too"]
+
+
+def test_low_and_high_marks_pair():
+    assert quotes_in("„interest earns interest too“ and „the balance grows each year“ (0:30).") == [
+        "interest earns interest too", "the balance grows each year"]
+
+
+def test_apostrophe_does_not_close_a_single_quote():
+    assert quotes_in("‘the lecturer’s rate is fixed now’ (0:30).") == ["the lecturer’s rate is fixed now"]
+
+
+def test_short_cjk_quote_counts_from_six_characters():
+    def uncited(md, lang):
+        return status_of(check_note(md, lang, "deep", 90, "markdown"), "uncited_quote")
+
+    assert uncited("## A\n\n" + "利" * 20 + "“复利就是利滚利”。\n", "zh") == "FAIL"
+    assert uncited("## A\n\n" + "利" * 20 + "“利滚利效应”。\n", "zh") == "PASS"
+    assert uncited('## A\n\nThe phrase "abcdefghijklmn" here.\n', "en") == "PASS"
