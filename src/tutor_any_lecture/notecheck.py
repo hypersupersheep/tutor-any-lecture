@@ -512,7 +512,7 @@ def _line_of(text: str, pos: int) -> int:
 def _has_summary(text: str, end: int) -> bool:
     """The next non-space text after ``end`` starts with <summary, and its line closes it."""
     m = NONSPACE_RE.search(text, end)
-    if m is None or not text[m.start() :].lower().startswith("<summary"):
+    if m is None or text[m.start() : m.start() + len("<summary")].lower() != "<summary":
         return False
     eol = text.find("\n", m.start())
     return "</summary>" in text[m.start() : eol if eol >= 0 else len(text)].lower()
