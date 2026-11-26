@@ -9,9 +9,9 @@ Every unit lives at `<workspace>/courses/<course>/<unit>/` with fixed file names
 | file | written by | what it is |
 |---|---|---|
 | `sources/transcript.json` | `acquire …`, `transcribe` | the timed transcript; never edited |
-| `sources/source.json` | `acquire …`, `transcribe`, `slides --pdf` | where the material came from: kind, URL, duration, language, health |
+| `sources/source.json` | `acquire …`, `transcribe`, `slides --pdf`, `slides --pptx` | where the material came from: kind, URL, duration, language, health |
 | `sources/chapters.json` | `acquire panopto` | the platform's chapter titles and times |
-| `sources/slides/pages.json` | `slides --pdf` | slide text by page, with footer numbers |
+| `sources/slides/pages.json` | `slides --pdf`, `slides --pptx` | slide text by page, with footer numbers; speaker notes for a .pptx |
 | `sources/suspects.json` | `slides suspects` | likely mis-heard words with the nearest slide term |
 | `plan.json` | you | what the unit teaches (see [teaching](../teaching.md)) |
 | `explanation.md` | you | the note (see [writing](../writing.md)) |

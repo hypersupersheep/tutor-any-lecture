@@ -23,7 +23,7 @@ A healthy track is used at once. Rolling repeats in automatic captions are remov
 ## Read-only steps
 
 1. When the learner gave only the link, run `tutor-any-lecture acquire url --url U --info` to name the unit: it writes nothing and prints `{"status": "ok", "title", "duration", "uploader", "manual_captions", "automatic_captions"}` (`manual_captions` lists language codes; `automatic_captions` is true or false). Name the unit folder after `title`, made safe for a folder name (see SKILL.md, Acquire).
-2. If the learner has the slides, run `tutor-any-lecture slides --pdf F --unit DIR` first (the ASR prompt, if ASR runs, uses its terms).
+2. If the learner has the slides, run `tutor-any-lecture slides --pdf F --unit DIR` (or `--pptx F` for a PowerPoint deck) first: the ASR prompt, if ASR runs, uses its terms.
 3. Run `tutor-any-lecture acquire url --url U --unit DIR`.
 4. Outcome, one JSON object on stdout:
    - `{"status": "ok", "health": {…}, "title": …, "acquisition": …}`, exit 0: `sources/transcript.json` and `sources/source.json` are written, with `"kind": "url"`, the `url`, and `"acquisition"` "cc" (manual captions), "auto" (automatic captions) or "asr";

@@ -329,6 +329,13 @@ def setup_slides_pdf(tmp_path):
     return ["slides", "--pdf", str(pdf), "--unit", str(tmp_path / "unit")]
 
 
+def setup_slides_pptx(tmp_path):
+    from fixtures.make_office import make_pptx
+
+    deck = make_pptx(tmp_path, ["Compound interest", "Discounting", "Summary"])
+    return ["slides", "--pptx", str(deck), "--unit", str(tmp_path / "unit")]
+
+
 def setup_slides_suspects(tmp_path):
     return ["slides", "suspects", "--unit", str(ok_unit(tmp_path))]
 
@@ -353,6 +360,7 @@ WRITERS = {
     "map-mermaid": setup_map_mermaid,
     "items-assign": setup_items_assign,
     "slides-pdf": setup_slides_pdf,
+    "slides-pptx": setup_slides_pptx,
     "slides-suspects": setup_slides_suspects,
     "progress-render": setup_progress_render,
 }

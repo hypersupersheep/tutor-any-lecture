@@ -1,6 +1,6 @@
 ---
 name: tutor-any-lecture
-description: Use when the user wants to learn from a lecture, recorded class, talk or course video, or from slides alone, and wants explanation notes, a pretest, a quiz, Anki cards or an overview map made from it (e.g. "teach me this lecture", "quiz me on week 4", "把这节课讲给我"). Works with local files, YouTube/Bilibili links, Panopto/Moodle pages, transcripts and PDFs.
+description: Use when the user wants to learn from a lecture, recorded class, talk or course video, or from slides alone, and wants explanation notes, a pretest, a quiz, Anki cards or an overview map made from it (e.g. "teach me this lecture", "quiz me on week 4", "把这节课讲给我"). Works with local files, YouTube/Bilibili links, Panopto/Moodle pages, transcripts, PDFs and PowerPoint decks.
 ---
 
 # Tutor Any Lecture
@@ -36,8 +36,8 @@ Infer what the user wants (which lecture, which outputs, how deep) and the setti
 2. For a folder of materials, run `tutor-any-lecture acquire route --folder <materials> --unit <unit folder>`. It only plans. Then:
    - a question about `unsafe-name`: ask the learner to rename the files it lists, then run the route again;
    - any other question: ask the learner its `text` and have them pick one of its `candidates`; for the pick `candidates[i]`, run that question's `argv[i]` as well;
-   - a step with `runnable: false` is material this version cannot read (a PPTX deck, photos of slides, slides that appear only in the video): tell the learner, ask for a PDF export, then run `tutor-any-lecture slides --pdf`;
-   - run every other step's `argv` as given (an import step may carry `--media`), with the cli-path in place of its first element when needed, in this order: transcript import or panopto, then `slides --pdf`, then `acquire local`.
+   - a step with `runnable: false` is material this version cannot read (photos of slides, slides that appear only in the video): tell the learner, ask for a PDF export, then run `tutor-any-lecture slides --pdf`;
+   - run every other step's `argv` as given (an import step may carry `--media`), with the cli-path in place of its first element when needed, in this order: transcript import or panopto, then `slides`, then `acquire local`.
 3. Otherwise pick the adapter for the source:
    - a local video or audio file: [local](references/adapters/local.md), `tutor-any-lecture acquire local --file F --unit DIR`;
    - a public video link: [url](references/adapters/url.md), `tutor-any-lecture acquire url --url U --unit DIR [--budget-minutes N]`;
@@ -45,7 +45,7 @@ Infer what the user wants (which lecture, which outputs, how deep) and the setti
    - a Panopto recording: [panopto](references/adapters/panopto.md), `tutor-any-lecture acquire panopto --extract JSON --unit DIR`;
    - slides on a Moodle course page: [moodle](references/adapters/moodle.md).
    Panopto and Moodle pages need an agent with browser tools; see the agent notes under References.
-4. When there is a PDF, run `tutor-any-lecture slides --pdf F --unit DIR` before any transcription (the ASR prompt uses its terms). Slides alone make a slides-only unit: its note cites slides only, never times.
+4. When there is a slide PDF, run `tutor-any-lecture slides --pdf F --unit DIR` (a PowerPoint deck: `tutor-any-lecture slides --pptx F --unit DIR`) before any transcription (the ASR prompt uses its terms). Slides alone make a slides-only unit: its note cites slides only, never times.
 5. Acquisition commands print one JSON object; exit 0 is `ok`. On exit 1 read `status`: `unhealthy` means the transcript (captions too) was kept with its `health` numbers: show them and tell the learner before planning on that transcript; `error` carries a `message`: show it to the learner. An object with `warning` was only partly checked: pass the warning on. Exit 3 needs the user: `needs_user_file` (offer the ways forward its message names), consent, speech recognition (Step 0), a bigger `--budget-minutes`, or `--force` to overwrite. Details: [gate](references/gate.md).
 6. A video's audio is downloaded only when the profile has `public_video_audio` on with a recorded consent ([url](references/adapters/url.md)), whatever the platform. The tool never uses the learner's login, so a recording behind a sign-in is out of reach: use the platform's captions, or a file the learner downloaded.
 7. With a transcript and slides, run `tutor-any-lecture slides suspects --unit DIR`; a unit without slides skips it. Suspects feed the errata section; the transcript is never edited.

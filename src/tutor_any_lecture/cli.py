@@ -289,8 +289,11 @@ def _cmd_transcribe(args) -> int:
 
 _SLIDES_USAGE = (
     "usage: tutor-any-lecture slides --pdf F --unit DIR [--images]"
+    " | tutor-any-lecture slides --pptx F --unit DIR"
     " | tutor-any-lecture slides suspects --unit DIR"
 )
+# The suffix each deck flag reads.
+_SLIDE_FLAGS = {"--pdf": ".pdf", "--pptx": ".pptx"}
 
 
 def _input_error(call):
@@ -298,8 +301,8 @@ def _input_error(call):
 
     Returns ``(result, None)``, or ``(None, EXIT_FAIL)`` after printing
     ``{"status": "error", "message": ...}`` for a ``ValueError`` (a malformed pages.json,
-    transcript.json or source.json), an ``AcquireError`` (an unreadable PDF) or an
-    ``OSError`` (a missing PDF or transcript).
+    transcript.json or source.json), an ``AcquireError`` (an unreadable PDF or PPTX) or
+    an ``OSError`` (a missing deck or transcript).
     """
     from .transcript import AcquireError
 
@@ -311,24 +314,45 @@ def _input_error(call):
 
 
 def _cmd_slides(args) -> int:
-    if args.pdf is None or args.unit is None:
+    # Exactly one deck (--pdf or --pptx) and a unit.
+    if args.unit is None or (args.pdf is None) == (args.pptx is None):
         print(_SLIDES_USAGE, file=sys.stderr)
         return EXIT_USAGE
+    if args.pptx is not None and args.images:
+        print("slides --images works with --pdf only: a .pptx gives its text and speaker notes, no page images",
+              file=sys.stderr)
+        return EXIT_USAGE
+    flag, deck = ("--pdf", Path(args.pdf)) if args.pdf is not None else ("--pptx", Path(args.pptx))
+    if deck.suffix.lower() != _SLIDE_FLAGS[flag]:
+        # Before anything is read: a deck given to the other flag, or a format slides does not read.
+        _print_json({"status": "error", "message": (
+            f"{deck.name} cannot be read with {flag}: slides reads a .pdf file with --pdf and a .pptx file "
+            "with --pptx (save .ppt, .key and .odp decks as PDF first)"
+        )})
+        return EXIT_FAIL
 
-    from .slides import extract_pdf
+    from .slides import extract_pdf, extract_pptx
     from .unit import UnitPaths
 
-    pages, failed = _input_error(lambda: extract_pdf(Path(args.pdf), Path(args.unit), images=args.images))
+    path = str(UnitPaths(args.unit).pages)
+    if flag == "--pptx":
+        pages, failed = _input_error(lambda: extract_pptx(deck, Path(args.unit)))
+        if failed is not None:
+            return failed
+        notes = sum(1 for p in pages if p.notes)
+        _print_json({"status": "ok", "pages": len(pages), "labelled": 0, "notes": notes, "path": path})
+        return EXIT_OK
+    pages, failed = _input_error(lambda: extract_pdf(deck, Path(args.unit), images=args.images))
     if failed is not None:
         return failed
     labelled = sum(1 for p in pages if p.label is not None)
-    _print_json({"status": "ok", "pages": len(pages), "labelled": labelled, "path": str(UnitPaths(args.unit).pages)})
+    _print_json({"status": "ok", "pages": len(pages), "labelled": labelled, "path": path})
     return EXIT_OK
 
 
 def _cmd_slides_suspects(args) -> int:
-    if args.pdf is not None:
-        # "slides --pdf F suspects": two commands in one; run neither.
+    if args.pdf is not None or args.pptx is not None:
+        # "slides --pdf F suspects" or "slides --pptx F suspects": two commands in one; run neither.
         print(_SLIDES_USAGE, file=sys.stderr)
         return EXIT_USAGE
 
@@ -645,8 +669,12 @@ def build_parser() -> argparse.ArgumentParser:
                     help="stop ASR after this many minutes (default: max(30, 2 x the media length))")
     tr.add_argument("--force", action="store_true", help="replace an existing transcript")
     tr.set_defaults(func=_cmd_transcribe)
-    slides = sub.add_parser("slides", help="read a slide PDF into the unit, or flag ASR suspects")
+    slides = sub.add_parser(
+        "slides", help="read a slide PDF (--pdf) or a PowerPoint deck (--pptx) into the unit, or flag ASR suspects"
+    )
     slides.add_argument("--pdf", type=_path, default=None, help="the slide PDF")
+    slides.add_argument("--pptx", type=_path, default=None,
+                        help="the slide deck as a .pptx file: text and speaker notes, no images")
     slides.add_argument("--unit", type=_path, default=None, help="the unit folder")
     slides.add_argument("--images", action="store_true", help="also save one PNG per page")
     slides.set_defaults(func=_cmd_slides)

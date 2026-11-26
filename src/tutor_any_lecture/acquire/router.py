@@ -28,6 +28,7 @@ _QUESTION_TEXT = {
     "transcript": "More than one transcript file. Which one belongs to this lecture?",
     "media": "More than one video or audio file. Which one is the lecture recording?",
     "pdf": "More than one PDF. Which one holds the lecture slides?",
+    "pptx": "More than one PowerPoint deck. Which one holds the lecture slides?",
     "unsafe-name": "These file names contain characters that are unsafe on a command line; "
     "rename them, then run the route again.",
 }
@@ -124,7 +125,7 @@ def route(folder: Path, unit: Path | None = None) -> dict:
     if pdfs:
         slide_source = "pdf"
     elif pptx:
-        slide_source = "pptx-deferred"
+        slide_source = "pptx"
     elif len(files["images"]) >= 3:
         slide_source = "photos-deferred"
     elif files["video"]:
@@ -144,6 +145,9 @@ def route(folder: Path, unit: Path | None = None) -> dict:
 
     def slides_argv(f: str) -> list[str]:
         return [T, "slides", "--pdf", f, "--unit", u]
+
+    def pptx_argv(f: str) -> list[str]:
+        return [T, "slides", "--pptx", f, "--unit", u]
 
     def local_argv(f: str) -> list[str]:
         return [T, "acquire", "local", "--file", f, "--unit", u]
@@ -165,12 +169,16 @@ def route(folder: Path, unit: Path | None = None) -> dict:
         f = pdfs[0]
         # slides --pdf records the PDF's digest in source.json, creating it when missing.
         steps.append(step(slides_argv(f), [f], [w(paths.pages), w(paths.source)]))
+    elif not pdfs and len(pptx) == 1:
+        # A PDF wins over a deck; slides --pptx records its digest as slides --pdf does.
+        f = pptx[0]
+        steps.append(step(pptx_argv(f), [f], [w(paths.pages), w(paths.source)]))
     if not transcripts and len(media) == 1:
         f = media[0]
         # The first transcription may download the ASR model.
         steps.append(step(local_argv(f), [f], [w(paths.transcript), w(paths.source)], network=True, gpu=True))
     if slide_source.endswith("-deferred"):
-        reads = {"pptx-deferred": pptx, "photos-deferred": files["images"], "keyframes-deferred": files["video"]}
+        reads = {"photos-deferred": files["images"], "keyframes-deferred": files["video"]}
         steps.append(step([T], list(reads[slide_source]), [], runnable=False))
 
     def question(about: str, candidates: list[str], make_argv) -> dict:
@@ -190,5 +198,7 @@ def route(folder: Path, unit: Path | None = None) -> dict:
         questions.append(question("media", media, local_argv))
     if len(pdfs) > 1:
         questions.append(question("pdf", pdfs, slides_argv))
+    if not pdfs and len(pptx) > 1:
+        questions.append(question("pptx", pptx, pptx_argv))
 
     return {"files": files, "slide_source": slide_source, "steps": steps, "questions": questions}

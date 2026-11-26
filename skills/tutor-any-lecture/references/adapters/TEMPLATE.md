@@ -2,7 +2,7 @@ Adapter template. Copy this file to `adapters/<platform>.md`, keep the seven hea
 
 ## Platform
 
-What the platform is, who typically uses it, and which `tutor-any-lecture` command its material ends up in (`acquire import`, `acquire panopto`, `acquire local`, `acquire url`, `transcribe`, or `slides --pdf`), with the exact flags, for example `tutor-any-lecture acquire import --file F --unit DIR [--duration SEC] [--force]`.
+What the platform is, who typically uses it, and which `tutor-any-lecture` command its material ends up in (`acquire import`, `acquire panopto`, `acquire local`, `acquire url`, `transcribe`, `slides --pdf`, or `slides --pptx`), with the exact flags, for example `tutor-any-lecture acquire import --file F --unit DIR [--duration SEC] [--force]`.
 
 ## URL patterns
 

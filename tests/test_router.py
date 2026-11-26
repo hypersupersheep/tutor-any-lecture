@@ -8,6 +8,7 @@ import pytest
 from conftest import fx
 from tutor_any_lecture.acquire.router import route
 from tutor_any_lecture.cli import main
+from tutor_any_lecture.unit import UnitPaths
 
 
 def touch(folder, *names):
@@ -80,21 +81,65 @@ def test_slide_source_precedence(tmp_path):
     touch(tmp_path / "b", "1.jpg", "2.JPG", "3.png", "v.mp4")
     touch(tmp_path / "c", "1.jpg", "2.jpg", "v.mp4")
     touch(tmp_path / "d", "a.mp3")
-    assert route(tmp_path / "a")["slide_source"] == "pptx-deferred"
+    assert route(tmp_path / "a")["slide_source"] == "pptx"
     assert route(tmp_path / "b")["slide_source"] == "photos-deferred"
     assert route(tmp_path / "c")["slide_source"] == "keyframes-deferred"
     assert route(tmp_path / "d")["slide_source"] == "none"
 
 
 def test_deferred_step_not_runnable(tmp_path):
-    touch(tmp_path, "a.pptx", "v.srt")
+    # HEIC photos: a later task plans JPEG or PNG photos as a runnable step, never HEIC.
+    touch(tmp_path, "1.heic", "2.heic", "3.heic", "v.srt")
     plan = route(tmp_path)
     deferred = [s for s in plan["steps"] if not s["runnable"]]
-    assert plan["slide_source"] == "pptx-deferred"
+    assert plan["slide_source"] == "photos-deferred"
     assert len(deferred) == 1 and plan["steps"][-1] is deferred[0]
     assert deferred[0]["argv"] == ["tutor-any-lecture"]
-    assert deferred[0]["reads"] == [str(tmp_path.resolve() / "a.pptx")]
+    assert deferred[0]["reads"] == [str(tmp_path.resolve() / n) for n in ("1.heic", "2.heic", "3.heic")]
     assert deferred[0]["writes"] == []
+
+
+def test_pptx_deck_is_planned(tmp_path):
+    touch(tmp_path / "a", "v.srt", "deck.pptx")
+    unit = tmp_path / "unit"
+    plan = route(tmp_path / "a", unit)
+    deck = str((tmp_path / "a").resolve() / "deck.pptx")
+    paths = UnitPaths(unit.resolve())
+    assert plan["slide_source"] == "pptx"
+    assert kinds(plan["steps"]) == [["acquire", "import"], ["slides", "--pptx"]]
+    slides = plan["steps"][1]
+    assert slides["argv"] == ["tutor-any-lecture", "slides", "--pptx", deck, "--unit", str(unit.resolve())]
+    assert slides["reads"] == [deck]
+    assert slides["writes"] == [str(paths.pages), str(paths.source)]
+    assert all(s["runnable"] for s in plan["steps"])
+    assert plan["questions"] == []
+    touch(tmp_path / "b", "v.mp4", "deck.pptx")
+    assert kinds(route(tmp_path / "b")["steps"]) == [["slides", "--pptx"], ["acquire", "local"]]
+
+
+def test_pdf_beats_pptx(tmp_path):
+    touch(tmp_path, "a.pdf", "deck.pptx", "other.pptx", "v.srt")
+    plan = route(tmp_path)
+    root = tmp_path.resolve()
+    assert plan["slide_source"] == "pdf"
+    assert plan["files"]["slides"] == [str(root / n) for n in ("a.pdf", "deck.pptx", "other.pptx")]
+    assert kinds(plan["steps"]) == [["acquire", "import"], ["slides", "--pdf"]]
+    assert not any("--pptx" in s["argv"] for s in plan["steps"])
+    assert plan["questions"] == []
+
+
+def test_two_pptx_decks_ask(tmp_path):
+    touch(tmp_path, "a.pptx", "b.pptx", "v.srt")
+    plan = route(tmp_path)
+    root = tmp_path.resolve()
+    decks = [str(root / "a.pptx"), str(root / "b.pptx")]
+    assert plan["slide_source"] == "pptx"
+    assert [q["about"] for q in plan["questions"]] == ["pptx"]
+    q = plan["questions"][0]
+    assert q["text"] == "More than one PowerPoint deck. Which one holds the lecture slides?"
+    assert q["candidates"] == decks
+    assert q["argv"] == [["tutor-any-lecture", "slides", "--pptx", d, "--unit", "<unit>"] for d in decks]
+    assert not any(s["argv"][1:2] == ["slides"] for s in plan["steps"])
 
 
 def test_panopto_extract_routes_to_panopto(tmp_path):

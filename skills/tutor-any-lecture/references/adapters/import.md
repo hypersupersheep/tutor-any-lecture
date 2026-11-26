@@ -21,7 +21,7 @@ Files may be UTF-8 with or without a byte-order mark, with Windows or Unix line 
 ## Read-only steps
 
 1. When the recording itself is at hand, pass it as `--media FILE`; otherwise, when the learner already gave the lecture's length, pass it in seconds as `--duration SEC` (not both). If they did not, do not ask for it on the first run. Without it the duration is unknown: the health check cannot measure coverage, and the gate's per-minute checks become warnings.
-2. If there are slides, run `tutor-any-lecture slides --pdf F --unit DIR` (before or after the import; it never overwrites the source.json the import writes).
+2. If there are slides, run `tutor-any-lecture slides --pdf F --unit DIR` (or `--pptx F` for a PowerPoint deck), before or after the import; it never overwrites the source.json the import writes.
 3. Run `tutor-any-lecture acquire import --file F --unit DIR`, with the `--media FILE` or `--duration SEC` of step 1 when there is one.
 4. Outcome, one JSON object on stdout:
    - `{"status": "ok", "health": {…}}`, exit 0: `sources/transcript.json` and `sources/source.json` (`"kind": "transcript"`, `"acquisition": "import"`) are written;

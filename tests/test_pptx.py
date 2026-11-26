@@ -1,12 +1,15 @@
 import json
 import zipfile
+from pathlib import Path
 
 import pytest
 
-from fixtures.make_office import make_pptx
+from fixtures.make_office import make_pptx, office_zip
 from fixtures.make_pdf import make_pdf
+from tutor_any_lecture import cli
 from tutor_any_lecture.acquire import router
 from tutor_any_lecture.acquire.importer import import_transcript
+from tutor_any_lecture.cli import main
 from tutor_any_lecture.slides import Page, extract_pdf, extract_pptx, load_pages
 from tutor_any_lecture.source import SLIDE_DECK_SUFFIXES, sha256_file
 from tutor_any_lecture.transcript import AcquireError
@@ -167,3 +170,137 @@ def test_slides_only_source_from_a_deck(tmp_path):
     assert src["kind"] == "slides-only" and src["acquisition"] == "slides" and src["title"] == "Week Deck"
     assert src["tool_versions"] == {"tutor-any-lecture": __version__}
     assert src["inputs_sha256"] == {"Week Deck.pptx": sha256_file(deck)}
+
+
+# ---- slides --pptx on the command line ------------------------------------------
+
+
+def test_cli_slides_pptx(tmp_path, capsys):
+    folder = tmp_path / "课程 资料"
+    deck = make_pptx(folder, ["Compound interest", "Discounting", "Summary"], name="Lecture Deck.PPTX",
+                     notes={2: "Ask the class"})
+    unit = folder / "第1周"
+    assert main(["slides", "--pptx", str(deck), "--unit", str(unit)]) == 0
+    captured = capsys.readouterr()
+    assert json.loads(captured.out) == {
+        "status": "ok", "pages": 3, "labelled": 0, "notes": 1, "path": str(UnitPaths(unit).pages),
+    }
+    assert captured.err == ""
+    src = json.loads(UnitPaths(unit).source.read_text(encoding="utf-8"))
+    assert src["kind"] == "slides-only" and src["title"] == "Lecture Deck"
+    assert src["inputs_sha256"] == {"Lecture Deck.PPTX": sha256_file(deck)}
+
+
+def test_cli_slides_pptx_usage(tmp_path, capsys):
+    deck = make_pptx(tmp_path, ["Compound interest"])
+    pdf = make_pdf(tmp_path, ["Compound interest\n1/1"])
+    unit, a, b = tmp_path / "unit", tmp_path / "A", tmp_path / "B"
+    for argv in (
+        ["slides"],
+        ["slides", "--pptx", str(deck)],
+        ["slides", "--pdf", str(pdf), "--pptx", str(deck), "--unit", str(unit)],
+        ["slides", "--pptx", str(deck), "--unit", str(a), "suspects", "--unit", str(b)],
+    ):
+        assert main(argv) == 2, argv
+        captured = capsys.readouterr()
+        assert captured.err == cli._SLIDES_USAGE + "\n" and captured.out == ""
+    assert main(["slides", "--pptx", str(deck), "--unit", str(unit), "--images"]) == 2
+    captured = capsys.readouterr()
+    assert captured.err == (
+        "slides --images works with --pdf only: a .pptx gives its text and speaker notes, no page images\n"
+    )
+    assert captured.out == ""
+    assert not unit.exists() and not a.exists() and not b.exists()
+
+
+@pytest.mark.parametrize("flag, name", [
+    ("--pptx", "notes.docx"), ("--pdf", "deck.pptx"), ("--pptx", "slides.pdf"), ("--pdf", "deck.key"),
+])
+def test_cli_slides_names_what_it_reads(tmp_path, capsys, flag, name):
+    path = tmp_path / name
+    path.write_bytes(b"not read")
+    unit = tmp_path / "unit"
+    assert main(["slides", flag, str(path), "--unit", str(unit)]) == 1
+    captured = capsys.readouterr()
+    assert json.loads(captured.out) == {"status": "error", "message": (
+        f"{name} cannot be read with {flag}: slides reads a .pdf file with --pdf and a .pptx file with --pptx "
+        "(save .ppt, .key and .odp decks as PDF first)"
+    )}
+    assert captured.err == ""
+    assert not unit.exists()
+
+
+def broken_not_a_zip(path):
+    path.write_bytes(b"not a zip")
+
+
+def broken_compound_file(path):
+    path.write_bytes(bytes.fromhex("D0CF11E0A1B11AE1") + bytes(504))
+
+
+def broken_no_presentation(path):
+    office_zip(path.parent, path.name, {"[Content_Types].xml": "<Types/>"})
+
+
+@pytest.mark.parametrize("build, message", [
+    (broken_not_a_zip, "deck.pptx is not a readable .pptx file: it is not a zip archive"),
+    (broken_compound_file, "deck.pptx is password-protected or an old .ppt file: "
+                           "save it as a .pptx file without a password, then try again"),
+    (broken_no_presentation, "deck.pptx is not a readable .pptx file: it has no ppt/presentation.xml"),
+], ids=["not-a-zip", "compound-file", "no-presentation"])
+def test_cli_broken_pptx_is_the_error_object(tmp_path, capsys, build, message):
+    path = tmp_path / "deck.pptx"
+    build(path)
+    unit = tmp_path / "unit"
+    assert main(["slides", "--pptx", str(path), "--unit", str(unit)]) == 1
+    captured = capsys.readouterr()
+    lines = captured.out.splitlines()
+    assert len(lines) == 1
+    assert json.loads(lines[0]) == {"status": "error", "message": message}
+    assert captured.err == ""
+    assert not unit.exists()
+    path.unlink()
+    assert not path.exists()
+
+
+# ---- the documents send decks to slides --pptx ------------------------------------
+
+
+ROOT = Path(__file__).resolve().parent.parent
+SKILL_DIR = ROOT / "skills" / "tutor-any-lecture"
+
+
+def doc(*parts):
+    return (ROOT.joinpath(*parts)).read_text(encoding="utf-8")
+
+
+def test_documents_send_pptx_decks_to_slides():
+    command = "`tutor-any-lecture slides --pptx F --unit DIR`"
+    skill = doc("skills", "tutor-any-lecture", "SKILL.md")
+    assert command in skill and "then `slides`, then `acquire local`" in skill and "a PPTX deck" not in skill
+    adapters = SKILL_DIR / "references" / "adapters"
+    local = (adapters / "local.md").read_text(encoding="utf-8")
+    moodle = (adapters / "moodle.md").read_text(encoding="utf-8")
+    for text in (local, moodle):
+        assert command in text
+        assert "run an acquisition first` on stderr" not in text
+        assert "an existing source.json gains the deck's digest" in text
+        assert "never overwrites an existing source.json" not in text
+        assert "an existing source.json is left alone" not in text
+    for name in ("url.md", "import.md"):
+        assert "--pptx F" in (adapters / name).read_text(encoding="utf-8"), name
+    gate = (SKILL_DIR / "references" / "gate.md").read_text(encoding="utf-8")
+    for text in (
+        (SKILL_DIR / "references" / "output-targets" / "markdown.md").read_text(encoding="utf-8"),
+        gate,
+        (adapters / "TEMPLATE.md").read_text(encoding="utf-8"),
+    ):
+        assert "`slides --pptx`" in text
+    assert "Speaker notes" in gate and "never put them in quotation marks" in gate
+    readme = doc("README.md")
+    assert "PowerPoint (.pptx)" in readme and "A PPTX deck or photos of slides must be exported to PDF first" not in readme
+    readme_zh = doc("README.zh-CN.md")
+    assert "PowerPoint(.pptx)" in readme_zh and "PPTX 课件或课件照片要先导出成 PDF" not in readme_zh
+    changelog = doc("CHANGELOG.md")
+    newest = changelog.split("\n## ")[1]
+    assert "PowerPoint" in newest
