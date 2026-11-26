@@ -596,6 +596,26 @@ def _cmd_map_mermaid(args) -> int:
     return EXIT_OK
 
 
+def _cmd_map_render(args) -> int:
+    from . import conceptmap, drawing
+
+    # The same check as map mermaid: a broken map.json raises ValueError (EXIT_FAIL) and an
+    # existing drawing FileExistsError (EXIT_ACTION), both before anything is written.
+    try:
+        path = drawing.render_map(Path(args.unit), args.view, obsidian=args.obsidian, force=args.force)
+    except conceptmap.MapInvalid as e:
+        print(conceptmap.format_results(e.results), file=sys.stderr)
+        return EXIT_FAIL
+    except conceptmap.UnknownView as e:
+        print(_one_line(e), file=sys.stderr)
+        return EXIT_USAGE
+    if isinstance(path, list):
+        _print_json({"paths": [str(p) for p in path]})
+    else:
+        _print_json({"path": str(path)})
+    return EXIT_OK
+
+
 def _cmd_cite_link(args) -> int:
     from .citations import link_unit
 
@@ -861,7 +881,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="the page's language, such as en or zh (default: the newest unit's note language)")
     pr.add_argument("--workspace", type=_path, default=None, help="the workspace folder (default: the profile's)")
     pr.set_defaults(func=_cmd_progress_render)
-    map_ = sub.add_parser("map", help="check the concept map, export it as a Mermaid flowchart")
+    map_ = sub.add_parser("map", help="check the concept map, export it as Mermaid, draw it in Excalidraw")
     map_sub = map_.add_subparsers(dest="map_command", required=True)
     mv = map_sub.add_parser("validate", help="check map.json")
     mv.add_argument("--unit", type=_path, required=True, help="the unit folder")
@@ -873,6 +893,14 @@ def build_parser() -> argparse.ArgumentParser:
     mm.add_argument("--view", default=None,
                     help="write only this view, to overview.mmd (default: every view, or the whole map without views)")
     mm.set_defaults(func=_cmd_map_mermaid)
+    mr = map_sub.add_parser("render", help="draw the map as an editable Excalidraw file per view")
+    mr.add_argument("--unit", type=_path, required=True, help="the unit folder")
+    mr.add_argument("--view", default=None,
+                    help="draw only this view, to map.excalidraw (default: every view, or the whole map without views)")
+    mr.add_argument("--obsidian", action="store_true",
+                    help="write the Obsidian form, .excalidraw.md, in place of .excalidraw")
+    mr.add_argument("--force", action="store_true", help="replace a drawing that already exists")
+    mr.set_defaults(func=_cmd_map_render)
     ver = sub.add_parser("verify", help="run the delivery gate on a unit and write verify.json")
     ver.add_argument("--unit", type=_path, required=True, help="the unit folder")
     ver.add_argument("--json", action="store_true", help="print the result as one JSON line instead of a table")

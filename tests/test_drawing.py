@@ -1,8 +1,11 @@
+import json
 import re
 
 import pytest
 
+from conftest import fx
 from tutor_any_lecture import drawing
+from tutor_any_lecture.cli import main
 from tutor_any_lecture.drawing import build_scene, text_width, wrap
 from tutor_any_lecture.palette import load_palette
 
@@ -309,3 +312,220 @@ def test_scene_is_a_complete_excalidraw_file():
     assert all(ids[n + 1] == ids[n] + "-text" for n in range(0, len(ids), 2))
     assert [shape(scene, i)["id"] for i in ("a", "b", "x", "c", "y", "loose")] == [
         f"node-{k}" for k in range(1, 7)]
+
+
+# ---- the command (F2, C1, K2, S3) ----------------------------------------------------
+
+
+def render_argv(unit, *extra):
+    return ["map", "render", "--unit", str(unit), *extra]
+
+
+def unit_at(tmp_path, week=1):
+    return tmp_path / "课程 资料" / f"第{week}周"
+
+
+def write_map(unit, m):
+    unit.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(m, ensure_ascii=False, indent=2) + "\n"
+    (unit / "map.json").write_text(text, encoding="utf-8", newline="\n")
+
+
+def write_plan(unit, language):
+    plan = json.loads(fx("units", "ok", "plan.json").read_text(encoding="utf-8"))
+    plan["note_language"] = language
+    text = json.dumps(plan, ensure_ascii=False, indent=2) + "\n"
+    (unit / "plan.json").write_text(text, encoding="utf-8", newline="\n")
+
+
+def read_scene(path):
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def map_with_edge(verb):
+    return {
+        "nodes": [
+            {"id": "a", "label": "A", "type": "definition"},
+            {"id": "b", "label": "B", "type": "method"},
+        ],
+        "edges": [{"from": "a", "to": "b", "verb": verb}],
+    }
+
+
+def map_with_views():
+    m = map_with_edge("uses")
+    m["nodes"][0]["order"] = 1
+    m["nodes"].append(node("c", "example"))
+    m["edges"].append(edge("b", "c", "shows"))
+    m["views"] = [{"id": "a", "nodes": ["a", "b"]}, {"id": "b", "nodes": ["b", "c"]}]
+    return m
+
+
+DUPLICATE_ORDER = {"nodes": [node("a", order=1), node("b", order=1)], "edges": [edge("a", "b")]}
+
+
+@pytest.mark.parametrize("m", [{"nodes": 5}, map_with_edge(""), DUPLICATE_ORDER],
+                         ids=["schema", "no-verb", "duplicate-order"])
+def test_render_checks_the_map_like_mermaid(tmp_path, capsys, m):
+    drawn, exported = unit_at(tmp_path, 1), unit_at(tmp_path, 2)
+    write_map(drawn, m)
+    write_map(exported, m)
+    capsys.readouterr()
+    render_code = main(render_argv(drawn))
+    render = capsys.readouterr()
+    mermaid_code = main(["map", "mermaid", "--unit", str(exported)])
+    mermaid = capsys.readouterr()
+    assert render_code == mermaid_code == 1
+    assert render.err == mermaid.err and render.err
+    assert render.out == mermaid.out == ""
+    for unit in (drawn, exported):
+        assert list(unit.glob("*.excalidraw*")) == [] and list(unit.glob("*.mmd")) == []
+
+
+def test_legend_names_the_five_kinds(tmp_path, capsys):
+    m = {"nodes": [node("a", order=1), node("x", "example", label="A long example label to wrap")],
+         "edges": [edge("x", "a")]}
+
+    def legend_of(unit):
+        assert main(render_argv(unit, "--force")) == 0
+        return legend(read_scene(unit / "map.excalidraw"))
+
+    unit = unit_at(tmp_path)
+    write_map(unit, m)
+    english = ["definition", "theorem", "method", "example", "pitfall"]
+    items = legend_of(unit)
+    assert [e["text"] for e in items if e["type"] == "text"] == english
+    write_plan(unit, "zh")
+    assert [e["text"] for e in legend_of(unit) if e["type"] == "text"] == ["定义", "定理", "方法", "例子", "易错点"]
+    write_plan(unit, "ja")
+    assert [e["text"] for e in legend_of(unit) if e["type"] == "text"] == english
+    (unit / "plan.json").unlink()
+    m["nodes"][0]["key"] = True
+    write_map(unit, m)
+    items = legend_of(unit)
+    assert [e["text"] for e in items if e["type"] == "text"] == [*english, "key idea"]
+    shapes = [e for e in items if e["type"] != "text"]
+    assert [style(e) for e in shapes] == [*KIND_STYLES.values(), ("rectangle", 2, "solid", None)]
+    assert shapes[-1]["backgroundColor"] == load_palette()["highlight"]
+    assert all(e["backgroundColor"] == "transparent" for e in shapes[:-1])
+    assert all(e["boundElements"] == [] for e in shapes)
+    texts = [e for e in items if e["type"] == "text"]
+    assert all((e["textAlign"], e["verticalAlign"], e["containerId"], e["fontSize"]) == ("left", "top", None, 16)
+               for e in texts)
+    for sample, text in zip(shapes, texts):
+        assert (sample["width"], sample["height"]) == (48, 32)
+        assert text["x"] == approx(right(sample) + 12) and text["y"] == approx(sample["y"] + 6)
+    for text, sample in zip(texts, shapes[1:]):
+        assert sample["x"] == approx(right(text) + 40)
+    scene = read_scene(unit / "map.excalidraw")
+    lowest = max(bottom(e) for e in node_shapes(scene))
+    assert all(e["y"] == approx(lowest + 100) for e in shapes)
+    leftmost = min([e["x"] for e in node_shapes(scene)]
+                   + [a["x"] + px for a in arrows(scene) for px, _ in a["points"]])
+    assert shapes[0]["x"] == approx(leftmost)
+
+
+def test_malformed_plan_ends_in_one_line(tmp_path, capsys):
+    unit = unit_at(tmp_path)
+    write_map(unit, map_with_edge("uses"))
+    (unit / "plan.json").write_text("{", encoding="utf-8", newline="\n")
+    capsys.readouterr()
+    assert main(render_argv(unit)) == 1
+    captured = capsys.readouterr()
+    assert captured.out == "" and captured.err.startswith("plan.json") and captured.err.count("\n") == 1
+    assert list(unit.glob("*.excalidraw*")) == []
+
+
+def test_drawing_is_deterministic(tmp_path):
+    m = map_with_views()
+    m["nodes"][1]["key"] = True
+    del m["views"]
+    first, second = unit_at(tmp_path, 1), unit_at(tmp_path, 2)
+    for unit in (first, second):
+        write_map(unit, m)
+        assert main(render_argv(unit)) == 0
+    data = (first / "map.excalidraw").read_bytes()
+    assert data == (second / "map.excalidraw").read_bytes()
+    assert data.decode("utf-8") == json.dumps(json.loads(data), ensure_ascii=False, indent=2) + "\n"
+
+
+def test_obsidian_form_wraps_the_same_scene(tmp_path):
+    m = map_with_views()
+    del m["views"]
+    m["nodes"][1]["label"] = "实际年利率"
+    plain, vault = unit_at(tmp_path, 1), unit_at(tmp_path, 2)
+    write_map(plain, m)
+    write_map(vault, m)
+    assert main(render_argv(plain)) == 0
+    assert main(render_argv(vault, "--obsidian")) == 0
+    assert (vault / "map.excalidraw.md").exists() and not (vault / "map.excalidraw").exists()
+    text = (vault / "map.excalidraw.md").read_text(encoding="utf-8")
+    assert text.startswith("---\n\nexcalidraw-plugin: parsed\ntags: [excalidraw]\n\n---\n")
+    assert text.endswith("%%\n")
+    scene = read_scene(plain / "map.excalidraw")
+    texts = [e for e in scene["elements"] if e["type"] == "text"]
+    listing = "".join(f"{e['originalText']} ^{e['id']}\n\n" for e in texts)
+    assert text.split("## Text Elements\n", 1)[1].startswith(listing)
+    body = text.split("```json\n", 1)[1].split("\n```\n%%", 1)[0]
+    assert json.loads(body) == scene
+
+
+def test_cli_map_render_writes_one_file_per_view(tmp_path, capsys):
+    unit = unit_at(tmp_path)
+    write_map(unit, map_with_views())
+    capsys.readouterr()
+    assert main(render_argv(unit)) == 0
+    expected = [unit / "map-a.excalidraw", unit / "map-b.excalidraw"]
+    out = json.loads(capsys.readouterr().out)
+    assert out == {"paths": [str(p) for p in expected]}
+    assert all(p.is_absolute() and p.is_file() for p in expected)
+    assert sorted(s["customData"]["node"] for s in node_shapes(read_scene(expected[1]))) == ["b", "c"]
+    assert not (unit / "map.excalidraw").exists()
+    assert main(render_argv(unit, "--view", "a")) == 0
+    assert json.loads(capsys.readouterr().out) == {"path": str(unit / "map.excalidraw")}
+    plain = unit_at(tmp_path, 2)
+    write_map(plain, map_with_edge("uses"))
+    assert main(render_argv(plain)) == 0
+    assert json.loads(capsys.readouterr().out) == {"path": str(plain / "map.excalidraw")}
+    assert sorted(p.name for p in plain.glob("*.excalidraw*")) == ["map.excalidraw"]
+
+
+def test_cli_map_render_unknown_view_exits_2(tmp_path, capsys):
+    unit = unit_at(tmp_path)
+    write_map(unit, map_with_views())
+    capsys.readouterr()
+    assert main(render_argv(unit, "--view", "nope")) == 2
+    captured = capsys.readouterr()
+    assert captured.out == "" and captured.err == "unknown view: nope\n"
+    assert list(unit.glob("*.excalidraw*")) == []
+
+
+def test_cli_map_render_view_id_must_be_a_file_name(tmp_path, capsys):
+    unit = unit_at(tmp_path)
+    m = map_with_views()
+    m["views"].append({"id": "a/b", "nodes": ["a"]})
+    write_map(unit, m)
+    capsys.readouterr()
+    assert main(render_argv(unit)) == 1
+    render = capsys.readouterr()
+    assert main(["map", "mermaid", "--unit", str(unit)]) == 1
+    assert render.err == capsys.readouterr().err and "a/b" in render.err and render.err.count("\n") == 1
+    assert list(unit.glob("*.excalidraw*")) == []
+
+
+def test_cli_map_render_keeps_an_edited_drawing(tmp_path, capsys):
+    unit = unit_at(tmp_path)
+    write_map(unit, map_with_views())
+    assert main(render_argv(unit)) == 0
+    edited = unit / "map-b.excalidraw"
+    edited.write_text("{}\n", encoding="utf-8", newline="\n")
+    (unit / "map-a.excalidraw").unlink()
+    capsys.readouterr()
+    assert main(render_argv(unit)) == 3
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == f"{edited} already exists; rerun with --force to replace it\n"
+    assert edited.read_bytes() == b"{}\n"
+    assert not (unit / "map-a.excalidraw").exists()  # every target is checked before the first write
+    assert main(render_argv(unit, "--force")) == 0
+    assert read_scene(edited)["type"] == "excalidraw"

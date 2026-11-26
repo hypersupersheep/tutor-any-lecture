@@ -318,6 +318,10 @@ def setup_map_mermaid(tmp_path):
     return ["map", "mermaid", "--unit", str(ok_unit(tmp_path))]
 
 
+def setup_map_render(tmp_path):
+    return ["map", "render", "--unit", str(ok_unit(tmp_path))]
+
+
 def setup_items_assign(tmp_path):
     return ["items", "assign", "--unit", str(ok_unit(tmp_path)), "--force"]
 
@@ -378,6 +382,7 @@ WRITERS = {
     "cite-link": setup_cite_link,
     "cards-add-misses": setup_cards_add_misses,
     "map-mermaid": setup_map_mermaid,
+    "map-render": setup_map_render,
     "items-assign": setup_items_assign,
     "slides-pdf": setup_slides_pdf,
     "slides-pptx": setup_slides_pptx,
