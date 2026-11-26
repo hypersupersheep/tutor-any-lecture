@@ -58,6 +58,26 @@ def test_pages_json_roundtrip(tmp_path):
     assert stored[1] == {"n": 2, "label": None, "text": "Summary", "image": None}
 
 
+def test_pages_carry_an_optional_time(tmp_path):
+    pages_json = UnitPaths(tmp_path).pages
+    pages_json.parent.mkdir(parents=True)
+
+    def store(entries):
+        pages_json.write_text(json.dumps(entries) + "\n", encoding="utf-8", newline="\n")
+
+    store([{"n": 1, "label": None, "text": "a", "time": 75}, {"n": 2, "label": None, "text": "b"}])
+    pages = load_pages(tmp_path)
+    assert pages == [Page(1, None, "a", time=75.0), Page(2, None, "b")]
+    assert isinstance(pages[0].time, float)
+    for bad, shown in ((-1, "-1"), ("1:15", "'1:15'"), (True, "True"), (float("nan"), "nan")):
+        store([{"n": 1, "label": None, "text": "a", "time": bad}])
+        with pytest.raises(ValueError) as exc:
+            load_pages(tmp_path)
+        assert str(exc.value) == (
+            f"pages.json: entry 0: time must be seconds (a number from 0) or null, got {shown}"
+        )
+
+
 def test_source_json_written_when_absent(tmp_path):
     pdf = make_pdf(tmp_path / "课程 资料", ["Compound interest\n1/2", "Discounting\n2/2"])
     unit = tmp_path / "课程 资料" / "第1周"

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +28,7 @@ class Page:
     text: str
     image: str | None = None
     notes: str | None = None  # a .pptx slide's speaker notes ("" for none); None for a PDF page
+    time: float | None = None  # the second of the recording the page is shown at, when known
 
 
 def _last_nonempty_line(text: str) -> str | None:
@@ -92,17 +94,28 @@ def extract_pdf(pdf: Path, unit: Path, images: bool = False) -> list[Page]:
                     raise AcquireError(f"could not render page {n} of {pdf.name}") from e
             pages.append(Page(n, _footer_label(text), text, image))
 
-    _write_pages(paths, pages)
+    write_pages(paths.pages, pages)
     _record_deck(paths, pdf, {"pdfplumber": importlib.metadata.version("pdfplumber")})
     return pages
 
 
-def _write_pages(paths: UnitPaths, pages: list[Page]) -> None:
-    """Write pages.json; ``notes`` only where it is not ``None``, so a PDF's entries keep their keys."""
+# Keys left out of a pages.json entry when they are None, so a PDF's entries keep their four keys.
+_OMITTED_WHEN_NONE = ("notes", "time")
+
+
+def write_pages(path: Path, pages: list[Page]) -> None:
+    """Write ``pages`` to the pages.json at ``path``, creating its folder.
+
+    ``notes`` and ``time`` are written only where they are not ``None``. Every writer of
+    pages.json goes through this function.
+    """
+    path = Path(path)
     payload = [
-        {k: v for k, v in dataclasses.asdict(p).items() if not (k == "notes" and v is None)} for p in pages
+        {k: v for k, v in dataclasses.asdict(p).items() if not (k in _OMITTED_WHEN_NONE and v is None)}
+        for p in pages
     ]
-    paths.pages.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
 
 
 def _record_deck(paths: UnitPaths, deck: Path, tool_versions: dict) -> None:
@@ -253,8 +266,7 @@ def extract_pptx(pptx: Path, unit: Path) -> list[Page]:
     with OfficePackage(pptx, ".pptx") as pkg:
         pages = _read_deck(pkg)
     paths.ensure()
-    paths.pages.parent.mkdir(exist_ok=True)
-    _write_pages(paths, pages)
+    write_pages(paths.pages, pages)
     _record_deck(paths, pptx, {"tutor-any-lecture": __version__})
     return pages
 
@@ -287,7 +299,13 @@ def _page(d, k: int) -> Page:
         raise ValueError(f"{where}: label must be digits or null, got {d['label']!r}")
     if not isinstance(d["text"], str):
         raise ValueError(f"{where}: text must be text, got {d['text']!r}")
-    return Page(d["n"], d["label"], d["text"], d.get("image"), d.get("notes"))
+    time = d.get("time")
+    if time is not None:
+        # bool is a subclass of int, but true/false is not a time.
+        if isinstance(time, bool) or not isinstance(time, (int, float)) or not math.isfinite(time) or time < 0:
+            raise ValueError(f"{where}: time must be seconds (a number from 0) or null, got {time!r}")
+        time = float(time)
+    return Page(d["n"], d["label"], d["text"], d.get("image"), d.get("notes"), time=time)
 
 
 def max_label(pages: list[Page]) -> int:
