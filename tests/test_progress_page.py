@@ -4,8 +4,10 @@ import string
 import xml.etree.ElementTree as ET
 from datetime import date
 from importlib import resources
+from pathlib import Path
 from types import SimpleNamespace
 
+from tutor_any_lecture.cli import main
 from tutor_any_lecture.palette import load_palette
 from tutor_any_lecture.progress import Attempt, log_attempt, page_language, render_progress
 from tutor_any_lecture.unit import find_unit
@@ -441,3 +443,45 @@ def test_long_and_cjk_labels_are_cut(tmp_path):
     assert titles[cjk[:14] + "…"] == cjk
     assert titles[unit[:29] + "…"] == unit
     assert "R&D <基础>" not in titles
+
+
+# ---- C1, D1: the command and the documents --------------------------------------
+
+ROOT = Path(__file__).resolve().parent.parent
+SKILL_DIR = ROOT / "skills" / "tutor-any-lecture"
+
+
+def test_cli_render_in_chinese(tmp_path, capsys):
+    write_attempts(tmp_path)
+    assert main(["progress", "render", "--course", "C", "--lang", "zh", "--workspace", str(tmp_path)]) == 0
+    page = tmp_path / "progress" / "C.md"
+    assert page.read_text(encoding="utf-8").splitlines()[0] == "# 学习进度 — C"
+    captured = capsys.readouterr()
+    assert json.loads(captured.out) == {"paths": [str(page), str(page.with_suffix(".svg"))], "lang": "zh"}
+    assert captured.err == ""
+
+
+def test_cli_unknown_language_says_so_once(tmp_path, capsys):
+    write_attempts(tmp_path)
+    assert main(["progress", "render", "--course", "C", "--lang", "ja", "--workspace", str(tmp_path)]) == 0
+    captured = capsys.readouterr()
+    assert captured.err == "no progress page text for language 'ja'; the page is in English\n"
+    assert json.loads(captured.out)["lang"] == "en"
+    assert (tmp_path / "progress" / "C.md").read_text(encoding="utf-8").splitlines()[0] == "# Progress — C"
+
+
+def test_cli_render_follows_the_newest_unit(tmp_path, capsys):
+    ws = chinese_workspace(tmp_path)
+    assert main(["progress", "render", "--course", "课程", "--workspace", str(ws), "--date", "2026-11-28"]) == 0
+    assert json.loads(capsys.readouterr().out)["lang"] == "zh"
+
+
+def test_documents_name_the_language_flag_and_the_chart():
+    skill = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+    teaching = (SKILL_DIR / "references" / "teaching.md").read_text(encoding="utf-8")
+    markdown = (SKILL_DIR / "references" / "output-targets" / "markdown.md").read_text(encoding="utf-8")
+    gate = (SKILL_DIR / "references" / "gate.md").read_text(encoding="utf-8")
+    assert "--lang" in skill and "--lang" in teaching
+    assert "<course>.svg" in teaching and "<course>.svg" in markdown
+    (writes,) = [line for line in gate.splitlines() if line.startswith("**Commands that write a file**")]
+    assert "`progress render`" in writes.split("{\"paths\": […]}", 1)[1]

@@ -26,7 +26,8 @@ Every unit lives at `<workspace>/courses/<course>/<unit>/` with fixed file names
 
 Progress is per course, outside the unit folders:
 - `<workspace>/progress/<course>.jsonl`: one line per logged attempt (`progress log`);
-- `<workspace>/progress/<course>.md`: the progress page (`progress render`).
+- `<workspace>/progress/<course>.md`: the progress page (`progress render`);
+- `<workspace>/progress/<course>.svg`: the chart the page embeds (`progress render`).
 
 ## Markdown conventions
 

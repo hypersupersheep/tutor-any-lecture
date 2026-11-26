@@ -343,7 +343,7 @@ def test_cli_render_writes_page(tmp_path, capsys):
     assert main(["progress", "render", "--course", "C", "--workspace", str(tmp_path)]) == 0
     page = tmp_path / "progress" / "C.md"
     assert page.read_text(encoding="utf-8").splitlines()[0] == "# Progress — C"
-    assert json.loads(capsys.readouterr().out) == {"path": str(page)}
+    assert json.loads(capsys.readouterr().out) == {"paths": [str(page), str(page.with_suffix(".svg"))], "lang": "en"}
 
 
 # ---- unsafe names and malformed files (Task 21) -----------------------------
@@ -507,6 +507,7 @@ def test_render_refuses_unknown_course(tmp_path):
         render_progress("Nope", tmp_path, date(2026, 11, 20))
     assert str(e.value) == "no progress log for course 'Nope'"
     assert not (tmp_path / "progress" / "Nope.md").exists()
+    assert not (tmp_path / "progress" / "Nope.svg").exists()
     with pytest.raises(FileNotFoundError) as e:
         render_progress("Bob's notes", tmp_path, date(2026, 11, 20))
     assert str(e.value) == "no progress log for course 'Bob's notes'"

@@ -97,7 +97,7 @@ Reviews are counted from the day the post quiz is complete, that is, when every 
 - A `post` entry means that unit's post quiz is still owed: run Post quiz. For d1, d7 or d21, run `tutor-any-lecture items next --unit DIR --phase P`. For d1 and d21, first write the D or E variants its `missing` names, then run `tutor-any-lecture items validate --unit DIR` and ask them only when it exits 0 (or skip the optional review). Ask and log with `--phase P` as in Post quiz, then run `cards add-misses` (when "cards" is in plan.outputs).
 - An entry whose `remaining` is a list was stopped part-way: ask only the items of those concepts.
 - Anything the learner wants beyond what is due is practice: items of the `practice` list of items.json only (`tutor-any-lecture items get --unit DIR --id ID` fetches one by id), logged with `--phase practice`. A tracked item is logged only in its own phase; `progress log` refuses any other. From a course's third unit on, a quiz may add up to two practice items from earlier units, each logged against its own unit.
-- `tutor-any-lecture progress render --course C [--date YYYY-MM-DD]` writes the progress page. Grading, confidence, variants and interleaving: [teaching](references/teaching.md).
+- `tutor-any-lecture progress render --course C [--date YYYY-MM-DD] [--lang CODE]` writes the progress page and its chart, in `--lang` or else the newest unit's note language. Grading, confidence, variants and interleaving: [teaching](references/teaching.md).
 
 ## Optional extras
 

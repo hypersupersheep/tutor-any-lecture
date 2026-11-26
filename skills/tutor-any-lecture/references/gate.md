@@ -68,6 +68,6 @@ Exit 0 on PASS, 1 on FAIL.
 
 `acquire url --url U --info` reads only the video page: it needs no `--unit`, writes nothing and prints `{"status": "ok", "title", "duration", "uploader", "manual_captions": [language codes], "automatic_captions": true|false}`, or the `error` object above (exit 1).
 
-**Commands that write a file** end by printing one JSON object that names it: `{"path"}`, or `{"paths": […]}` for several (`map mermaid` on a map with views). `cards export`, `cards add-misses` (with `added`), `cite link` (with `linked`), `items assign` (the assignment, with `path`), `slides --pdf` and `slides suspects` (with their counts), `map mermaid`, `progress log` (the attempt, with `path`) and `progress render` do so.
+**Commands that write a file** end by printing one JSON object that names it: `{"path"}`, or `{"paths": […]}` for several (`map mermaid` on a map with views; `progress render`, the page and its chart, with `lang`). `cards export`, `cards add-misses` (with `added`), `cite link` (with `linked`), `items assign` (the assignment, with `path`), `slides --pdf` and `slides suspects` (with their counts), `map mermaid`, `progress log` (the attempt, with `path`) and `progress render` do so.
 
 An existing `sources/transcript.json` without `--force` stops the command before any work (exit 3, one line on stderr). A budget or backend problem (exit 3) is also one stderr line, with no JSON on stdout.

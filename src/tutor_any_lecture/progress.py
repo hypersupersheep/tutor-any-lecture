@@ -6,10 +6,10 @@ import dataclasses
 import json
 import sys
 from dataclasses import dataclass
-from functools import lru_cache
-from importlib import resources
 from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from functools import lru_cache
+from importlib import resources
 from pathlib import Path
 
 from . import items as itembank
@@ -488,8 +488,6 @@ def confident_but_wrong(attempts) -> list[Attempt]:
     return [a for a in attempts if a.confidence == 3 and a.score == 0]
 
 
-
-
 # ---- the page ----------------------------------------------------------------
 
 
@@ -576,7 +574,7 @@ def _plans(workspace: Path, course: str, attempts) -> dict:
     return plans
 
 
-def concept_names(plan) -> dict[str, str]:
+def _concept_names(plan) -> dict[str, str]:
     """Each concept id of ``plan``, in plan order, with the label it is shown by: its name
     when that is a non-empty string (on one line), else its id. No plan: no names."""
     names: dict[str, str] = {}
@@ -589,12 +587,12 @@ def concept_names(plan) -> dict[str, str]:
     return names
 
 
-def tracked_units(attempts) -> list[str]:
+def _tracked_units(attempts) -> list[str]:
     """Every unit with an attempt in pre, post or d7, complete or not, in order of first appearance."""
     return [u for u, phases in _phase_states(attempts).items() if any(p in phases for p in TRACKED_PHASES)]
 
 
-def concept_rows(attempts, unit: str, plan) -> list[tuple[str, dict[str, float]]]:
+def _concept_rows(attempts, unit: str, plan) -> list[tuple[str, dict[str, float]]]:
     """Each concept of ``unit`` with an attempt in pre, post or d7: its label and the mean
     of its attempts in each of those phases.
 
@@ -605,7 +603,7 @@ def concept_rows(attempts, unit: str, plan) -> list[tuple[str, dict[str, float]]
     for a in attempts:
         if a.unit == unit and a.phase in TRACKED_PHASES:
             by_concept.setdefault(a.concept, []).append(a)
-    names = concept_names(plan)
+    names = _concept_names(plan)
     order = [c for c in names if c in by_concept] + sorted(c for c in by_concept if c not in names)
     return [(names.get(c, c), _phase_means(by_concept[c])) for c in order]
 
@@ -730,6 +728,12 @@ def render_progress(course: str, workspace: Path, today: date, lang: str | None 
     (``page_language``); with ``notices`` a list, the fallback notice is appended to it.
     A course with no log raises FileNotFoundError and writes nothing.
     """
+    return write_progress(course, workspace, today, lang, notices)[0]
+
+
+def write_progress(course: str, workspace: Path, today: date, lang: str | None = None,
+                   notices: list[str] | None = None) -> tuple[Path, Path, str]:
+    """As ``render_progress``, returning the page's path, the chart's path and the language key used."""
     if not _course_file(workspace, course, ".jsonl").exists():
         raise FileNotFoundError(f"no progress log for course '{course}'")
     attempts = load_attempts(course, workspace)  # once, so each skipped line warns once
@@ -738,16 +742,16 @@ def render_progress(course: str, workspace: Path, today: date, lang: str | None 
     if notice is not None and notices is not None:
         notices.append(notice)
     t = _Text(key)
-    names = {unit: concept_names(plan) for unit, plan in plans.items()}
+    names = {unit: _concept_names(plan) for unit, plan in plans.items()}
 
     scores = unit_scores(attempts)
     gains = paired_scores(attempts, "pre", "post")
     retained = paired_scores(attempts, "post", "d7")
     states = _phase_states(attempts)
-    tracked = tracked_units(attempts)
-    rows_by_unit = {u: concept_rows(attempts, u, plans.get(u)) for u in tracked}
+    tracked = _tracked_units(attempts)
+    rows_by_unit = {u: _concept_rows(attempts, u, plans.get(u)) for u in tracked}
     page = _course_file(workspace, course, ".md")
-    chart = page.with_suffix(".svg")
+    chart = _course_file(workspace, course, ".svg")
 
     blocks = [f"# {t('title', course=course)}", _sentence(t, tracked, scores, gains, retained)]
     if tracked:
@@ -775,4 +779,4 @@ def render_progress(course: str, workspace: Path, today: date, lang: str | None 
     page.write_text("\n\n".join(blocks) + "\n", encoding="utf-8", newline="\n")
     legend = [t.phase(p) for p in TRACKED_PHASES]
     write_chart(chart, t("title", course=course), legend, _chart_rows(t, tracked, scores, rows_by_unit))
-    return page
+    return page, chart, key
