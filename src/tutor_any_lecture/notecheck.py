@@ -88,6 +88,8 @@ def _inline_quote_pattern(pairs) -> re.Pattern:
 
 
 INLINE_QUOTE_RE = _inline_quote_pattern(QUOTE_PAIRS)
+# Where a quote's lead-in starts and its tail ends.
+CLAUSE_END_RE = re.compile(r"[.!?;。！？；]")
 BLOCKQUOTE_PREFIX_RE = re.compile(r"^(\s*>)+")
 BOLD_RE = re.compile(r"\*\*[^*\n]+\*\*")
 HIGHLIGHT_RE = re.compile(r"==[^=\n]+==")
@@ -225,7 +227,12 @@ def _is_quote_line(line: str) -> bool:
 
 def _inline_quotes(line: str) -> list[str]:
     """The quoted spans on one line that is not a '>' line."""
-    return [] if _is_quote_line(line) else _quoted_spans(line)
+    return [q for q, _, _ in _inline_contexts(line)]
+
+
+def _inline_contexts(line: str) -> list[tuple[str, str, str]]:
+    """(quote, lead-in, tail) of each quote on one line that is not a '>' line."""
+    return [] if _is_quote_line(line) else _quote_contexts(line)
 
 
 def _is_quote(inner: str) -> bool:
@@ -234,13 +241,18 @@ def _is_quote(inner: str) -> bool:
     return len(inner) >= THRESHOLDS[key]
 
 
-def _quoted_spans(line: str) -> list[str]:
-    """The quoted spans long enough to be quotes on one line, marks paired left to right."""
+def _quote_contexts(line: str) -> list[tuple[str, str, str]]:
+    """(quote, lead-in, tail) of each quoted span long enough to be a quote on one line,
+    marks paired left to right.
+
+    The lead-in is the text before the opening mark back to the last clause end; the tail
+    is the text after the closing mark up to the next clause end or the line's end.
+    """
     out = []
     for m in INLINE_QUOTE_RE.finditer(line):
         inner = next(g for g in m.groups() if g is not None)
         if _is_quote(inner):
-            out.append(inner)
+            out.append((inner, CLAUSE_END_RE.split(line[: m.start()])[-1], CLAUSE_END_RE.split(line[m.end() :])[0]))
     return out
 
 
@@ -325,16 +337,32 @@ def cited_quotes(md: str) -> list[tuple[str, list[Citation]]]:
     Read as check_note reads them: fenced code and the marker sections are left out, and
     code is never a quote or a citation. Inline code inside a quote stays in its text as
     written. A blockquote that is not a callout is cited inside or on its next non-empty
-    line. An inline quote (``_is_quote``) is cited by its paragraph; in a list
-    item by the item (its bullet line and its indented continuation lines); on another
-    line outside paragraphs (a table row, a heading) by that line; inside a callout by the
-    whole callout. Citation groups are removed from the quote text. Blockquotes come
-    first, then inline quotes, each in document order.
+    line. An inline quote (``_is_quote``) is cited by its paragraph; in a list item by the
+    item (its bullet line and its indented continuation lines); on another line outside
+    paragraphs (a table row, a heading) by that line; inside a callout by the whole
+    callout. Citation groups are removed from the quote text. Blockquotes come first, then
+    inline quotes, each in document order.
     """
+    return [(q, cits) for q, cits, _ in _cited(md)]
+
+
+def cited_quote_contexts(md: str) -> list[tuple[str, list[Citation], str, str]]:
+    """(quote, citations, lead-in, tail) of each inline quote, in the order ``cited_quotes``
+    uses; blockquotes are left out, so these are the last entries of ``cited_quotes``.
+
+    The lead-in is the text on the quote's line before its opening mark, back to the last
+    ``.``, ``!``, ``?``, ``;``, ``。``, ``！``, ``？`` or ``；``; the tail is the text after its
+    closing mark up to the next such mark or the line's end.
+    """
+    return [(q, cits, *context) for q, cits, context in _cited(md) if context is not None]
+
+
+def _cited(md: str) -> list[tuple[str, list[Citation], tuple[str, str] | None]]:
+    """``cited_quotes`` with the (lead-in, tail) of each inline quote; None for a blockquote."""
     held, spans = _hold_inline_code(md)
     p_lines = strip_marker_sections(held).split("\n")
-    out: list[tuple[str, list[Citation]]] = []
-    inline: list[tuple[int, str, list[Citation]]] = []  # (line index, quote, citations)
+    out: list[tuple[str, list[Citation], tuple[str, str] | None]] = []
+    inline: list[tuple[int, tuple[str, str, str], list[Citation]]] = []  # (line index, context, citations)
 
     def add(group: list[int], quotes_on) -> None:
         """The quotes on the lines of ``group``, each cited by the citations of the whole group."""
@@ -344,30 +372,37 @@ def cited_quotes(md: str) -> list[tuple[str, list[Citation]]]:
 
     for a, b in _blockquotes(p_lines):
         if CALLOUT_START_RE.match(p_lines[a]):
-            add(list(range(a, b)), lambda line: _quoted_spans(BLOCKQUOTE_PREFIX_RE.sub("", line)))
+            add(list(range(a, b)), lambda line: _quote_contexts(BLOCKQUOTE_PREFIX_RE.sub("", line)))
             continue
         block = "\n".join(p_lines[a:b])
         after = next((x for x in p_lines[b:] if x.strip()), "")
         cits = parse(block) or parse(after)
         if cits:
             text = " ".join(BLOCKQUOTE_PREFIX_RE.sub("", line) for line in p_lines[a:b])
-            out.append((_without_citations(text), cits))
+            out.append((_without_citations(text), cits, None))
     paras, breaks = _split(p_lines)
     items = _list_items(p_lines, breaks)
     continued = {i for item in items for i in item[1:]}  # read with their list item, not as a paragraph
     for para in paras:
         rest = [i for i in para if i not in continued]
         if rest:
-            add(rest, _inline_quotes)
+            add(rest, _inline_contexts)
     for item in items:
-        add(item, _inline_quotes)
+        add(item, _inline_contexts)
     item_lines = {item[0] for item in items}
     for i in breaks:
         if i not in item_lines:  # '>' lines give no inline quotes here: they are read above
-            add([i], _inline_quotes)
+            add([i], _inline_contexts)
     inline.sort(key=lambda t: t[0])  # stable: quotes on one line keep their order
-    out.extend((_without_citations(q), cits) for _, q, cits in inline)
-    return [(_restore_inline_code(q, spans), cits) for q, cits in out]
+    out.extend((_without_citations(q), cits, (lead, tail)) for _, (q, lead, tail), cits in inline)
+
+    def restore(text: str) -> str:
+        return _restore_inline_code(text, spans)
+
+    return [
+        (restore(q), cits, None if context is None else (restore(context[0]), restore(context[1])))
+        for q, cits, context in out
+    ]
 
 
 def _is_toc_line(line: str) -> bool:

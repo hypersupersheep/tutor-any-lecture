@@ -628,3 +628,60 @@ def test_quote_with_no_checkable_part_warns(tmp_path):
     assert quote_source_details(r) == [
         "quote 'rate … balance … interest' cited (1:15) has no part of three words or six CJK characters to check"
     ]
+
+
+# ---------------------------------------------------------------- the speaker of a quote
+
+
+COMPUTER = "It depends on the strength of your computer"
+LABELLED = [(100, 105, "STUDENT: [INAUDIBLE]"), (105, 110, f"LECTURER: {COMPUTER}.")]
+STUDENT_ANSWERED = f'\n\nA student answered: "{COMPUTER}" (1:45).\n'
+
+
+def speaker_unit(tmp_path, segments, note):
+    """Local helper: the ok unit with these segments added and this text appended to the note."""
+    u = copy_fixture("ok", tmp_path)
+    for start, end, text in segments:
+        add_segment(u, start, end, text)
+    append_to_note(u, note)
+    return u
+
+
+def test_quote_given_to_a_student_but_labelled_lecturer_warns(tmp_path):
+    r = run_verify(speaker_unit(tmp_path, LABELLED, STUDENT_ANSWERED))
+    assert entry(r, "citations")["status"] == "WARN"
+    assert quote_source_details(r) == ["quote 'It depends on the strength of your compu…' is LECTURER's words at 1:45"]
+
+
+def test_student_words_given_to_no_student_warn(tmp_path):
+    segments = [(100, 105, "STUDENT: Does the rate change every single year?"), (105, 110, "LECTURER: Good question.")]
+    quote = '"does the rate change every single year" (1:40).\n'
+    r = run_verify(speaker_unit(tmp_path / "a", segments, "\n\nThe lecturer was asked " + quote))
+    assert quote_source_details(r) == ["quote 'does the rate change every single year' is STUDENT's words at 1:40"]
+    r = run_verify(speaker_unit(tmp_path / "b", segments, "\n\nA student asked " + quote))
+    assert quote_source_details(r) == []
+
+
+def test_speaker_check_is_silent_without_labels(tmp_path):
+    unlabelled = [(start, end, text.split(": ", 1)[1]) for start, end, text in LABELLED]
+    assert quote_source_details(run_verify(speaker_unit(tmp_path / "a", unlabelled, STUDENT_ANSWERED))) == []
+    # labels exist, but none is in force at the segment the quote starts in
+    segments = [(100, 105, f"{COMPUTER}."), (105, 110, "STUDENT: Thanks."), (110, 115, "LECTURER: Right.")]
+    assert quote_source_details(run_verify(speaker_unit(tmp_path / "b", segments, STUDENT_ANSWERED))) == []
+
+
+def test_students_without_a_speech_verb_make_no_speaker_claim(tmp_path):
+    note = f'\n\nFor n students, "{COMPUTER.lower()}" (1:45).\n'
+    assert quote_source_details(run_verify(speaker_unit(tmp_path, LABELLED, note))) == []
+
+
+def test_speaker_check_never_reads_blockquotes_or_other_languages(tmp_path):
+    # a student's words as a blockquote, and the first test's claim in a note in French
+    asked = [(100, 105, "STUDENT: Does the rate change every single year?"), (105, 110, "LECTURER: Good question.")]
+    block = speaker_unit(tmp_path / "block", asked, "\n\n> Does the rate change every single year? (1:40)\n")
+    assert quote_source_details(run_verify(block)) == []
+    french = speaker_unit(tmp_path / "fr", LABELLED, STUDENT_ANSWERED)
+    plan = _read_json(UnitPaths(french).plan)
+    plan["note_language"] = "fr"
+    _write_json(UnitPaths(french).plan, plan)
+    assert quote_source_details(run_verify(french)) == []

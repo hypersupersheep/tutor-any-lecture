@@ -23,6 +23,7 @@ from .notecheck import (
     CALLOUT_TYPES,
     THRESHOLDS,
     check_note,
+    cited_quote_contexts,
     cited_quotes,
     marker_sections,
     measure_note,
@@ -82,6 +83,20 @@ WORD_EDGE_AFTER = rf"(?![^ {_CJK_CHARS}])"
 QUOTE_WINDOW_S = 60
 QUOTE_MIN_WORDS = 3
 QUOTE_SHOWN_CHARS = 40
+
+# quote_source: who speaks. A transcript segment may begin with a speaker label of one to
+# four words of capitals (each at least two characters), an optional number, then ": ".
+SPEAKER_LABEL_RE = re.compile(r"([A-Z][A-Z.'-]+(?: [A-Z][A-Z.'-]+){0,3}(?: \d+)?): ")
+STUDENT_LABEL_WORDS = ("STUDENT", "STUDENTS", "AUDIENCE")
+SPEAKER_CHECK_LANGS = ("en", "zh")
+# (English words, matched whole and ignoring case; Chinese words, matched as substrings)
+STUDENT_WORDS = (("student", "students", "audience"), ("学生", "同学", "听众"))
+SPEECH_WORDS = (
+    ("says", "said", "asks", "asked", "answers", "answered", "replies", "replied", "responds", "responded",
+     "suggests", "suggested", "adds", "added"),
+    ("说", "问", "答", "提出", "指出"),
+)
+LECTURER_WORDS = (("lecturer", "professor", "teacher", "instructor"), ("讲师", "老师", "教授"))
 
 # numbers: a quantity with a unit, or a currency sign and the first digit after it.
 NUMBER_RE = re.compile(
@@ -178,11 +193,11 @@ def _citation_problems(cits, pages, duration, transcript, slides_only) -> dict:
     return _entry("citations", "PASS", [])
 
 
-def _check_citations(cits, pages, duration, transcript, slides_only, md: str, source) -> dict:
+def _check_citations(cits, pages, duration, transcript, slides_only, md: str, source, lang: str) -> dict:
     """The citation problems, then the quote_source and time_links sub-results folded in
     as "<sub-name>: <detail>"."""
     entry = _citation_problems(cits, pages, duration, transcript, slides_only)
-    for sub in (_check_quote_source(md, transcript, pages), _check_time_links(md, source)):
+    for sub in (_check_quote_source(md, transcript, pages, lang), _check_time_links(md, source)):
         if sub.status != "PASS":
             folded = _fold("citations", [sub])
             entry["status"] = max(entry["status"], folded["status"], key=SEVERITY.__getitem__)
@@ -262,6 +277,23 @@ def _part_at(part: str, text: str) -> int:
     return m.start() if m else -1
 
 
+def _speaker_labels(segments) -> list[str | None] | None:
+    """The speaker label in force at each segment, or None when the transcript has no labels.
+
+    A transcript has labels when at least two segments begin with one. The label in force
+    at a segment is its own, else the nearest earlier labelled segment's.
+    """
+    own = [m.group(1) if (m := SPEAKER_LABEL_RE.match(s.text.lstrip())) else None for s in segments]
+    if sum(label is not None for label in own) < 2:
+        return None
+    in_force: list[str | None] = []
+    current = None
+    for label in own:
+        current = label or current
+        in_force.append(current)
+    return in_force
+
+
 class _QuoteSources:
     """The transcript and the slides, normalised once for every quote of a note."""
 
@@ -270,9 +302,20 @@ class _QuoteSources:
         self.pages = pages
         if self.segments is not None:
             self.all_text, self.starts = _joined(s.text for s in self.segments)
+            self.labels = _speaker_labels(self.segments)
         else:
             self.all_text, self.starts = "", []
+            self.labels = None
         self.slide_texts = [(_slide_number(p), _quote_norm(p.text)) for p in pages]
+
+    def _window(self, c) -> tuple[str, list[int], list[int]]:
+        """The normalised transcript text around a time citation, where each segment starts
+        in it, and those segments' indexes."""
+        lo = c.start - QUOTE_WINDOW_S
+        hi = (c.end if c.end is not None else c.start) + QUOTE_WINDOW_S
+        indexes = [i for i, s in enumerate(self.segments) if s.start <= hi and s.end >= lo]
+        text, starts = _joined(self.segments[i].text for i in indexes)
+        return text, starts, indexes
 
     def cited(self, c) -> str | None:
         """The text at one citation; None for a time when the unit has no transcript."""
@@ -281,9 +324,25 @@ class _QuoteSources:
             return _joined(p.text for p in self.pages if lo <= _slide_number(p) <= hi)[0]
         if self.segments is None:
             return None
-        lo = c.start - QUOTE_WINDOW_S
-        hi = (c.end if c.end is not None else c.start) + QUOTE_WINDOW_S
-        return _joined(s.text for s in self.segments if s.start <= hi and s.end >= lo)[0]
+        return self._window(c)[0]
+
+    def speaker(self, parts: list[str], cits) -> tuple[str, float] | None:
+        """(label, segment start) of the speaker of a quote, or None when no label is in force.
+
+        The first time citation, in citation order, whose window holds every part decides;
+        the speaker is the label in force at the segment where the first part begins.
+        """
+        if self.labels is None:
+            return None
+        for c in cits:
+            if c.kind != "time":
+                continue
+            text, starts, indexes = self._window(c)
+            if all(_part_at(part, text) >= 0 for part in parts):
+                k = indexes[bisect_right(starts, _part_at(parts[0], text)) - 1]
+                label = self.labels[k]
+                return (label, self.segments[k].start) if label else None
+        return None
 
     def find(self, part: str) -> str | None:
         """Where ``part`` is: "at m:ss" in the transcript, else "on slide N", else None."""
@@ -296,12 +355,47 @@ class _QuoteSources:
         return None
 
 
-def _check_quote_source(md: str, transcript, pages) -> CheckResult:
-    """Every cited quote is found at the place it cites (WARN when only elsewhere, FAIL when nowhere)."""
+def _word_positions(text: str, words: tuple[tuple[str, ...], tuple[str, ...]]) -> list[int]:
+    """Where the words occur in ``text``: English as whole words ignoring case, Chinese as substrings."""
+    english, chinese = words
+    pattern = r"(?<![A-Za-z])(?:" + "|".join(english) + r")(?![A-Za-z])"
+    found = [m.start() for m in re.finditer(pattern, text, re.IGNORECASE)]
+    for word in chinese:
+        found += [m.start() for m in re.finditer(re.escape(word), text)]
+    return found
+
+
+def _wrong_speaker(lead_in: str, tail: str, label: str) -> bool:
+    """The note gives a quote to a student and the label does not, or the other way round."""
+    student_label = label.split()[0] in STUDENT_LABEL_WORDS
+    students = _word_positions(lead_in, STUDENT_WORDS)
+    if students:
+        last = max(students)
+        speech = any(pos > last for pos in _word_positions(lead_in, SPEECH_WORDS))
+        lecturer = any(pos > last for pos in _word_positions(lead_in, LECTURER_WORDS))
+        if speech and not lecturer and not student_label:
+            return True
+    return student_label and not students and not _word_positions(tail, STUDENT_WORDS)
+
+
+def _checks_speakers(lang: str) -> bool:
+    return re.split(r"[-_]", (lang or "").lower(), maxsplit=1)[0] in SPEAKER_CHECK_LANGS
+
+
+def _check_quote_source(md: str, transcript, pages, lang: str) -> CheckResult:
+    """Every cited quote is found at the place it cites (WARN when only elsewhere, FAIL when nowhere).
+
+    A quote with no part long enough to check is a WARN, and so is an inline quote that the
+    note gives to the wrong speaker (in an English or Chinese note, by the transcript's labels).
+    """
     sources = _QuoteSources(transcript, pages)
     details: list[str] = []
     worst = "PASS"
-    for quote, cits in cited_quotes(md):
+    quotes = cited_quotes(md)
+    inline = cited_quote_contexts(md)
+    # The inline quotes are the last entries of cited_quotes, in the same order.
+    contexts = [None] * (len(quotes) - len(inline)) + [(lead, tail) for _, _, lead, tail in inline]
+    for (quote, cits), context in zip(quotes, contexts):
         parts = _quote_parts(quote)
         places = [t for t in (sources.cited(c) for c in cits) if t is not None]
         if not places:
@@ -314,6 +408,10 @@ def _check_quote_source(md: str, transcript, pages) -> CheckResult:
             continue
         missing = [part for part in parts if not any(_part_at(part, place) >= 0 for place in places)]
         if not missing:
+            speaker = sources.speaker(parts, cits) if context is not None and _checks_speakers(lang) else None
+            if speaker is not None and _wrong_speaker(*context, speaker[0]):
+                details.append(f"quote '{shown}' is {speaker[0]}'s words at {format_seconds(speaker[1])}")
+                worst = max(worst, "WARN", key=SEVERITY.__getitem__)
             continue
         found = [sources.find(part) for part in missing]
         if all(found):
@@ -541,7 +639,7 @@ def run_verify(unit: Path) -> dict:
     sources = "\n".join([transcript.text() if transcript is not None else ""] + [pg.text for pg in pages])
 
     checks = [
-        _check_citations(cits, pages, duration, transcript, slides_only, md, source),
+        _check_citations(cits, pages, duration, transcript, slides_only, md, source, lang),
         _check_coverage(cits, pages, md),
         _check_terms(note_text, sources),
         _check_numbers(note_text, sources),

@@ -7,6 +7,7 @@ from tutor_any_lecture.citations import link_times
 from tutor_any_lecture.notecheck import (
     QUOTE_PAIRS,
     check_note,
+    cited_quote_contexts,
     cited_quotes,
     marker_sections,
     measure_note,
@@ -326,3 +327,15 @@ def test_short_cjk_quote_counts_from_six_characters():
     assert uncited("## A\n\n" + "利" * 20 + "“复利就是利滚利”。\n", "zh") == "FAIL"
     assert uncited("## A\n\n" + "利" * 20 + "“利滚利效应”。\n", "zh") == "PASS"
     assert uncited('## A\n\nThe phrase "abcdefghijklmn" here.\n', "en") == "PASS"
+
+
+def test_cited_quote_contexts_give_the_lead_in_and_the_tail():
+    md = (
+        "## A\n\n> A blockquote of some length here. (0:10)\n\n"
+        'It rose. Then a student asked: "does the rate change every year" in class (0:30); later.\n'
+    )
+    contexts = cited_quote_contexts(md)
+    assert [q for q, _, _, _ in contexts] == [q for q, _ in cited_quotes(md)][1:]
+    ((quote, cits, lead_in, tail),) = contexts
+    assert quote == "does the rate change every year" and [c.raw for c in cits] == ["(0:30)"]
+    assert lead_in == " Then a student asked: " and tail == " in class (0:30)"
