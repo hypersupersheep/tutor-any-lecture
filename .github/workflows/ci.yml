@@ -128,3 +128,165 @@ jobs:
           $cli = (Get-Content -LiteralPath "$env:APPDATA\tutor-any-lecture\cli-path" -TotalCount 1 -Encoding UTF8).Trim()
           & $cli selftest
           exit $LASTEXITCODE
+
+  # The private-venv branch that an install without uv takes: no setup-uv step, and the
+  # first step fails if uv is on PATH anyway.
+  install-no-uv:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: No uv on PATH (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if command -v uv >/dev/null 2>&1; then
+            echo "uv is on PATH ($(command -v uv)); this job checks the install without it" >&2
+            exit 1
+          fi
+      - name: No uv on PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $uv = Get-Command uv -ErrorAction SilentlyContinue
+          if ($null -ne $uv) {
+            [Console]::Error.WriteLine("uv is on PATH ($($uv.Source)); this job checks the install without it")
+            exit 1
+          }
+          exit $LASTEXITCODE
+      - name: Dry run plans a private venv (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          plan="$(bash install.sh --dry-run --from . --agents claude)"
+          printf '%s\n' "$plan"
+          if ! grep -qF 'PLAN: python -m venv' <<<"$plan"; then
+            echo "the plan has no 'PLAN: python -m venv' line" >&2
+            exit 1
+          fi
+      - name: Dry run plans a private venv (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $plan = powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -DryRun -From . -Agents claude
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $plan | ForEach-Object { Write-Output $_ }
+          if (-not ($plan | Where-Object { $_.Contains('PLAN: python -m venv') })) {
+            [Console]::Error.WriteLine("the plan has no 'PLAN: python -m venv' line")
+            exit 1
+          }
+          exit $LASTEXITCODE
+      - name: Real install (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: bash install.sh --yes --from . --agents claude
+      - name: Real install (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -Yes -From . -Agents claude
+          exit $LASTEXITCODE
+      - name: The recorded command lies in the private venv; selftest (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cli="$(head -n 1 "${XDG_CONFIG_HOME:-$HOME/.config}/tutor-any-lecture/cli-path")"
+          echo "cli-path: $cli"
+          case "$cli" in
+            "$HOME/.tutor-any-lecture/venv/"*) ;;
+            *) echo "the recorded command is not in $HOME/.tutor-any-lecture/venv/" >&2; exit 1 ;;
+          esac
+          "$cli" selftest
+      - name: The recorded command lies in the private venv; selftest (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $cli = (Get-Content -LiteralPath "$env:APPDATA\tutor-any-lecture\cli-path" -TotalCount 1 -Encoding UTF8).Trim()
+          Write-Output "cli-path: $cli"
+          $venv = $env:LOCALAPPDATA + '\tutor-any-lecture\venv\'
+          if (-not $cli.StartsWith($venv, [System.StringComparison]::OrdinalIgnoreCase)) {
+            [Console]::Error.WriteLine("the recorded command is not in $venv")
+            exit 1
+          }
+          & $cli selftest
+          exit $LASTEXITCODE
+
+  # The checkout-install command exactly as README.md gives it, read from README.md
+  # by tools/doc_commands.py and run in a fresh clone.
+  readme-install:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+      - name: An agent folder and a clone (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.claude"
+          git clone "$GITHUB_WORKSPACE" "$RUNNER_TEMP/readme-clone"
+          test -f "$RUNNER_TEMP/readme-clone/install.sh"
+          test -f "$RUNNER_TEMP/readme-clone/install.ps1"
+      - name: An agent folder and a clone (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path (Join-Path $env:USERPROFILE '.claude') | Out-Null
+          git clone "$env:GITHUB_WORKSPACE" (Join-Path $env:RUNNER_TEMP 'readme-clone')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($name in 'install.sh', 'install.ps1') {
+            if (-not (Test-Path -LiteralPath (Join-Path $env:RUNNER_TEMP "readme-clone\$name") -PathType Leaf)) {
+              [Console]::Error.WriteLine("the clone has no $name")
+              exit 1
+            }
+          }
+          exit $LASTEXITCODE
+      - name: The README's install command, as written (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        working-directory: ${{ runner.temp }}/readme-clone
+        run: |
+          cmd="$(python tools/doc_commands.py install-command --system posix README.md)"
+          echo "README.md: $cmd"
+          eval "$cmd"
+      - name: The README's install command, as written (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: ${{ runner.temp }}/readme-clone
+        run: |
+          $cmd = python tools/doc_commands.py install-command --system windows README.md
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Output "README.md: $cmd"
+          Invoke-Expression $cmd
+          exit $LASTEXITCODE
+      - name: Skill copied; selftest via recorded CLI path (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          test -f "$HOME/.claude/skills/tutor-any-lecture/SKILL.md"
+          cli="$(head -n 1 "${XDG_CONFIG_HOME:-$HOME/.config}/tutor-any-lecture/cli-path")"
+          "$cli" selftest
+      - name: Skill copied; selftest via recorded CLI path (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $skill = Join-Path $env:USERPROFILE '.claude\skills\tutor-any-lecture\SKILL.md'
+          if (-not (Test-Path -LiteralPath $skill -PathType Leaf)) {
+            [Console]::Error.WriteLine("no SKILL.md at $skill")
+            exit 1
+          }
+          $cli = (Get-Content -LiteralPath "$env:APPDATA\tutor-any-lecture\cli-path" -TotalCount 1 -Encoding UTF8).Trim()
+          & $cli selftest
+          exit $LASTEXITCODE
