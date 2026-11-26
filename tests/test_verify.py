@@ -6,7 +6,8 @@ from conftest import fx
 from tutor_any_lecture.citations import link_unit
 from tutor_any_lecture.cli import main
 from tutor_any_lecture.unit import UnitPaths
-from tutor_any_lecture.verify import run_verify
+from tutor_any_lecture.notecheck import measure_note
+from tutor_any_lecture.verify import format_measures, run_verify
 
 CHECK_NAMES = ["citations", "coverage", "terms", "numbers", "structure",
                "items", "cards", "map", "banned_phrases"]
@@ -685,3 +686,17 @@ def test_speaker_check_never_reads_blockquotes_or_other_languages(tmp_path):
     plan["note_language"] = "fr"
     _write_json(UnitPaths(french).plan, plan)
     assert quote_source_details(run_verify(french)) == []
+
+
+# ---------------------------------------------------------------- scripts the checks cannot split
+
+# synthetic: "compound interest is interest that comes from interest"
+THAI = "ดอกเบี้ยทบต้นคือดอกเบี้ยที่เกิดจากดอกเบี้ย"
+THAI_NOTE = "## ดอกเบี้ย\n\n" + (THAI + " ") * 40 + "(0:30)\n"
+
+
+def test_measures_line_when_length_is_not_applied():
+    line = format_measures(measure_note(THAI_NOTE, "th", "deep", 3.0, "th"))
+    assert line.startswith("measures: length not applied for this language; time citations ")
+    unknown = format_measures(measure_note(THAI_NOTE, "th", "deep", None, "th"))
+    assert unknown.startswith("measures: length not applied for this language; quote share ")

@@ -15,7 +15,7 @@ from importlib import resources
 from pathlib import Path
 
 from .cards import load_cards, validate_cards
-from .checks import CheckResult
+from .checks import NOT_APPLIED, CheckResult
 from .citations import format_seconds, link_time_problems, link_times, parse, resolve, time_link_platform
 from .conceptmap import load_map, validate_map
 from .items import load_items, validate_items
@@ -592,13 +592,21 @@ def _span_text(window) -> str:
 
 
 def format_measures(m: dict) -> str:
-    """The ``measures:`` line verify prints after its table (ASCII only)."""
-    if m["minutes"] is None:
-        parts = [f"length {m['length']['total']} {m['length']['unit']} (duration unknown: no per-minute values)"]
+    """The ``measures:`` line verify prints after its table (ASCII only).
+
+    A ``length`` without a ``total`` was not applied for the note's language.
+    """
+    if m["length"]["total"] is None:
+        length = f"length {NOT_APPLIED}"
+    elif m["minutes"] is None:
+        length = f"length {m['length']['total']} {m['length']['unit']} (duration unknown: no per-minute values)"
     else:
-        unit = m["length"]["unit"]
+        length = f"length {m['length']['per_min']} {m['length']['unit']}/min ({_span_text(m['length']['window'])})"
+    if m["minutes"] is None:
+        parts = [length]
+    else:
         parts = [
-            f"length {m['length']['per_min']} {unit}/min ({_span_text(m['length']['window'])})",
+            length,
             f"time citations {m['time_citations']['per_min']}/min (>= {m['time_citations']['min']})",
             f"quotes {m['quotes']['per_min']}/min (>= {m['quotes']['min']})",
         ]

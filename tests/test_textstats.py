@@ -1,9 +1,13 @@
 import re
+import unicodedata
 from pathlib import Path
 
 import pytest
 
-from tutor_any_lecture.textstats import char_jaccard, containment, ngrams, units
+from tutor_any_lecture.textstats import char_jaccard, containment, ngrams, units, unsegmented
+
+# synthetic: "compound interest is interest that comes from interest"
+THAI = "ดอกเบี้ยทบต้นคือดอกเบี้ยที่เกิดจากดอกเบี้ย"
 
 
 def test_units_cjk_vs_en():
@@ -47,3 +51,26 @@ def test_no_cross_module_private_imports():
         if pattern.search(line)
     ]
     assert offenders == []
+
+
+@pytest.mark.parametrize("text, expected", [
+    (THAI, True),
+    ("ດອກເບ້ຍທົບຕົ້ນ", True),
+    ("ការប្រាក់សមាស", True),
+    ("အတိုးနှုန်း", True),
+    ("चक्रवृद्धि ब्याज", True),
+    ("Compound interest", False),
+    ("Die Zinsen für Ärzte", False),
+    ("сложные проценты", False),
+    ("ανατοκισμός", False),
+    ("الفائدة المركبة", False),
+    ("ריבית דריבית", False),
+    ("复利就是利滚利", False),
+    ("人々は複利を学ぶ", False),
+    ("복리 이자", False),
+    (unicodedata.normalize("NFD", "café crème"), False),
+    ("", False),
+    ("Compound interest, or ดอก in Thai", False),
+])
+def test_scripts_the_checks_cannot_split(text, expected):
+    assert unsegmented(text) is expected

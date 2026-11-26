@@ -6,6 +6,7 @@ Pure functions, standard library only. Code, LaTeX and URLs never count as prose
 from __future__ import annotations
 
 import re
+import unicodedata
 
 CJK_LANGS = {"zh", "ja", "ko"}
 CJK_RE = re.compile(r"[㐀-䶿一-鿿぀-ヿ가-힯]")
@@ -25,11 +26,41 @@ MD_LINK_URL_RE = re.compile(r"(!?\[[^\]\n]*\])\([^)\n]*\)")
 ANGLE_URL_RE = re.compile(r"<https?://[^>\s]*>")
 BARE_URL_RE = re.compile(r"https?://\S+")
 
+# The scripts the word and quote checks can split: by spaces, or one CJK character at a
+# time. A script is the first word of a character's Unicode name.
+SPLIT_SCRIPTS = frozenset({
+    "LATIN", "GREEK", "CYRILLIC", "ARMENIAN", "GEORGIAN", "HEBREW", "ARABIC", "CJK", "IDEOGRAPHIC",
+    "HIRAGANA", "KATAKANA", "HANGUL", "FULLWIDTH", "HALFWIDTH", "MODIFIER",
+})
+_NAME_WORD_RE = re.compile(r"[ -]")
+
 
 def is_cjk_language(lang: str) -> bool:
     """True when the primary subtag of `lang` is zh, ja or ko ("zh-CN" yes, "auto" no)."""
     primary = re.split(r"[-_]", (lang or "").lower(), maxsplit=1)[0]
     return primary in CJK_LANGS
+
+
+def unsegmented(text: str) -> bool:
+    """True when most letters of ``text`` are in a script the checks cannot split into words.
+
+    After NFC, each letter and each mark is counted, except the generic COMBINING marks
+    (they belong to no script). More than half of the counted characters must lie outside
+    SPLIT_SCRIPTS (a character without a Unicode name is outside): Thai, Lao, Khmer, Burmese
+    and the Indic scripts write vowel signs as marks and often no spaces between words.
+    """
+    counted = other = 0
+    for ch in unicodedata.normalize("NFC", text):
+        if not (ch.isalpha() or unicodedata.category(ch).startswith("M")):
+            continue
+        name = unicodedata.name(ch, "")
+        if name.startswith("COMBINING"):
+            continue
+        counted += 1
+        # "THAI CHARACTER SARA II" -> THAI; "CJK UNIFIED IDEOGRAPH-5229" -> CJK; no name -> ""
+        if _NAME_WORD_RE.split(name, maxsplit=1)[0] not in SPLIT_SCRIPTS:
+            other += 1
+    return counted > 0 and other * 2 > counted
 
 
 def fenced_lines(lines: list[str]) -> list[bool]:

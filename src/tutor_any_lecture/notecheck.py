@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 import re
 
-from .checks import CheckResult
+from .checks import NOT_APPLIED, CheckResult
 from .citations import Citation, parse
 from .textstats import (
     ANGLE_URL_RE,
@@ -21,7 +21,9 @@ from .textstats import (
     fenced_lines,
     is_cjk_language,
     strip_code,
+    strip_markup,
     units,
+    unsegmented,
 )
 
 THRESHOLDS = {
@@ -435,6 +437,10 @@ def _skipped(name: str, reason: str) -> CheckResult:
     return CheckResult(name, "PASS", [f"skipped: {reason}"])
 
 
+def _not_applied(name: str) -> CheckResult:
+    return CheckResult(name, "WARN", [NOT_APPLIED])
+
+
 # ---------------------------------------------------------------- rules
 
 
@@ -549,7 +555,9 @@ def measure_note(
     non-CJK lecture: quoted characters per CJK character of prose) and ``quote_share``
     (quoted characters over the prose's non-space characters) is set, the other is None.
     ``h2``: the number of H2 headings and the cap. Per-minute values and limits are None
-    when the duration is unknown. Numbers are rounded to two decimals.
+    when the duration is unknown. When the prose is ``unsegmented`` (a script the checks
+    cannot split into words), ``length`` keeps its unit and its other values are None.
+    Numbers are rounded to two decimals.
     """
     _check_args(goal, quote_density)
     cjk = is_cjk_language(lang)
@@ -570,14 +578,18 @@ def measure_note(
         ratio = None
         share = {"value": _round(n["quote_chars"] / n["nonspace"]) if n["nonspace"] else None,
                  "window": list(THRESHOLDS["same_language_quote_share"])}
-    return {
-        "minutes": _round(duration_min) if known else None,
-        "length": {
+    if unsegmented(strip_markup(p)):
+        length = {"unit": "CJK characters" if cjk else "words", "total": None, "per_min": None, "window": None}
+    else:
+        length = {
             "unit": "CJK characters" if cjk else "words",
             "total": n["units"],
             "per_min": per_min(n["units"]),
             "window": [_round(x) for x in _length_window(goal, unit_key, duration_min)] if known else None,
-        },
+        }
+    return {
+        "minutes": _round(duration_min) if known else None,
+        "length": length,
         "time_citations": {"per_min": per_min(n["times"]), "min": THRESHOLDS["timestamps_per_min"][goal] if known else None},
         "quotes": {"per_min": per_min(n["quotes"]), "min": THRESHOLDS["quotes_per_min"][goal] if known else None},
         "quote_ratio": ratio,
@@ -597,6 +609,10 @@ def check_note(
 ) -> list[CheckResult]:
     """One CheckResult per rule, in a fixed order; `duration` is appended when unknown.
 
+    When the lecture prose is ``unsegmented``, the word rules (length, thin_section,
+    long_paragraph) are WARN with the one detail NOT_APPLIED; length stays skipped when
+    the duration is unknown.
+
     ``quote_density`` (light, standard or dense) picks the quote-ratio window of a CJK
     note of a non-CJK lecture; the same-language share does not depend on it.
     """
@@ -615,6 +631,8 @@ def check_note(
     w_lines = w.split("\n")
     p_lines = p.split("\n")
     paras = _paragraphs(p_lines)
+    # Words cannot be counted in a script the checks cannot split.
+    words_apply = not unsegmented(strip_markup(p))
 
     results: list[CheckResult] = []
 
@@ -679,15 +697,18 @@ def check_note(
     if known:
         lo, hi = _length_window(goal, unit_key, duration_min)
         rate = p_units / duration_min
-        results.append(
-            _result(
-                "length",
-                "WARN",
-                []
-                if lo <= rate <= hi
-                else [f"{rate:.1f} {unit_name} per minute, expected {lo}–{_num(hi)} for {goal}"],
+        if not words_apply:
+            results.append(_not_applied("length"))
+        else:
+            results.append(
+                _result(
+                    "length",
+                    "WARN",
+                    []
+                    if lo <= rate <= hi
+                    else [f"{rate:.1f} {unit_name} per minute, expected {lo}–{_num(hi)} for {goal}"],
+                )
             )
-        )
         times = counts["times"]
         t_min = THRESHOLDS["timestamps_per_min"][goal]
         results.append(
@@ -737,7 +758,7 @@ def check_note(
         else:
             buf.append(line)
     close_section()
-    results.append(_result("thin_section", "WARN", thin))
+    results.append(_result("thin_section", "WARN", thin) if words_apply else _not_applied("thin_section"))
 
     long_limit = THRESHOLDS["long_paragraph"][unit_key]
     long_paras = []
@@ -745,7 +766,7 @@ def check_note(
         n = units("\n".join(para), lang)
         if n > long_limit:
             long_paras.append(f"paragraph '{_short(para[0])}' has {n} {unit_name}")
-    results.append(_result("long_paragraph", "WARN", long_paras))
+    results.append(_result("long_paragraph", "WARN", long_paras) if words_apply else _not_applied("long_paragraph"))
 
     bold = len(BOLD_RE.findall(p))
     results.append(

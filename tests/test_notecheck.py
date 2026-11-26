@@ -339,3 +339,22 @@ def test_cited_quote_contexts_give_the_lead_in_and_the_tail():
     ((quote, cits, lead_in, tail),) = contexts
     assert quote == "does the rate change every year" and [c.raw for c in cits] == ["(0:30)"]
     assert lead_in == " Then a student asked: " and tail == " in class (0:30)"
+
+
+# ---- scripts the checks cannot split into words --------------------------------
+
+# synthetic: "compound interest is interest that comes from interest"
+THAI = "ดอกเบี้ยทบต้นคือดอกเบี้ยที่เกิดจากดอกเบี้ย"
+THAI_NOTE = "## ดอกเบี้ย\n\n" + (THAI + " ") * 40 + "(0:30)\n"
+
+
+def test_word_rules_are_not_applied_to_thai():
+    results = check_note(THAI_NOTE, "th", "deep", 3.0, "markdown", "th")
+    for name in ("length", "thin_section", "long_paragraph"):
+        assert status_of(results, name) == "WARN", name
+        assert details_of(results, name) == ["not applied for this language"], name
+    unknown = check_note(THAI_NOTE, "th", "deep", None, "markdown", "th")
+    assert details_of(unknown, "length") == ["skipped: duration unknown"]
+    assert status_of(unknown, "thin_section") == "WARN"
+    assert measure_note(THAI_NOTE, "th", "deep", 3.0, "th")["length"] == {
+        "unit": "words", "total": None, "per_min": None, "window": None}
