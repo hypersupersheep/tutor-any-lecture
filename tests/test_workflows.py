@@ -65,7 +65,7 @@ def module_imports(tree: ast.Module) -> list[str]:
     return names
 
 
-@pytest.mark.parametrize("script", ["tools/doc_commands.py"])
+@pytest.mark.parametrize("script", ["tools/doc_commands.py", "tools/synthetic_lecture.py"])
 def test_tools_run_on_a_bare_python(script):
     tree = ast.parse((ROOT / script).read_text(encoding="utf-8"))
     imported = module_imports(tree)
