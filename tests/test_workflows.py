@@ -108,10 +108,83 @@ def test_ci_runs_the_readme_install_command():
         assert needed in text, needed
 
 
-@pytest.mark.parametrize("name", ["ci.yml"])
+@pytest.mark.parametrize("name", ["ci.yml", "weekly.yml"])
 def test_windows_steps_end_with_their_exit_code(name):
     steps = [s for j in workflow(name)["jobs"].values() for s in j["steps"]]
     windows = [s for s in steps if s.get("shell") in ("pwsh", "powershell")]
     assert windows
     endings = {s.get("name", ""): s["run"].rstrip().splitlines()[-1].strip() for s in windows}
     assert {n: e for n, e in endings.items() if e != "exit $LASTEXITCODE"} == {}
+
+
+# ---- weekly.yml ----
+
+ASR_POSIX = "bash install.sh --yes --with-asr --from . --cli-only"
+ASR_WINDOWS = "powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -Yes -WithAsr -From . -CliOnly"
+
+
+def first_index(texts: list[str], needle: str) -> int:
+    found = [i for i, t in enumerate(texts) if needle in t]
+    assert found, needle
+    return found[0]
+
+
+def test_weekly_runs_on_a_schedule_and_by_hand():
+    weekly = workflow("weekly.yml")
+    assert weekly["name"] == "weekly"
+    on = weekly[True]  # PyYAML reads the key on: as True
+    assert on["schedule"] == [{"cron": "0 6 * * 1"}]
+    assert "workflow_dispatch" in on
+
+
+def test_weekly_asr_matrix_lets_only_macos_fail():
+    asr = job("weekly.yml", "asr")
+    assert_three_systems(asr)
+    assert asr["continue-on-error"] == "${{ matrix.os == 'macos-latest' }}"
+    assert asr["timeout-minutes"] == 60
+    assert_python_3_12(asr)
+    assert any(u.startswith("astral-sh/setup-uv") for u in uses(asr))
+    assert uses(asr)[0] == "actions/checkout@v4"
+    # No other job may fail quietly.
+    others = {name: j for name, j in workflow("weekly.yml")["jobs"].items() if name != "asr"}
+    assert others and not any("continue-on-error" in j for j in others.values())
+
+
+def test_weekly_installs_espeak_ng_on_linux_only():
+    steps = job("weekly.yml", "asr")["steps"]
+    espeak = [s for s in steps if "espeak-ng" in s.get("run", "")]
+    assert espeak and all(s.get("if") == "runner.os == 'Linux'" for s in espeak)
+    text = "\n".join(s["run"] for s in espeak)
+    assert "sudo apt-get update" in text and "sudo apt-get install -y espeak-ng" in text
+
+
+def test_weekly_builds_installs_transcribes_and_checks():
+    asr = job("weekly.yml", "asr")
+    texts = runs(asr)
+    ffmpeg = first_index(texts, 'python -m pip install "imageio-ffmpeg>=0.5"')
+    build = first_index(texts, "python tools/synthetic_lecture.py build --out")
+    posix = first_index(texts, ASR_POSIX)
+    windows = first_index(texts, ASR_WINDOWS)
+    language = first_index(texts, "profile set lecture_language en")
+    acquire = first_index(texts, "acquire local --file")
+    check = first_index(texts, "python tools/synthetic_lecture.py check --unit")
+    assert ffmpeg < build < min(posix, windows) and max(posix, windows) < language <= acquire < check
+    assert asr["steps"][windows].get("shell") == "pwsh"
+    assert "synthetic" in texts[build] and "cli-path" in texts[acquire] and "unit" in texts[acquire]
+    assert asr["steps"][check].get("if") == "${{ !cancelled() }}"
+
+
+def test_weekly_installs_from_a_skill_folder_alone():
+    skill_only = job("weekly.yml", "skill-only-install")
+    assert_three_systems(skill_only)
+    assert uses(skill_only)[:2] == ["actions/checkout@v4", "actions/setup-python@v5"]
+    assert_python_3_12(skill_only)
+    assert not any(u.startswith("astral-sh/setup-uv") for u in uses(skill_only))
+    texts = runs(skill_only)
+    first = next(r for r in texts if r)
+    assert "uv" in first and "exit 1" in first
+    text = "\n".join(texts)
+    assert "skill copy/tutor-any-lecture" in text or "skill copy\\tutor-any-lecture" in text
+    for needed in ["--yes --cli-only", "-Yes -CliOnly", "selftest", "cli-path"]:
+        assert needed in text, needed
+    assert not [r for r in texts if "-from" in r.lower()]

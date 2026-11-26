@@ -1,0 +1,147 @@
+name: weekly
+
+# Real speech recognition once a week: a synthetic lecture is spoken, installed with the
+# asr extra, transcribed by `acquire local` and checked. And an install from a copy of the
+# skill folder alone, the route a skill-only install takes in Step 0.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  asr:
+    runs-on: ${{ matrix.os }}
+    # Only the macOS cell may fail without failing the run.
+    continue-on-error: ${{ matrix.os == 'macos-latest' }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+      - name: Speech synthesiser (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y espeak-ng
+      - name: ffmpeg for the build
+        shell: bash
+        run: python -m pip install "imageio-ffmpeg>=0.5"
+      - name: Build the synthetic lecture (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: python tools/synthetic_lecture.py build --out "$RUNNER_TEMP/synthetic"
+      - name: Build the synthetic lecture (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python tools/synthetic_lecture.py build --out (Join-Path $env:RUNNER_TEMP 'synthetic')
+          exit $LASTEXITCODE
+      - name: Install with speech recognition (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: bash install.sh --yes --with-asr --from . --cli-only
+      - name: Install with speech recognition (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -Yes -WithAsr -From . -CliOnly
+          exit $LASTEXITCODE
+      - name: Transcribe through the recorded CLI path (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cli="$(head -n 1 "${XDG_CONFIG_HOME:-$HOME/.config}/tutor-any-lecture/cli-path")"
+          "$cli" profile set lecture_language en
+          "$cli" acquire local --file "$RUNNER_TEMP/synthetic/lecture.mp4" --unit "$RUNNER_TEMP/unit"
+      - name: Transcribe through the recorded CLI path (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $cli = (Get-Content -LiteralPath "$env:APPDATA\tutor-any-lecture\cli-path" -TotalCount 1 -Encoding UTF8).Trim()
+          & $cli profile set lecture_language en
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $cli acquire local --file (Join-Path $env:RUNNER_TEMP 'synthetic\lecture.mp4') --unit (Join-Path $env:RUNNER_TEMP 'unit')
+          exit $LASTEXITCODE
+      # Runs after a failed transcription too, so the log says what went wrong.
+      - name: Check the transcript
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: python tools/synthetic_lecture.py check --unit "$RUNNER_TEMP/unit"
+
+  skill-only-install:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # No uv: the installer takes its private-venv branch with pip.
+      - name: No uv on PATH (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if command -v uv >/dev/null 2>&1; then
+            echo "uv is on PATH ($(command -v uv)); this job checks the install without it" >&2
+            exit 1
+          fi
+      - name: No uv on PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $uv = Get-Command uv -ErrorAction SilentlyContinue
+          if ($null -ne $uv) {
+            [Console]::Error.WriteLine("uv is on PATH ($($uv.Source)); this job checks the install without it")
+            exit 1
+          }
+          exit $LASTEXITCODE
+      # The copy has no pyproject.toml above it, so the installer cannot take a checkout.
+      - name: Copy the skill folder alone (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/skill copy"
+          cp -R skills/tutor-any-lecture "$RUNNER_TEMP/skill copy/tutor-any-lecture"
+      - name: Copy the skill folder alone (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dest = Join-Path $env:RUNNER_TEMP 'skill copy'
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item -LiteralPath 'skills\tutor-any-lecture' -Destination (Join-Path $dest 'tutor-any-lecture') -Recurse
+          exit $LASTEXITCODE
+      - name: Install from the copy (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: bash "$RUNNER_TEMP/skill copy/tutor-any-lecture/scripts/install.sh" --yes --cli-only
+      - name: Install from the copy (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $script = Join-Path $env:RUNNER_TEMP 'skill copy\tutor-any-lecture\scripts\install.ps1'
+          powershell -NoProfile -ExecutionPolicy Bypass -File $script -Yes -CliOnly
+          exit $LASTEXITCODE
+      - name: Selftest via recorded CLI path (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cli="$(head -n 1 "${XDG_CONFIG_HOME:-$HOME/.config}/tutor-any-lecture/cli-path")"
+          "$cli" selftest
+      - name: Selftest via recorded CLI path (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $cli = (Get-Content -LiteralPath "$env:APPDATA\tutor-any-lecture\cli-path" -TotalCount 1 -Encoding UTF8).Trim()
+          & $cli selftest
+          exit $LASTEXITCODE
