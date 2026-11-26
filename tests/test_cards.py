@@ -125,11 +125,26 @@ def test_misses_capped_and_idempotent(tmp_path):
 
 # ---- validate_cards --------------------------------------------------------
 
-def test_validate_returns_four_named_results():
-    results = validate_cards(cards(3), "deep", "en")
-    assert [r.name for r in results] == ["count", "duplicates", "citation", "back_length"]
-    assert [r.status for r in results] == ["PASS"] * 4
+def test_validate_returns_five_named_results():
+    results = validate_cards(cards(3), "deep", "en", concepts=["c1"])
+    assert [r.name for r in results] == ["count", "duplicates", "citation", "back_length", "concept"]
+    assert [r.status for r in results] == ["PASS"] * 5
     assert all(r.details == [] for r in results)
+
+
+def test_card_concept_must_be_a_plan_concept():
+    results = validate_cards([card("Q?", concept="c9")], "deep", "en", concepts=["c1"])
+    assert status_of(results, "concept") == "FAIL"
+    assert next(r.details for r in results if r.name == "concept") == [
+        "k1: concept 'c9' is not a concept id in plan.json"
+    ]
+    # a miss card is checked too
+    miss = card("Q2?", id="c9-B|miss", concept="c9", kind="miss")
+    details = next(r.details for r in validate_cards([miss], "deep", "en", concepts=["c1"]) if r.name == "concept")
+    assert details == ["c9-B|miss: concept 'c9' is not a concept id in plan.json"]
+    # without plan concepts the check is skipped
+    skipped = next(r for r in validate_cards([card("Q?", concept="c9")], "deep", "en") if r.name == "concept")
+    assert (skipped.status, skipped.details) == ("PASS", ["skipped: no plan concepts given"])
 
 
 def test_cap_counts_core_only():

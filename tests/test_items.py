@@ -415,5 +415,37 @@ def test_variants_of_one_concept_share_a_kind():
     # an optional D variant is a variant of the concept too
     with_d = bank(tracked={**TRACKED, ("c5", "D"): ("apply",) + TRACKED[("c5", "A")][1:]})
     assert [x.details for x in validate_items(with_d, PLAN, NOTE, "en") if x.name == "variants"] == [
-        ["c5: variants differ in kind: A recall, B recall, C recall, D apply"]
+        ["c5: variants differ in kind: A recall, B recall, C recall, D apply", "c5: variants A and D overlap at 1.00"]
     ]
+
+
+def test_items_validate_checks_d_and_e_like_a_to_c(tmp_path, capsys):
+    import shutil
+
+    from conftest import fx
+
+    u = tmp_path / "unit"
+    shutil.copytree(fx("units", "ok"), u)
+    path = UnitPaths(u).items
+    data = json.loads(path.read_text(encoding="utf-8"))
+    ci = data["tracked"]["compound-interest"]
+    ci["D"] = {**ci["A"], "id": "ci-D", "variant": "D", "kind": "apply", "citation": "",
+               "prompt": "Which grows faster over a decade: simple growth at nine or compound growth at eight?"}
+    ci["E"] = {**ci["A"], "id": "ci-E", "variant": "E", "kind": "apply", "citation": "(slide 1)"}
+    write_json(path, data)
+    assert main(["items", "validate", "--unit", str(u)]) == 1
+    capsys.readouterr()
+    from tutor_any_lecture.items import validate_unit
+
+    results = validate_unit(u)
+    details = {r.name: r.details for r in results}
+    assert "ci-D: empty citation" in details["citation"]
+    assert "compound-interest: variants A and E overlap at 1.00" in details["variants"]
+
+
+def test_ok_fixture_variants_do_not_overlap(tmp_path):
+    from conftest import fx
+
+    from tutor_any_lecture.items import validate_unit
+
+    assert status_of(validate_unit(fx("units", "ok")), "variants") == "PASS"

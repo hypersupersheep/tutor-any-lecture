@@ -431,7 +431,8 @@ def _check_cards(p: UnitPaths, plan, lang: str) -> dict:
         cards = load_cards(p.cards_json)
     except ValueError as e:
         return _entry("cards", "FAIL", [_error_detail("cards.json", e)])
-    return _fold("cards", validate_cards(cards, plan.goal, lang))
+    concepts = [c["id"] for c in plan.concepts]
+    return _fold("cards", validate_cards(cards, plan.goal, lang, concepts=concepts))
 
 
 def _check_map(p: UnitPaths, plan) -> dict:

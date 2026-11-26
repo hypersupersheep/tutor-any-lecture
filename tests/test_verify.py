@@ -527,3 +527,15 @@ def test_terms_ignore_the_how_to_read_paragraph(tmp_path):
     assert entry(run_verify(u), "terms")["status"] == "PASS"
     append_to_note(u, "\n\nHere the Reading Guide Convention applies (slide 1).\n")
     assert entry(run_verify(u), "terms")["details"] == ["not in the transcript or slides: Reading Guide Convention"]
+
+
+def test_card_with_an_unknown_concept_fails_the_gate(tmp_path):
+    u = copy_fixture("ok", tmp_path)
+    path = UnitPaths(u).cards_json
+    cards = _read_json(path)
+    (first,) = [c for c in cards if c["id"] == "card-1"]
+    first["concept"] = "nope"
+    _write_json(path, cards)
+    cards_entry = entry(run_verify(u), "cards")
+    assert cards_entry["status"] == "FAIL"
+    assert cards_entry["details"] == ["concept: card-1: concept 'nope' is not a concept id in plan.json"]

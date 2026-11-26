@@ -109,10 +109,12 @@ def _result(name: str, bad_status: str, offences: list[str]) -> CheckResult:
     return CheckResult(name, bad_status if offences else "PASS", offences)
 
 
-def validate_cards(cards, goal: str, lang: str) -> list[CheckResult]:
-    """The four card checks, always in this order: count, duplicates, citation, back_length.
+def validate_cards(cards, goal: str, lang: str, concepts=None) -> list[CheckResult]:
+    """The five card checks, always in this order: count, duplicates, citation, back_length, concept.
 
-    ``lang`` is unused: the duplicate rule is the same character 3-gram Jaccard in every language.
+    ``concepts`` is the list of plan.json concept ids; every card's concept must be one of
+    them. Without it the concept check passes as skipped. ``lang`` is unused: the duplicate
+    rule is the same character 3-gram Jaccard in every language.
     """
     core = [c for c in cards if c.kind == "core"]
 
@@ -129,11 +131,20 @@ def validate_cards(cards, goal: str, lang: str) -> list[CheckResult]:
     citation = [f"{c.id}: no citation" for c in cards if not c.citation.strip()]
     back_length = [f"{c.id}: back has {len(c.back)} characters" for c in cards if len(c.back) > BACK_MAX]
 
+    if concepts is None:
+        concept = CheckResult("concept", "PASS", ["skipped: no plan concepts given"])
+    else:
+        known = set(concepts)
+        concept = _result("concept", "FAIL", [
+            f"{c.id}: concept {c.concept!r} is not a concept id in plan.json" for c in cards if c.concept not in known
+        ])
+
     return [
         _result("count", "FAIL", count),
         _result("duplicates", "FAIL", duplicates),
         _result("citation", "FAIL", citation),
         _result("back_length", "WARN", back_length),
+        concept,
     ]
 
 

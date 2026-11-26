@@ -191,8 +191,8 @@ def validate_items(
     results: list[CheckResult] = []
 
     # variants: every tracked concept of the plan has at least A, B and C, and the
-    # variants of one concept share a kind: they are asked at random in pre, post and d7,
-    # so unequal variants would distort the measured gain.
+    # variants of one concept share a kind and do not overlap: they are asked at random in
+    # pre, post and d7, so unequal or copied variants would distort the measured gain.
     offences = []
     for cid in plan.tracked:
         if cid not in items["tracked"]:
@@ -205,6 +205,14 @@ def validate_items(
         if len({it.kind for it in variants.values()}) > 1:
             kinds = ", ".join(f"{letter} {variants[letter].kind}" for letter in sorted(variants))
             offences.append(f"{cid}: variants differ in kind: {kinds}")
+    for cid, variants in items["tracked"].items():
+        letters = sorted(variants)
+        for i, x in enumerate(letters):
+            for y in letters[i + 1 :]:
+                a, b = variants[x].prompt, variants[y].prompt
+                score = max(containment(a, b, lang), containment(b, a, lang))
+                if score >= OVERLAP_THRESHOLD:
+                    offences.append(f"{cid}: variants {x} and {y} overlap at {score:.2f}")
     results.append(_result("variants", "FAIL", offences))
 
     # apply_share: at least half of all items are apply/transfer-type.
