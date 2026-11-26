@@ -2,7 +2,15 @@ import json
 
 import pytest
 
-from tutor_any_lecture.citations import link_times, link_unit, parse, resolve
+from tutor_any_lecture.citations import (
+    TIME_LINK_FORMS,
+    link_times,
+    link_unit,
+    parse,
+    resolve,
+    time_link_platform,
+    time_url,
+)
 from tutor_any_lecture.unit import UnitPaths
 
 
@@ -126,11 +134,11 @@ def test_cite_link_links_plain_times(tmp_path):
 def test_cite_link_url_forms():
     assert link_times("(0:30)", "https://youtu.be/abc") == ("([0:30](https://youtu.be/abc?t=30s))", 1)
     # an existing start time is replaced, other parameters stay
-    assert link_times("(1:00)", "https://y.example/w?v=a&t=15s&list=x") == (
-        "([1:00](https://y.example/w?v=a&list=x&t=60s))", 1)
-    assert link_times("(1:00)", "https://y.example/w?t=15") == ("([1:00](https://y.example/w?t=60s))", 1)
+    assert link_times("(1:00)", "https://www.youtube.com/watch?v=a&t=15s&list=x") == (
+        "([1:00](https://www.youtube.com/watch?v=a&list=x&t=60s))", 1)
+    assert link_times("(1:00)", "https://youtu.be/a?t=15") == ("([1:00](https://youtu.be/a?t=60s))", 1)
     # parentheses and spaces in the address would end the link: they are percent-encoded
-    assert link_times("(0:01)", "https://y.example/a (b)") == ("([0:01](https://y.example/a%20%28b%29?t=1s))", 1)
+    assert link_times("(0:01)", "https://youtu.be/a (b)") == ("([0:01](https://youtu.be/a%20%28b%29?t=1s))", 1)
 
 
 def test_cite_link_is_idempotent(tmp_path):
@@ -142,11 +150,22 @@ def test_cite_link_is_idempotent(tmp_path):
     assert link_times(LINKED_NOTE, VIDEO) == (LINKED_NOTE, 0)
 
 
-@pytest.mark.parametrize("kind, url", [("local", None), ("transcript", None), ("platform", VIDEO), ("url", None)])
-def test_cite_link_leaves_other_sources_alone(tmp_path, kind, url):
+NOT_VIDEO = "the source is not an online video"
+NO_ADDRESS = "source.json has no video address"
+
+
+@pytest.mark.parametrize("kind, url, reason", [
+    ("local", None, NOT_VIDEO),
+    ("transcript", None, NOT_VIDEO),
+    ("url", None, NO_ADDRESS),
+    ("platform", None, NO_ADDRESS),
+    ("url", "https://example.mediaspace.kaltura.com/media/t/1_abc",
+     "no time links for example.mediaspace.kaltura.com: the times stay plain"),
+])
+def test_cite_link_leaves_other_sources_alone(tmp_path, kind, url, reason):
     u = url_unit(tmp_path, url=url, kind=kind)
     before = UnitPaths(u).explanation.read_bytes()
-    assert link_unit(u) == {"path": str(UnitPaths(u).explanation), "linked": 0}
+    assert link_unit(u) == {"path": str(UnitPaths(u).explanation), "linked": 0, "reason": reason}
     assert UnitPaths(u).explanation.read_bytes() == before
 
 
@@ -154,5 +173,68 @@ def test_cite_link_without_source_changes_nothing(tmp_path):
     u = url_unit(tmp_path)
     UnitPaths(u).source.unlink()
     before = UnitPaths(u).explanation.read_bytes()
-    assert link_unit(u)["linked"] == 0
+    report = link_unit(u)
+    assert report["linked"] == 0
+    assert report["reason"] == "no source.json in the unit: no video to link to"
     assert UnitPaths(u).explanation.read_bytes() == before
+
+
+def test_cite_link_links_a_panopto_unit(tmp_path):
+    viewer = "https://example.hosted.panopto.com/Panopto/Pages/Viewer.aspx?id=abc-123"
+    u = url_unit(tmp_path, url=viewer, kind="platform")
+    assert link_unit(u) == {"path": str(UnitPaths(u).explanation), "linked": 8}
+    note = UnitPaths(u).explanation.read_text(encoding="utf-8")
+    assert f"([13:42]({viewer}&start=822))" in note
+
+
+# ---- one table of time forms --------------------------------------------------
+
+
+@pytest.mark.parametrize("url, expected", [
+    ("https://www.youtube.com/watch?v=abc", "https://www.youtube.com/watch?v=abc&t=822s"),
+    ("https://youtu.be/abc", "https://youtu.be/abc?t=822s"),
+    ("https://www.bilibili.com/video/BV1xx411c7mD?p=2&t=30", "https://www.bilibili.com/video/BV1xx411c7mD?p=2&t=822"),
+    ("https://vimeo.com/123456#t=30s", "https://vimeo.com/123456#t=822s"),
+    ("https://vimeo.com/123456?share=copy", "https://vimeo.com/123456?share=copy#t=822s"),
+    ("https://example.hosted.panopto.com/Panopto/Pages/Viewer.aspx?id=abc-123&start=30",
+     "https://example.hosted.panopto.com/Panopto/Pages/Viewer.aspx?id=abc-123&start=822"),
+])
+def test_time_url_per_platform(url, expected):
+    assert time_url(url, 822) == expected
+
+
+@pytest.mark.parametrize("url", [
+    "https://video.example.com/watch?v=x",
+    "https://www.youtube.com/embed/abc",
+    "https://www.youtube.com/watch",
+    "https://example.hosted.panopto.com/Panopto/Pages/Embed.aspx?id=abc",
+    "https://example.hosted.panopto.com/Panopto/Pages/Viewer.aspx",
+    "https://vimeo.com/channels/staff",
+    "https://www.bilibili.com/bangumi/play/ep1",
+    "https://example.mediaspace.kaltura.com/media/t/1_abc",
+])
+def test_addresses_without_a_time_form(url):
+    assert time_link_platform(url) is None
+    with pytest.raises(ValueError):
+        time_url(url, 822)
+
+
+SAMPLE_ADDRESSES = {
+    "youtube": "https://www.youtube.com/watch?v=abc",
+    "bilibili": "https://www.bilibili.com/video/BV1xx411c7mD",
+    "vimeo": "https://vimeo.com/123456",
+    "panopto": "https://example.hosted.panopto.com/Panopto/Pages/Viewer.aspx?id=abc-123",
+}
+
+
+def test_written_form_matches_the_row():
+    assert [tuple(row) for row in TIME_LINK_FORMS] == [
+        ("youtube", "YouTube", "t=<seconds>s", "t", "s", False),
+        ("bilibili", "Bilibili", "t=<seconds>", "t", "", False),
+        ("vimeo", "Vimeo", "#t=<seconds>s", "t", "s", True),
+        ("panopto", "Panopto", "start=<seconds>", "start", "", False),
+    ]
+    for row in TIME_LINK_FORMS:
+        url = SAMPLE_ADDRESSES[row.name]
+        assert time_link_platform(url) == row.name
+        assert time_url(url, 822).endswith(row.written.replace("<seconds>", "822"))

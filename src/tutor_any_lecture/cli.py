@@ -624,7 +624,9 @@ def build_parser() -> argparse.ArgumentParser:
     cite = sub.add_parser("cite", help="turn the note's time citations into links to the video")
     cite_sub = cite.add_subparsers(dest="cite_command", required=True)
     cl = cite_sub.add_parser(
-        "link", help="link every plain time citation in explanation.md to the video (units from a link only)"
+        "link",
+        help="link every plain time citation in explanation.md to that second of the video "
+        "(YouTube, Bilibili, Vimeo and Panopto addresses)",
     )
     cl.add_argument("--unit", type=_path, required=True, help="the unit folder")
     cl.set_defaults(func=_cmd_cite_link)
