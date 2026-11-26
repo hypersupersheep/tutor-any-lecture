@@ -183,6 +183,9 @@ def test_unknown_installer_flag_is_reported():
     assert check_installer_command(command, flags) == ["unknown flag '-Force' for install.ps1"]
     command = 'powershell -NoProfile -ExecutionPolicy Bypass -File "<skill folder>\\scripts\\install.ps1" -Yes -Force'
     assert check_installer_command(command, flags) == ["unknown flag '-Force' for install.ps1"]
+    # Unquoted, a POSIX split would eat the backslashes; the script is still found.
+    command = "powershell -File C:\\skills\\scripts\\install.ps1 -Yes -Force"
+    assert check_installer_command(command, flags) == ["unknown flag '-Force' for install.ps1"]
 
 
 # ---- D4 ----

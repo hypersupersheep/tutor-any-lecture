@@ -217,6 +217,8 @@ def _heredoc(text: str, start: str) -> str:
     for i, line in enumerate(lines):
         if line.strip().startswith(start):
             m = re.search(r"<<-?\s*'?\"?(\w+)", line)
+            if m is None:
+                break
             end = m.group(1)
             body = []
             for later in lines[i + 1:]:
@@ -282,7 +284,12 @@ def check_installer_command(text: str, flags: dict[str, set[str]]) -> list[str]:
         return [f"cannot split the command: {e}"]
     script_at = next((i for i, t in enumerate(tokens) if _names_script(t)), None)
     if script_at is None:
-        return []
+        # A POSIX split eats the backslashes of an unquoted Windows path (C:\x\install.ps1):
+        # find the script among the whitespace tokens instead.
+        tokens = [t.strip("\"'[]") for t in _ANGLE.sub("PLACEHOLDER", text).split()]
+        script_at = next((i for i, t in enumerate(tokens) if _names_script(t)), None)
+    if script_at is None:
+        return [f"no token names {' or '.join(INSTALLERS)}"]
     script = _names_script(tokens[script_at])
     known = flags[script]
     problems = []
