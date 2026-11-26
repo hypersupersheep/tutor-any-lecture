@@ -1,0 +1,10 @@
+{
+  "ink": "#121212",
+  "paper": "#FDFDFC",
+  "source": "#1D2BD6",
+  "correction": "#D3222A",
+  "highlight": "#FFF24A",
+  "progress_pre": "#B8B8B8",
+  "progress_post": "#121212",
+  "progress_d7": "#5F5F5F"
+}
