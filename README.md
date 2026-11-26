@@ -138,11 +138,11 @@ Extras are optional and never part of the gate.
 
 ### Which agents does it work with?
 
-Any agent that loads skills and runs shell commands. The skill carries notes for Claude Code and Codex, and a generic note for the others, under `skills/tutor-any-lecture/references/agents/`. Browser tools are needed only for Panopto and Moodle pages.
+Any agent that loads skills and runs shell commands. The skill carries notes for Claude Code and Codex, and a generic note for the others, under `skills/tutor-any-lecture/references/agents/`. Browser tools are needed only for pages read in a browser: Panopto, Moodle and the platforms of the experimental adapters.
 
 ### Which sources can it read?
 
-Local video and audio files, folders of materials, YouTube and Bilibili links, transcript files (SRT, VTT, Whisper-style JSON, timestamped TXT, a Zoom transcript TXT or a Teams DOCX export), slide PDFs, PowerPoint (.pptx) decks, and Panopto recordings through an agent with browser tools. Photos of slides (three or more, JPEG or PNG) work when your agent can read images; the skill checks this first.
+Local video and audio files, folders of materials, YouTube and Bilibili links, transcript files (SRT, VTT, Whisper-style JSON, timestamped TXT, a Zoom transcript TXT or a Teams DOCX export), slide PDFs, PowerPoint (.pptx) decks, and Panopto recordings through an agent with browser tools. Photos of slides (three or more, JPEG or PNG) work when your agent can read images; the skill checks this first. Experimental adapters, written from public documentation and not yet run on a real lecture, describe Canvas, Blackboard, Brightspace, Echo360, Kaltura, YuJa, Zoom and Teams/Stream.
 
 ### Does anything leave my computer?
 

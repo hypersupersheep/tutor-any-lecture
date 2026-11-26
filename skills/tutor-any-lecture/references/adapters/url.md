@@ -4,7 +4,7 @@ Adapter: video links. One video page, captions first; audio only when the learne
 
 Video sites that yt-dlp supports: YouTube, Bilibili and many others. Command: `tutor-any-lecture acquire url --url U --unit DIR [--force] [--budget-minutes N]`. It reads the video page without cookies or credentials of any kind. `--budget-minutes` bounds speech recognition when it runs (default `max(30, 2 × the video length in minutes)`).
 
-Lecture-capture and meeting platforms (Panopto, Kaltura, Mediasite, Echo360, YuJa, Opencast, Zoom), recognised by yt-dlp's extractor or by the address, are treated like any other site, with one difference: a token in their address is removed before it is stored. The tool never uses the learner's login, so a recording behind a sign-in is not reachable this way: there the learner uses the platform's captions (for Panopto, [panopto](panopto.md)) or a file they downloaded themselves ([local](local.md)).
+Lecture-capture and meeting platforms (Panopto, Kaltura, Mediasite, Echo360, YuJa, Opencast, Zoom), recognised by yt-dlp's extractor or by the address, are treated like any other site, with one difference: a token in their address is removed before it is stored. The tool never uses the learner's login, so a recording behind a sign-in is not reachable this way: there the learner uses the platform's captions (for Panopto, [panopto](panopto.md); for Echo360, Kaltura, YuJa and Zoom, their experimental adapters) or a file they downloaded themselves ([local](local.md)).
 
 ## URL patterns
 

@@ -262,3 +262,46 @@ def test_learning_platforms_hand_over_slides_and_recordings():
         assert "slides --pdf F --unit DIR" in text, stem
         for link in ("panopto.md", "echo360.md", "kaltura.md", "yuja.md", "zoom.md"):
             assert f"({link})" in text, (stem, link)
+
+
+# ---- A12. the documents point to the new adapters ----
+
+def faq_answer(text: str, question: str) -> str:
+    lines = text.splitlines()
+    start = lines.index(f"### {question}")
+    end = next(i for i in range(start + 1, len(lines)) if lines[i].startswith("#"))
+    return "\n".join(lines[start + 1:end])
+
+
+def test_documents_point_to_the_new_adapters():
+    skill = read(ROOT / "skills" / "tutor-any-lecture" / "SKILL.md")
+    assert "`references/adapters/<platform>.md`" in skill
+    assert "Pages read in a browser (Panopto, Moodle and the platforms above)" in skill
+    readme, readme_zh = read(ROOT / "README.md"), read(ROOT / "README.zh-CN.md")
+    assert (
+        "Experimental adapters, written from public documentation and not yet run on a real lecture, describe "
+        "Canvas, Blackboard, Brightspace, Echo360, Kaltura, YuJa, Zoom and Teams/Stream."
+    ) in faq_answer(readme, "Which sources can it read?")
+    assert (
+        "实验性的 adapter 按公开文档写成,还没在真实的课上跑过,覆盖 Canvas、Blackboard、Brightspace、Echo360、Kaltura、"
+        "YuJa、Zoom 和 Teams/Stream。"
+    ) in faq_answer(readme_zh, "能读哪些材料?")
+    agents = faq_answer(readme, "Which agents does it work with?")
+    assert (
+        "Browser tools are needed only for pages read in a browser: Panopto, Moodle and the platforms of the "
+        "experimental adapters."
+    ) in agents
+    assert "only for Panopto and Moodle pages" not in agents
+    agents_zh = faq_answer(readme_zh, "支持哪些 agent?")
+    assert "只有在浏览器里读的页面需要浏览器工具:Panopto、Moodle,以及实验性 adapter 里的平台。" in agents_zh
+    assert "只有 Panopto 和 Moodle 页面" not in agents_zh
+    changelog = read(ROOT / "CHANGELOG.md").split("\n## ")[1]
+    bullet = next(line for line in changelog.splitlines() if line.startswith("- Start from what you have:"))
+    assert bullet.endswith(
+        "Experimental adapters, written from public documentation, describe Canvas, Blackboard, Brightspace, "
+        "Echo360, Kaltura, YuJa, Zoom and Teams/Stream."
+    )
+    assert "their experimental adapters" in read(ADAPTERS / "url.md")
+    contributing = read(ROOT / "CONTRIBUTING.md")
+    for s in ("PLATFORM_KEYS", "tests/test_platform_docs.py", "helper script"):
+        assert s in contributing, s
