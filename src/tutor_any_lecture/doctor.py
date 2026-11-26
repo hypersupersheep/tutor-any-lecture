@@ -9,6 +9,7 @@ network call, downloads anything, starts a browser or runs ffmpeg.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import platform
 import posixpath
@@ -255,6 +256,27 @@ def check_skill_version() -> tuple[bool, str]:
     return False, f"VERSION holds '{release_id}', which is not a release id"
 
 
+# The SHA-256 of the one word shown in the skill's assets/vision-probe.png, casefolded and
+# UTF-8 encoded. Only the digest is kept, so no file holds the word an agent could read
+# instead of the image.
+VISION_PROBE_SHA256 = "33f38545e00a507fba8be0243f5d19ee24dac952e6664422f91c32df2c63ff0b"
+
+# The word the agent read in the probe image, given to ``run_doctor``, for the length of that call only.
+_vision_word: str | None = None
+
+
+def check_vision() -> tuple[bool, str]:
+    """Can the agent that runs this command read images? It says by the word it read in the probe."""
+    word = _vision_word
+    if word is None:
+        return True, "not checked (pass --vision-word WORD)"
+    shown = word.strip()
+    # VISION_PROBE_SHA256 is looked up at call time, so a test can patch it.
+    if hashlib.sha256(shown.casefold().encode("utf-8")).hexdigest() == VISION_PROBE_SHA256:
+        return True, "the word in the probe image was read"
+    return False, f"'{shown}' is not the word in the probe image"
+
+
 # Speech recognition is an optional extra: a machine without it is still ready.
 _ASR_FIX = (
     "Optional: needed only for audio or video without captions. "
@@ -265,6 +287,9 @@ _COMMAND_FIX = "Optional: run the installer again; it records the command's full
 _SKILL_FIX = (
     "Optional: the command and this skill differ; "
     "reinstall the command with the skill's installer and --cli-only (Windows: -CliOnly)."
+)
+VISION_FIX = (
+    "Optional: this agent cannot read images, so photos of slides cannot be used; ask for the slides as a PDF."
 )
 
 CHECKS: list[Check] = [
@@ -286,18 +311,21 @@ CHECKS: list[Check] = [
     Check("asr_model", False, check_asr_model, _ASR_FIX),
     Check("command", False, check_command, _COMMAND_FIX),
     Check("skill_version", False, check_skill_version, _SKILL_FIX),
+    Check("vision", False, check_vision, VISION_FIX),
 ]
 
 
-def run_doctor(skill: Path | None = None) -> dict:
+def run_doctor(skill: Path | None = None, vision_word: str | None = None) -> dict:
     """Run every check in ``CHECKS`` (read at call time). Never raises.
 
     ``skill`` is the skill folder whose VERSION ``skill_version`` compares with this
-    command's version; it is kept in a module-level value for the length of the call,
-    so every check stays a function of no arguments.
+    command's version; ``vision_word`` is the word the agent read in the probe image, for
+    ``vision``. Each is kept in a module-level value for the length of the call, so every
+    check stays a function of no arguments.
     """
-    global _skill
+    global _skill, _vision_word
     _skill = Path(skill) if skill is not None else None
+    _vision_word = vision_word
     try:
         checks = []
         ready = True
@@ -316,3 +344,4 @@ def run_doctor(skill: Path | None = None) -> dict:
         return {"ready": ready, "checks": checks, "version": __version__}
     finally:
         _skill = None
+        _vision_word = None

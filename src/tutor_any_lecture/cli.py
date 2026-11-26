@@ -125,7 +125,7 @@ def _cmd_profile_set(args) -> int:
 def _cmd_doctor(args) -> int:
     from . import doctor
 
-    report = doctor.run_doctor(skill=args.skill)
+    report = doctor.run_doctor(skill=args.skill, vision_word=args.vision_word)
     if args.json:
         _print_json(report)
     else:
@@ -671,6 +671,8 @@ def build_parser() -> argparse.ArgumentParser:
     doc.add_argument("--json", action="store_true", help="print the report as one JSON line")
     doc.add_argument("--skill", type=_path, default=None, metavar="DIR",
                      help="the skill folder whose VERSION this command's version is compared with")
+    doc.add_argument("--vision-word", default=None, metavar="WORD",
+                     help="the word the agent read in the skill's assets/vision-probe.png (none when it cannot see images)")
     doc.set_defaults(func=_cmd_doctor)
     acquire = sub.add_parser("acquire", help="get a lecture's transcript into a unit folder")
     acquire_sub = acquire.add_subparsers(dest="acquire_command")

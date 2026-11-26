@@ -2,12 +2,14 @@
 
 import hashlib
 import json
+import socket
 
 import PIL
 import pytest
 from PIL import Image
 
 from fixtures.make_pdf import make_pdf
+from tutor_any_lecture import doctor
 from tutor_any_lecture.acquire.importer import import_transcript
 from tutor_any_lecture.cli import main
 from tutor_any_lecture.slides import extract_pdf, photo_order
@@ -383,3 +385,23 @@ def test_slides_text_errors(tmp_path, capsys):
         assert exc.value.code == 2
         assert capsys.readouterr().out == ""
     assert pages_json.read_bytes() == before
+
+
+# ---- N1. photos go nowhere ----
+
+def test_photo_commands_open_no_connection(tmp_path, monkeypatch, capsys):
+    def refuse(*args, **kwargs):
+        raise AssertionError("a photo command opened a network connection")
+
+    monkeypatch.setattr(socket.socket, "connect", refuse)
+    monkeypatch.setattr(socket, "create_connection", refuse)
+    monkeypatch.setattr(socket, "getaddrinfo", refuse)
+    unit = photo_unit(tmp_path, capsys)
+    page_text = text_file(tmp_path, "p1.txt", b"Compound interest\n")
+    code, out, err = run_text(unit, 1, page_text, capsys)
+    assert code == 0 and json.loads(out)["remaining"] == [2, 3]
+    monkeypatch.setattr(doctor, "CHECKS", [c for c in doctor.CHECKS if c.name == "vision"])
+    assert doctor.run_doctor(vision_word="x")["checks"] == [
+        {"name": "vision", "ok": False, "detail": "'x' is not the word in the probe image",
+         "fix": doctor.CHECKS[0].fix}
+    ]

@@ -1,13 +1,19 @@
 import dataclasses
+import hashlib
 import importlib
 import importlib.util
+import io
 import json
+import os
+import re
 import shutil
+import struct
 import subprocess
 import sys
-from pathlib import PurePosixPath, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import pytest
+from PIL import Image
 
 from tutor_any_lecture import __version__, asr, doctor
 from tutor_any_lecture.cli import main
@@ -15,13 +21,17 @@ from tutor_any_lecture.config import config_dir
 from tutor_any_lecture.doctor import run_doctor
 
 REQUIRED = ["python", "ffmpeg", "yt_dlp", "config_dir"]
-OPTIONAL = ["js_runtime", "browser", "asr_backend", "asr_model", "command", "skill_version"]
+OPTIONAL = ["js_runtime", "browser", "asr_backend", "asr_model", "command", "skill_version", "vision"]
 ASR_FIX = ("Optional: needed only for audio or video without captions. "
            "Run the installer again with --with-asr (Windows: -WithAsr).")
 MODEL_FIX = "Optional: the model downloads once, on the first transcription."
 COMMAND_FIX = "Optional: run the installer again; it records the command's full path in cli-path."
 SKILL_FIX = ("Optional: the command and this skill differ; reinstall the command with the skill's "
              "installer and --cli-only (Windows: -CliOnly).")
+VISION_FIX = ("Optional: this agent cannot read images, so photos of slides cannot be used; "
+              "ask for the slides as a PDF.")
+ROOT = Path(__file__).resolve().parents[1]
+PROBE = ROOT / "skills" / "tutor-any-lecture" / "assets" / "vision-probe.png"
 
 
 def patch_checks(monkeypatch, required, optional=True):
@@ -108,7 +118,7 @@ def test_text_output(monkeypatch, capsys):
     patch_checks(monkeypatch, required=True, optional=False)
     assert main(["doctor"]) == 0
     lines = capsys.readouterr().out.splitlines()
-    assert len(lines) == 18
+    assert len(lines) == 20
     assert lines[0] == f"tutor-any-lecture {__version__}"
     assert "[ok] python: patched" in lines
     i = lines.index("[warn] browser: patched")
@@ -119,7 +129,7 @@ def test_text_output(monkeypatch, capsys):
     patch_checks(monkeypatch, required=False)
     assert main(["doctor"]) == 3
     lines = capsys.readouterr().out.splitlines()
-    assert len(lines) == 16
+    assert len(lines) == 17
     j = lines.index("[FAIL] python: patched")
     assert lines[j + 1].startswith("  fix: ") and "Optional" not in lines[j + 1]
     assert "[ok] browser: patched" in lines
@@ -408,3 +418,90 @@ def test_cli_doctor_takes_a_skill_folder(tmp_cfg, tmp_path, capsys):
     entry = by_name(json.loads(capsys.readouterr().out))["skill_version"]
     assert entry["ok"] is False
     assert entry["detail"] == f"skill 9.9.9, command {__version__}"
+
+
+# --- the vision probe ---
+
+
+def png_chunk_types(data: bytes) -> list[bytes]:
+    """The chunk types of a PNG file, in order, read with struct."""
+    assert data[:8] == b"\x89PNG\r\n\x1a\n"
+    types, pos = [], 8
+    while pos < len(data):
+        length, kind = struct.unpack(">I4s", data[pos:pos + 8])
+        types.append(kind)
+        pos += 12 + length  # length, type, data, CRC
+    return types
+
+
+def test_vision_probe_image_is_a_plain_png():
+    data = PROBE.read_bytes()
+    assert len(data) <= 16384
+    types = png_chunk_types(data)
+    assert set(types) == {b"IHDR", b"IDAT", b"IEND"} and types[0] == b"IHDR" and types[-1] == b"IEND"
+    with Image.open(io.BytesIO(data)) as image:
+        assert image.format == "PNG" and image.size == (800, 160) and image.mode == "L"
+        dark = sum(image.histogram()[:128])
+    assert 0.02 <= dark / (800 * 160) <= 0.30
+
+
+# Runs of letters, as an agent reading a file would meet a word.
+LETTER_RUN = re.compile(rb"[A-Za-z]+")
+
+
+def test_vision_probe_word_is_in_no_file():
+    # The rule beside this test: the word is in no commit message and in no report either.
+    git = shutil.which("git")
+    if git is None:
+        pytest.skip("git is not installed")
+    inside = subprocess.run([git, "-C", str(ROOT), "rev-parse", "--is-inside-work-tree"], capture_output=True)
+    if inside.returncode != 0 or inside.stdout.strip() != b"true":
+        pytest.skip("not inside a git work tree")
+    # Every file an installed agent may read: the plugin installs the whole repository
+    # (marketplace.json's "source": "./"), and route C clones it. No pathspec.
+    listed = subprocess.run(
+        [git, "-C", str(ROOT), "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+        capture_output=True, check=True,
+    ).stdout
+    offending = []
+    for name in sorted({os.fsdecode(n) for n in listed.split(b"\0") if n}):
+        path = ROOT / name
+        if not path.is_file():  # listed by the index, deleted in the work tree
+            continue
+        runs = {m.group().lower() for m in LETTER_RUN.finditer(path.read_bytes())}
+        if any(hashlib.sha256(run).hexdigest() == doctor.VISION_PROBE_SHA256 for run in runs):
+            offending.append(name)
+    assert offending == []
+
+
+def test_vision_probe_digest_is_hex():
+    assert re.fullmatch(r"[0-9a-f]{64}", doctor.VISION_PROBE_SHA256)
+
+
+def test_vision_compares_the_word_without_case(monkeypatch):
+    monkeypatch.setattr(doctor, "VISION_PROBE_SHA256", hashlib.sha256(b"secretword").hexdigest())
+    monkeypatch.setattr(doctor, "CHECKS", [c for c in doctor.CHECKS if c.name == "vision"])
+    for word in ("SecretWord", " SECRETWORD\n"):
+        report = run_doctor(vision_word=word)
+        assert report["ready"] is True
+        assert report["checks"] == [
+            {"name": "vision", "ok": True, "detail": "the word in the probe image was read", "fix": ""}
+        ]
+    for word, shown in (("secret", "secret"), ("", "")):
+        report = run_doctor(vision_word=word)
+        assert report["ready"] is True  # an optional check never blocks readiness
+        assert report["checks"] == [
+            {"name": "vision", "ok": False, "detail": f"'{shown}' is not the word in the probe image",
+             "fix": VISION_FIX}
+        ]
+    assert run_doctor()["checks"] == [
+        {"name": "vision", "ok": True, "detail": "not checked (pass --vision-word WORD)", "fix": ""}
+    ]
+
+
+def test_cli_doctor_takes_the_vision_word(monkeypatch, capsys):
+    monkeypatch.setattr(doctor, "CHECKS", [c for c in doctor.CHECKS if c.name == "vision"])
+    assert main(["doctor", "--json", "--vision-word", "none"]) == 0
+    (entry,) = json.loads(capsys.readouterr().out)["checks"]
+    assert entry["name"] == "vision" and entry["ok"] is False
+    assert entry["detail"] == "'none' is not the word in the probe image"
