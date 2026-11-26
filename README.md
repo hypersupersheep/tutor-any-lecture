@@ -105,7 +105,7 @@ Ask your agent in plain words; it picks the commands.
 
 | You say | What happens |
 |---|---|
-| "Teach me this lecture: week4.mp4" | A local video or audio file is transcribed on your computer with the speech-recognition add-on. With a caption or transcript file beside it, that file is imported instead. |
+| "Teach me this lecture: week4.mp4" | A local video or audio file is transcribed on your computer with the speech-recognition add-on. With a caption or transcript file beside it, that file is imported instead. A video without slides gives key frames, which the note cites as slides. |
 | "Teach me the lecture in this folder" | `acquire route` sorts the folder's files and plans the steps; the agent asks you only what it cannot tell. |
 | "Teach me this video: <YouTube or Bilibili link>" | Captions are used first. The audio is downloaded only with the audio switch on (see Safety and privacy). |
 | "Use this transcript: lecture.vtt" | An SRT, VTT, JSON or timestamped TXT transcript, a Zoom transcript TXT or a Teams DOCX export is imported. |

@@ -335,3 +335,25 @@ def test_cli_keyframes_input_errors_are_json_objects(tmp_path, capsys):
     assert run(missing) == f"{missing.absolute()} does not exist or is not a file"
     assert run(tone) == "tone.wav has no video stream to take key frames from"
     assert run("C:\\x\\lecture.mp4").endswith("does not exist or is not a file")
+
+
+# ---- K8: the documents ------------------------------------------------------------
+
+ROOT = Path(__file__).resolve().parent.parent
+SKILL_DIR = ROOT / "skills" / "tutor-any-lecture"
+
+
+def read(path):
+    return path.read_text(encoding="utf-8")
+
+
+def test_documents_name_keyframes():
+    local = read(SKILL_DIR / "references" / "adapters" / "local.md")
+    assert "tutor-any-lecture keyframes --video F --unit DIR" in local
+    assert "slides text" in local
+    assert "keyframes --video F --unit DIR" in read(SKILL_DIR / "SKILL.md")
+    assert "`keyframes`" in read(SKILL_DIR / "references" / "gate.md")
+    assert "sources/keyframes/" in read(SKILL_DIR / "references" / "output-targets" / "markdown.md")
+    stale = [p.relative_to(ROOT).as_posix() for p in sorted((ROOT / "skills").rglob("*.md"))
+             if "keyframes-deferred" in read(p)]
+    assert stale == []

@@ -11,7 +11,7 @@ Turn one lecture (a recording, a link, a transcript or a slide deck) into a cite
 
 - Pass an argument list when your tool takes one; otherwise quote every argument as your agent note says (see References), so a file name can never run as shell code.
 - Paths: use the workspace that `tutor-any-lecture profile show` prints; it is absolute. The tool expands `~` in every path argument.
-- Installing, `acquire local`, `transcribe`, and `acquire url` when it transcribes audio can run for many minutes: run them with the longest timeout your shell tool allows, or in the background. A command that was stopped cleans up after itself and can be run again.
+- Installing, `acquire local`, `transcribe`, `keyframes`, and `acquire url` when it transcribes audio can run for many minutes: run them with the longest timeout your shell tool allows, or in the background. A command that was stopped cleans up after itself and can be run again.
 
 ## Step 0: Check the tool
 
@@ -36,10 +36,10 @@ Infer what the user wants (which lecture, which outputs, how deep) and the setti
 2. For a folder of materials, run `tutor-any-lecture acquire route --folder <materials> --unit <unit folder>`. It only plans. Then:
    - a question about `unsafe-name`: ask the learner to rename the files it lists, then run the route again;
    - any other question: ask the learner its `text` and have them pick one of its `candidates`; for the pick `candidates[i]`, run that question's `argv[i]` as well;
-   - a step with `runnable: false` is material this version cannot read (HEIC photos, slides that appear only in the video): tell the learner, ask for JPEG or PNG exports (then `slides --photos`) or a PDF export (then `slides --pdf`);
-   - run every other step's `argv` as given (an import step may carry `--media`), with the cli-path in place of its first element when needed, in this order: transcript import or panopto, then `slides`, then `acquire local`; a `slides --photos` step only when Step 0's `vision` check is ok (then follow [photos](references/adapters/photos.md); otherwise skip it and ask for a PDF).
+   - a step with `runnable: false` is material this version cannot read (HEIC photos): tell the learner, ask for JPEG or PNG exports (then `slides --photos`) or a PDF export (then `slides --pdf`);
+   - run every other step's `argv` as given (an import step may carry `--media`), with the cli-path in place of its first element when needed, in this order: transcript import or panopto, then `slides`, then `acquire local` (a `keyframes` step runs where `slides` would); a `slides --photos` step only when Step 0's `vision` check is ok (then follow [photos](references/adapters/photos.md); otherwise skip it and ask for a PDF).
 3. Otherwise pick the adapter for the source:
-   - a local video or audio file: [local](references/adapters/local.md), `tutor-any-lecture acquire local --file F --unit DIR`;
+   - a local video or audio file: [local](references/adapters/local.md), `tutor-any-lecture acquire local --file F --unit DIR`, and for a video without slides `tutor-any-lecture keyframes --video F --unit DIR`;
    - a public video link: [url](references/adapters/url.md), `tutor-any-lecture acquire url --url U --unit DIR [--budget-minutes N]`;
    - a transcript or caption file: [import](references/adapters/import.md), `tutor-any-lecture acquire import --file F --unit DIR`;
    - a Panopto recording: [panopto](references/adapters/panopto.md), `tutor-any-lecture acquire panopto --extract JSON --unit DIR`;
@@ -121,7 +121,7 @@ Extras are optional and never part of the gate.
 - [teaching](references/teaching.md): plan.json and items.json shapes, variants, pretest, post quiz, reviews, cards, map.
 - [gate](references/gate.md): the nine checks, statuses, exit codes, acquisition JSON.
 - [profile](references/profile.md): settings, value sets, the consent gate, plan resolution.
-- [local](references/adapters/local.md): local video or audio, local ASR.
+- [local](references/adapters/local.md): local video or audio, local ASR, key frames from a video without slides.
 - [url](references/adapters/url.md): public video links, captions first.
 - [import](references/adapters/import.md): SRT, VTT, JSON, timestamped text and DOCX transcripts.
 - [panopto](references/adapters/panopto.md): Panopto recordings through the browser.

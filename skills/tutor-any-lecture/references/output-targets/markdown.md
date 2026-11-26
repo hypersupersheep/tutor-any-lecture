@@ -11,7 +11,8 @@ Every unit lives at `<workspace>/courses/<course>/<unit>/` with fixed file names
 | `sources/transcript.json` | `acquire …`, `transcribe` | the timed transcript; never edited |
 | `sources/source.json` | `acquire …`, `transcribe`, `slides --pdf`, `slides --pptx`, `slides --photos` | where the material came from: kind, URL, duration, language, health |
 | `sources/chapters.json` | `acquire panopto` | the platform's chapter titles and times |
-| `sources/slides/pages.json` | `slides --pdf`, `slides --pptx` or `slides --photos` | slide text by page, with footer numbers; speaker notes for a .pptx |
+| `sources/slides/pages.json` | `slides --pdf`, `slides --pptx`, `slides --photos` or `keyframes` | slide text by page, with footer numbers; speaker notes for a .pptx; or one page per key frame, with its time |
+| `sources/keyframes/` | `keyframes` | the key frames of a video without slides, `frame-001.jpg` onward |
 | `sources/suspects.json` | `slides suspects` | likely mis-heard words with the nearest slide term |
 | `plan.json` | you | what the unit teaches (see [teaching](../teaching.md)) |
 | `explanation.md` | you | the note (see [writing](../writing.md)) |
