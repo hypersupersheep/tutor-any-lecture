@@ -65,7 +65,7 @@ Read the transcript, slides, chapters and suspects, then write plan.json in the 
 Follow [writing](references/writing.md) (the note contract) and [teaching](references/teaching.md) (items, cards, map; items.json layout). Order of work:
 1. write items.json, then run `tutor-any-lecture items assign --unit DIR`;
 2. write the pretest section of explanation.md from `tutor-any-lecture items next --unit DIR --phase pre`;
-3. write the rest of the note, with plain time citations such as `(13:42)`; when the unit came from a link, run `tutor-any-lecture cite link --unit DIR` before the gate: it turns them into links to the video (it can be run again);
+3. write the rest of the note with plain time citations such as `(13:42)`, then always run `tutor-any-lecture cite link --unit DIR`, again after every edit: it links each time to its second where the video's address allows, and otherwise changes nothing and says why;
 4. write cards.json and map.json for the outputs listed in plan.json.
 
 For each output plan.json leaves out, skip its artefact and its step: no "cards": cards.json, `cards export` and `cards add-misses`; no "map": map.json and `map mermaid`; no "pretest": the pretest section and the pretest in chat (with "quiz" listed, the gate then warns `pretest_complete`); no "quiz": the `tal:check` sections and every quiz in chat (pretest, post quiz, reviews, practice), so nothing is logged for that unit; neither "pretest" nor "quiz": items.json and `items assign` too. explanation.md is always written: the gate reads it.
@@ -74,7 +74,7 @@ A command that finds plan.json, items.json, assignment.json, cards.json or map.j
 
 ## Gate
 
-Run `tutor-any-lecture cards export --unit DIR` when "cards" is in plan.outputs and `tutor-any-lecture map mermaid --unit DIR` when "map" is; then `tutor-any-lecture verify --unit DIR`. Fix and rerun until overall is PASS (exit 0). Report the `report` line exactly as printed; never claim a visual review that did not happen. The `measures:` line shows how close the note is to each limit. Exit codes and check names: [gate](references/gate.md).
+Run `tutor-any-lecture cite link --unit DIR` first, then `tutor-any-lecture cards export --unit DIR` when "cards" is in plan.outputs and `tutor-any-lecture map mermaid --unit DIR` when "map" is; then `tutor-any-lecture verify --unit DIR`. Fix and rerun until overall is PASS (exit 0). Report the `report` line exactly as printed; never claim a visual review that did not happen. The `measures:` line shows how close the note is to each limit. Exit codes and check names: [gate](references/gate.md).
 
 ## Pretest, then deliver
 

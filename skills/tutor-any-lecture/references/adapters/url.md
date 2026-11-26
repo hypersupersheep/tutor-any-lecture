@@ -37,7 +37,7 @@ A healthy track is used at once. Rolling repeats in automatic captions are remov
    - enable `public_video_audio` in the profile: show the consent notice through `tutor-any-lecture profile set public_video_audio on` (see [profile](../profile.md)); only after the learner agrees, rerun it with `--i-understand`, then rerun `acquire url`. Never turn it on for them.
 6. With a transcript, run `tutor-any-lecture slides suspects --unit DIR`.
 
-Because source.json has `"kind": "url"` and the `url`, every timestamp in explanation.md links to the video at that time: write plain `(mm:ss)` citations and run `tutor-any-lecture cite link --unit DIR` before the gate (see [writing](../writing.md), Citations).
+source.json keeps `"kind": "url"` and the `url`. Write plain `(mm:ss)` citations, then always run `tutor-any-lecture cite link --unit DIR`, again after every edit: on an address with a time form (YouTube, Bilibili, Vimeo, a Panopto viewer) it links every time to that second of the video; on any other address it changes nothing and says why (see [writing](../writing.md), Citations).
 
 ## Downloads offered?
 
@@ -54,7 +54,7 @@ Caption files are always fetched; they are text. Audio is downloaded only then, 
 - An automatic track in another language may be a machine translation; it is never picked when an original exists. When the only tracks are translations, the run behaves as if there were no captions.
 - Automatic captions have no punctuation and mis-hear names: slides and `slides suspects` matter more here.
 - A video that needs a login, age check or membership cannot be read. Do not offer cookies or a login; use the platform's captions, or ask the learner for a file they downloaded themselves.
-- Time links use `&t=<seconds>s`, or `?t=<seconds>s` when the URL has no query; `cite link` writes them. For a platform without a time parameter, cite plain `(mm:ss)` and do not run `cite link`.
+- Time links follow the platform's own time form (the table in [writing](../writing.md), Citations), and only `cite link` writes them: always run `tutor-any-lecture cite link --unit DIR`. On a site with no time form the times stay plain, and its output says so in `reason`.
 
 ## Verified by (name/date) or "experimental"
 

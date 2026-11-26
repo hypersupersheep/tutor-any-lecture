@@ -339,3 +339,50 @@ def test_documents_name_the_review_rules():
     gate = read(SKILL.parent / "references" / "gate.md")
     (cards_row,) = [line for line in gate.splitlines() if line.startswith("| `cards` |")]
     assert "`concept`" in cards_row
+
+
+# ---- always run cite link; time forms, quotation marks, the speaker rule ----
+
+REFERENCES = SKILL.parent / "references"
+ALWAYS_RUN = "always run `tutor-any-lecture cite link --unit dir`"
+NEVER_SAID = (
+    "do not run `cite link`",
+    "do not run it there",
+    "for a unit from a link, run",
+    "when the unit came from a link, run",
+    "for a unit from a link, `tutor-any-lecture cite link",
+)
+
+
+def test_documents_always_run_cite_link():
+    url_doc = REFERENCES / "adapters" / "url.md"
+    docs = [SKILL, REFERENCES / "gate.md", REFERENCES / "writing.md", TEACHING, url_doc, REFERENCES / "adapters" / "panopto.md"]
+    for path in docs:
+        low = read(path).lower()
+        for s in NEVER_SAID:
+            assert s not in low, (path, s)
+    for path in (SKILL, REFERENCES / "gate.md", REFERENCES / "writing.md", TEACHING):
+        assert ALWAYS_RUN in read(path).lower(), path
+    assert read(url_doc).lower().count(ALWAYS_RUN) >= 2
+    assert "`tutor-any-lecture cite link --unit DIR` again" in read(REFERENCES / "gate.md")
+
+
+def test_writing_names_every_time_link_form():
+    from tutor_any_lecture.citations import TIME_LINK_FORMS
+
+    writing = read(REFERENCES / "writing.md")
+    for row in TIME_LINK_FORMS:
+        assert row.label in writing and f"`{row.written}`" in writing, row
+
+
+def test_writing_lists_every_quotation_mark_pair():
+    from tutor_any_lecture.notecheck import QUOTE_PAIRS
+
+    writing = read(REFERENCES / "writing.md")
+    for o, c in QUOTE_PAIRS:
+        assert o + "…" + c in writing, (o, c)
+    assert "write a title in italics" in writing
+
+
+def test_writing_states_the_speaker_rule():
+    assert "Give a quote to the speaker the transcript names" in read(REFERENCES / "writing.md")

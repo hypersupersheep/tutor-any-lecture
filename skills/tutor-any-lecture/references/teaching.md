@@ -102,7 +102,7 @@ In-note checks (`tal:check`), extra practice and interleaved items use practice 
 1. Write items.json.
 2. Run `tutor-any-lecture items assign --unit DIR`.
 3. Write the pretest section of explanation.md from `tutor-any-lecture items next --unit DIR --phase pre` (its `items`, in the printed order).
-4. Write the rest of the note (plain time citations; for a unit from a link, `tutor-any-lecture cite link --unit DIR` links them), then cards.json and map.json for the listed outputs.
+4. Write the rest of the note with plain time citations, then always run `tutor-any-lecture cite link --unit DIR`, again after every edit (it links them where the video's address allows); then cards.json and map.json for the listed outputs.
 
 ## Item kinds by content_type
 

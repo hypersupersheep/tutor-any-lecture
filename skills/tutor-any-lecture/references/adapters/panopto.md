@@ -59,6 +59,7 @@ The audio switch (`public_video_audio`, see [url](url.md)) is the learner's deci
 - Recordings appear with a delay: usually not on the day of the lecture, a day or two later. Some lecturers open recordings only from a given week; the course page is the authority.
 - The page's own `duration` field is the player's remaining time (it can be negative); the import ignores it and uses the last transcript time.
 - Run the script on the Viewer address, not the Embed address: the page address is saved in source.json, and the Embed address carries a token.
+- Time citations link to the viewer at that second (`start=<seconds>`): run `cite link` as for any unit.
 - Sign-in usually lasts about two days and is shared by the browser's tabs; the Panopto session itself is created by the LTI launch.
 - Older recordings on Echo360: the transcript sits behind the transcript icon in the player's top bar, with a download button left of its search box; older recordings may have none.
 

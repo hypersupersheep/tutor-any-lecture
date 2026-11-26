@@ -16,7 +16,7 @@ Exit 0 on PASS, 1 on FAIL.
 
 | check | what it catches | worst status |
 |---|---|---|
-| `citations` | a slide number above the last slide; a time more than 2 s past the duration; a time citation in a slides-only unit; a unit with no `sources/transcript.json` that is not slides-only; `quote_source`: a cited quote that is in neither the transcript nor the slides (FAIL), or that is there but not at the place it cites (WARN, naming where it was found); see [writing](writing.md), Faithful to the lecturer | FAIL |
+| `citations` | a slide number above the last slide; a time more than 2 s past the duration; a time citation in a slides-only unit; a unit with no `sources/transcript.json` that is not slides-only; `quote_source`: a cited quote that is in neither the transcript nor the slides (FAIL), or that is there but not at the place it cites (WARN, naming where it was found), a cited quote with no part of three words or six CJK characters to check (WARN), and an inline quote the note gives to another speaker than the transcript's speaker labels name (WARN, `quote '…' is LECTURER's words at 1:45`), see [writing](writing.md), Faithful to the lecturer; `time_links`: in a unit whose video address has a time form, time citations not yet linked (run `cite link`), and in any unit a time link whose address points at another time or holds no time (WARN); see [writing](writing.md), Citations | FAIL |
 | `coverage` | a slide that is neither cited anywhere in the note nor listed (`slide N` or `slides N–M`) in the `tal:not-covered` section | FAIL |
 | `terms` | capitalised multi-word terms and words with an inner capital, in the lecture prose, that appear in neither the transcript nor the slides; the lines between the H1 and the first H2 and the callout type names are skipped | WARN |
 | `numbers` | numbers with a unit (%, percent, bps, years, months, weeks, days, hours, minutes) or a currency sign that are in the sources but not in the lecture prose, or the other way round | WARN |
@@ -36,9 +36,9 @@ Exit 0 on PASS, 1 on FAIL.
 
 ## The loop
 
-1. For a unit from a link, run `tutor-any-lecture cite link --unit DIR` (it links the plain time citations; see [writing](writing.md), Citations). Run `tutor-any-lecture cards export --unit DIR` when "cards" is in plan.outputs and `tutor-any-lecture map mermaid --unit DIR` when "map" is.
+1. Always run `tutor-any-lecture cite link --unit DIR` (it links the plain time citations where the video's address allows; see [writing](writing.md), Citations). Run `tutor-any-lecture cards export --unit DIR` when "cards" is in plan.outputs and `tutor-any-lecture map mermaid --unit DIR` when "map" is.
 2. Run `tutor-any-lecture verify --unit DIR`.
-3. For each FAIL, read its details, fix the file they name (usually explanation.md, items.json, cards.json or map.json) and rerun. After an items.json change, keep assignment.json unless a tracked concept changed; then rerun `tutor-any-lecture items assign --unit DIR --force` and rewrite the pretest section.
+3. For each FAIL, read its details, fix the file they name (usually explanation.md, items.json, cards.json or map.json) and rerun. After any change to explanation.md, run `tutor-any-lecture cite link --unit DIR` again before verify. After an items.json change, keep assignment.json unless a tracked concept changed; then rerun `tutor-any-lecture items assign --unit DIR --force` and rewrite the pretest section.
 4. Stop at PASS. Fix WARNs that point at a real problem; leave the rest and mention them.
 
 **Visual check.** Only for showcase samples, or when a check reported a problem that only rendering can confirm: render once, look, fix one round, stop.
@@ -68,6 +68,6 @@ Exit 0 on PASS, 1 on FAIL.
 
 `acquire url --url U --info` reads only the video page: it needs no `--unit`, writes nothing and prints `{"status": "ok", "title", "duration", "uploader", "manual_captions": [language codes], "automatic_captions": true|false}`, or the `error` object above (exit 1).
 
-**Commands that write a file** end by printing one JSON object that names it: `{"path"}`, or `{"paths": […]}` for several (`map mermaid` on a map with views; `progress render`, the page and its chart, with `lang`). `cards export`, `cards add-misses` (with `added`), `cite link` (with `linked`), `items assign` (the assignment, with `path`), `slides --pdf` and `slides suspects` (with their counts), `map mermaid`, `progress log` (the attempt, with `path`) and `progress render` do so.
+**Commands that write a file** end by printing one JSON object that names it: `{"path"}`, or `{"paths": […]}` for several (`map mermaid` on a map with views; `progress render`, the page and its chart, with `lang`). `cards export`, `cards add-misses` (with `added`), `cite link` (with `linked`, and `reason` when it links nothing), `items assign` (the assignment, with `path`), `slides --pdf` and `slides suspects` (with their counts), `map mermaid`, `progress log` (the attempt, with `path`) and `progress render` do so.
 
 An existing `sources/transcript.json` without `--force` stops the command before any work (exit 3, one line on stderr). A budget or backend problem (exit 3) is also one stderr line, with no JSON on stdout.
