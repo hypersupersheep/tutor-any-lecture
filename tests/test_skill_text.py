@@ -317,3 +317,25 @@ def test_panopto_stops_when_download_is_off():
     assert "If Download is greyed out or missing, stop and tell the learner" in t
     assert "ask the learner to download it themselves" in t
     assert "Use it only when the profile's `downloads` allows it" not in t
+
+
+# ---- unfinished reviews, the d21 lapse, phases for progress log (M2a Task 5) ----
+
+
+def section(text: str, title: str) -> str:
+    """The H2 section ``## <title>`` of ``text``, up to the next H2."""
+    start = text.index(f"\n## {title}\n")
+    end = text.find("\n## ", start + 1)
+    return text[start:] if end < 0 else text[start:end]
+
+
+def test_documents_name_the_review_rules():
+    quiz = section(read(SKILL), "Quiz me and reviews")
+    for s in ("items validate --unit DIR", "remaining", "own phase", "progress render --course C [--date YYYY-MM-DD]"):
+        assert s in quiz, s
+    teaching = read(TEACHING)
+    for s in ("--answer TEXT", '"remaining"', "14 days", "progress render --course C [--date YYYY-MM-DD]"):
+        assert s in teaching, s
+    gate = read(SKILL.parent / "references" / "gate.md")
+    (cards_row,) = [line for line in gate.splitlines() if line.startswith("| `cards` |")]
+    assert "`concept`" in cards_row

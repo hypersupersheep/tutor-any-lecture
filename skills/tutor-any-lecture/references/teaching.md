@@ -91,7 +91,7 @@ The variants of one concept share one rubric: write it once for A and, for B, C,
 
 ## Tracked concepts and variants
 
-5 tracked concepts per unit (all when fewer). Each has parallel variants A, B and C: the same concept and difficulty, a different surface (other numbers, another case, another direction). All variants of one concept share one `kind` and ask in the same form, so that if one asks for a number, every one does; a concept whose variants differ in kind fails `variants`. `tutor-any-lecture items assign --unit DIR` assigns them at random to pre, post and d7 and records the result in assignment.json; it reuses an existing assignment.json unless `--force` is given. D and E, for d1 and d21, are optional. Parallel variants of one concept must differ enough that no variant's prompt reaches 0.6 containment in another variant's prompt.
+5 tracked concepts per unit (all when fewer). Each has parallel variants A, B and C: the same concept and difficulty, a different surface (other numbers, another case, another direction). All variants of one concept share one `kind` and ask in the same form, so that if one asks for a number, every one does; a concept whose variants differ in kind fails `variants`. `tutor-any-lecture items assign --unit DIR` assigns them at random to pre, post and d7 and records the result in assignment.json; it reuses an existing assignment.json unless `--force` is given. D and E, for d1 and d21, are optional; they get every item check that A, B and C get. Parallel variants of one concept must differ enough that no variant's prompt reaches 0.6 containment in another variant's prompt, in either direction: the `variants` check fails each pair that does, as `<concept>: variants A and D overlap at 0.75`.
 
 ## Practice items
 
@@ -127,9 +127,13 @@ The same protocol for every phase: pre, post, d1, d7, d21 and practice.
 1. Ask one item at a time. The learner answers in their own words.
 2. Before you say whether the answer was right, ask how sure they are: 1 guessing, 2 unsure, 3 sure.
 3. Grade 0, 0.5 or 1 against the rubric. Then show the cited answer; never before the attempt.
-4. Log the score and the confidence together: `tutor-any-lecture progress log --unit DIR --item ID --phase P --score S --confidence K [--exposure E] [--date YYYY-MM-DD]` (no `--course`: course and unit come from plan.json). It appends one line to `<workspace>/progress/<course>.jsonl`, with the item's prompt. An answer given on another day (a review done late, or logged afterwards) takes that day as `--date`, so gain and retention count the right days; the default is today. An unknown item id exits 2; a date not written YYYY-MM-DD exits 2.
+4. Log the score and the confidence together: `tutor-any-lecture progress log --unit DIR --item ID --phase P --score S --confidence K [--exposure E] [--date YYYY-MM-DD] [--answer TEXT]` (no `--course`: course and unit come from plan.json). It appends one line to `<workspace>/progress/<course>.jsonl`, with the item's prompt and the concepts its phase holds, and prints that attempt with `path`, the log file. `--answer TEXT` keeps the learner's answer (surrounding spaces dropped); the progress page shows it beside a confident wrong answer. An answer given on another day (a review done late, or logged afterwards) takes that day as `--date`, so gain and retention count the right days; the default is today. An unknown item id exits 2; a date not written YYYY-MM-DD exits 2.
 
-`tutor-any-lecture items next --unit DIR --phase P` prints `{"phase", "items", "missing"}` for P in pre|post|d1|d7|d21 (`practice` is not a phase there). Practice items come from the `practice` list of items.json or from `tutor-any-lecture items get --unit DIR --id ID`, and are logged with `--phase practice`.
+**Each item in its own phase.** A practice item is logged only with `--phase practice`, a D variant only with d1, an E variant only with d21, and an A, B or C variant only in the phase of pre, post and d7 that assignment.json gives its letter. Any other `--phase` exits 1 with `item ID belongs to phase OWN, not GIVEN` and writes nothing. An A, B or C item needs assignment.json: a missing one exits 1 and names the file.
+
+`tutor-any-lecture items next --unit DIR --phase P` prints `{"phase", "items", "missing"}` for P in pre|post|d1|d7|d21 (`practice` is not a phase there). Practice uses items of the `practice` list of items.json only (`tutor-any-lecture items get --unit DIR --id ID` fetches one by id), logged with `--phase practice`; a tracked item is logged only in its own phase.
+
+A line of the log that cannot be read (not JSON, a missing key, a value outside its set) is skipped: every command that reads the log prints `warning: <log file>: line N skipped: <reason>` on stderr and carries on. Logs written by earlier versions load as they are.
 
 ## Pretest
 
@@ -137,21 +141,21 @@ The pretest is asked in chat after the gate passes and before the learner is giv
 
 ## Post quiz
 
-When the learner says they have read the note, get the items with `tutor-any-lecture items next --unit DIR --phase post`, ask and log each one as above with `--phase post`, then run `tutor-any-lecture cards add-misses --unit DIR` (when "cards" is in plan.outputs). The reviews are counted from the day of the unit's first `post` attempt: until a `post` attempt exists, nothing but that post quiz is ever due, and no learning gain can be measured.
+When the learner says they have read the note, get the items with `tutor-any-lecture items next --unit DIR --phase post`, ask and log each one as above with `--phase post`, then run `tutor-any-lecture cards add-misses --unit DIR` (when "cards" is in plan.outputs). The reviews are counted from the day the post quiz is complete: the latest of the days on which each of its concepts got its first post attempt. Until then nothing but that post quiz is due, and no learning gain can be measured.
 
 ## Reviews and "quiz me"
 
 **Which course.** The course the learner names. When they name none, the courses are the log files under `<workspace>/progress/`: each `<course>.jsonl` is one course.
 
-**What is due.** `tutor-any-lecture progress due --course C [--date YYYY-MM-DD]` prints a list of `{"unit", "phase", "due", "optional"}` entries, oldest first, for today or the given day (to see what tomorrow brings, or to pair with a dated `progress log`):
-- `post`: the unit has a pretest attempt and no post attempt; its post quiz is still owed. Run it as in Post quiz.
-- `d1`, `d7`, `d21`: 1, 7 and 21 days after the unit's first post attempt. d1 and d21 are optional, and d1 lapses once d7 is due or done. Get the items with `tutor-any-lecture items next --unit DIR --phase P`; for d1 and d21, read `missing` in its output and write the D (d1) or E (d21) variants for those concepts into items.json first (or skip the optional review). Ask and log with `--phase P`, then run `tutor-any-lecture cards add-misses --unit DIR` (when "cards" is in plan.outputs).
+**What is due.** `tutor-any-lecture progress due --course C [--date YYYY-MM-DD]` prints a list of `{"unit", "phase", "due", "optional", "answered", "remaining"}` entries, oldest first, for today or the given day (to see what tomorrow brings, or to pair with a dated `progress log`). A phase is complete when each concept it holds has an attempt; one stopped part-way is partial, and its entry has `"answered"` (how many concepts have an attempt) and `"remaining"` (the sorted ids of the rest): ask only the items of those concepts. A phase not started has `"answered": 0` and `"remaining": null`.
+- `post`: the unit's post quiz is not complete; it is due on the unit's first pretest day (its first post day when there was no pretest). Run it as in Post quiz.
+- `d1`, `d7`, `d21`: 1, 7 and 21 days after the post quiz is complete, listed until each is complete. d1 and d21 are optional: d1 lapses once d7 is due or started, and d21 lapses 14 days after it is due. d7 never lapses. Get the items with `tutor-any-lecture items next --unit DIR --phase P`; for d1 and d21, read `missing` in its output, write the D (d1) or E (d21) variants for those concepts into items.json first, then run `tutor-any-lecture items validate --unit DIR` and ask them only when it exits 0 (or skip the optional review). Ask and log with `--phase P`, then run `tutor-any-lecture cards add-misses --unit DIR` (when "cards" is in plan.outputs).
 
 For an entry, DIR is `<workspace>/courses/<course>/<unit>`. Anything the learner wants beyond what is due is practice: practice items, logged with `--phase practice`. Practice misses make no cards.
 
 **Interleaving.** From a course's third unit on, a quiz may add up to two items from earlier units of the same course. Only practice items are reused, never a tracked variant, and each is logged against its own unit (`--unit` that unit's folder) with `--phase practice`.
 
-`tutor-any-lecture progress render --course C` writes the progress page `<workspace>/progress/<course>.md` and prints `{"path"}`: pre, post and day-7 means, normalized gain, retention, a strip per concept (marks of equal scores stand side by side), what is due, and confident-but-wrong answers with the start of each item's prompt.
+`tutor-any-lecture progress render --course C [--date YYYY-MM-DD]` writes the progress page `<workspace>/progress/<course>.md` and prints `{"path"}`: pre, post and day-7 means, normalized gain, retention, a strip per concept (marks of equal scores stand side by side), what is due on the given day (default today), and confident-but-wrong answers with the start of each item's prompt and of the learner's answer. A partial phase shows as "k of n" in its cell (k of its n concepts have an attempt), stays out of every mean, gain and retention until it is complete, and its due line ends `, k of n answered`.
 
 ## Cards
 
@@ -170,7 +174,7 @@ The full notice is in THIRD_PARTY_NOTICES.md.
 
 **Card text.** Write fronts and backs as plain text. `cards export` converts three things for Anki: `$…$` and `$$…$$` math (into MathJax delimiters; write `\$` for a literal dollar sign), backticked code, and fenced code blocks; line breaks become line breaks. Write no HTML: `<`, `>` and `&` are escaped, so a tag shows as text. Put the source in `citation`, not in the back: the export appends the citation under the back, unless the back already ends with it (trailing punctuation and spaces aside, full-width parentheses counting as ordinary ones).
 
-GUIDs are stable (derived from course, unit and card id), so re-importing cards.tsv updates cards without losing review history: never renumber card ids. cards.json is a top-level list of `{"id", "concept", "front", "back", "citation", "kind"?}`; `kind` is "core" (the default) or "miss", and every value is a string. `tutor-any-lecture cards export --unit DIR` writes cards.tsv for Anki's import.
+GUIDs are stable (derived from course, unit and card id), so re-importing cards.tsv updates cards without losing review history: never renumber card ids. cards.json is a top-level list of `{"id", "concept", "front", "back", "citation", "kind"?}`; `kind` is "core" (the default) or "miss", and every value is a string. A card's `concept` must be a concept id of plan.json, or the `concept` check of `cards` fails. `tutor-any-lecture cards export --unit DIR` writes cards.tsv for Anki's import.
 
 ```json
 [
