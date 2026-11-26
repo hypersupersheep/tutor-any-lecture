@@ -26,11 +26,11 @@ The note is written in the language of the `note_language` setting, by default t
 
 ## A look at the bundled sample
 
-This is part of the note of the bundled synthetic sample, a three-minute mini-lecture on compound interest with three slides, which `tutor-any-lecture selftest` runs through the gate. The whole note is [src/tutor_any_lecture/data/sample/explanation.md](src/tutor_any_lecture/data/sample/explanation.md).
+This is part of the note of the bundled synthetic sample, a fourteen-minute mini-lecture on compound interest with three slides, which `tutor-any-lecture selftest` runs through the gate. The whole note is [src/tutor_any_lecture/data/sample/explanation.md](src/tutor_any_lecture/data/sample/explanation.md).
 
-> The lecturer starts from a bank that pays a yearly rate on a deposit (0:09). Slide 1 gives the two ways to pay it. Under simple interest "the rate applies to the deposit only"; under compound interest "the rate applies to the balance, past interest included" (slide 1).
+> The lecturer starts from one idea that "sits under almost every price in finance" (0:40). A bank pays a yearly rate on a deposit, and slide 1 gives two ways to work out the payment, which differ only in what the rate is paid on (1:04, 2:54).
 >
-> The rate is the same in both; only its base differs. "Last year's interest is now part of the balance, and this year it earns interest too" (0:36). The lecturer calls this the whole trick and adds that "people call it interest on interest" (0:45). So compounding is not a higher rate but a base that grows every year by the interest already earned.
+> Under compound interest "last year's interest is now part of the balance, and this year it earns interest too": interest on interest (2:02–2:24). So the first year pays the same both ways, and from the second year compound interest also pays on last year's interest: "The rate is the same, the base is bigger" (3:06–3:54, 4:18).
 
 ## How it works
 

@@ -5,7 +5,7 @@
   "content_type": "formula",
   "note_language": "en",
   "lecture_language": "en",
-  "duration_s": 180,
+  "duration_s": 840,
   "outputs": [
     "explanation",
     "pretest",
@@ -21,7 +21,7 @@
       ],
       "citations": [
         "(slide 1)",
-        "(0:00–0:54)"
+        "(0:40–4:39)"
       ]
     },
     {
@@ -31,7 +31,7 @@
       ],
       "citations": [
         "(slide 2)",
-        "(0:54–1:57)"
+        "(4:39–9:35)"
       ]
     },
     {
@@ -41,7 +41,7 @@
       ],
       "citations": [
         "(slide 3)",
-        "(1:57–2:58)"
+        "(9:35–14:00)"
       ]
     }
   ],
@@ -52,7 +52,7 @@
       "type": "definition",
       "citations": [
         "(slide 1)",
-        "(0:27)"
+        "(1:38)"
       ]
     },
     {
@@ -61,7 +61,7 @@
       "type": "theorem",
       "citations": [
         "(slide 2)",
-        "(1:12)"
+        "(6:02)"
       ]
     },
     {
@@ -70,7 +70,7 @@
       "type": "definition",
       "citations": [
         "(slide 3)",
-        "(2:24)"
+        "(10:55)"
       ]
     }
   ],

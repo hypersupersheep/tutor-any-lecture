@@ -1,61 +1,229 @@
 WEBVTT
 
-00:00:00.000 --> 00:00:09.000
-Today we look at one idea that sits under almost every price in finance: compound interest.
+00:00:00.000 --> 00:00:08.000
+Okay, good afternoon, everyone. Can the people at the back hear me all right?
 
-00:00:09.000 --> 00:00:18.000
-Suppose a bank pays you a yearly rate on a deposit. There are two ways it can work out what to pay.
+00:00:08.000 --> 00:00:17.000
+Good, thank you. It is a bit cold in here today, so do keep your coats on if you like.
 
-00:00:18.000 --> 00:00:27.000
-With simple interest, the bank pays the rate on the deposit only, every year, and nothing else.
+00:00:17.000 --> 00:00:25.000
+There are still some free seats at the front, so please come down, nobody bites.
 
-00:00:27.000 --> 00:00:36.000
-With compound interest, the bank pays the rate on the whole balance, and the balance includes the interest you already earned.
+00:00:25.000 --> 00:00:33.000
+If you are watching the recording later, hello, the slides are the same ones you see here.
 
-00:00:36.000 --> 00:00:45.000
+00:00:33.000 --> 00:00:40.000
+Right, I think that is everyone. Let us make a start.
+
+00:00:40.000 --> 00:00:52.000
+Today we look at one idea that sits under almost every price in finance, and that is compound interest.
+
+00:00:52.000 --> 00:01:04.000
+It is in every savings account, every mortgage and every credit card bill, so it is worth getting exactly right.
+
+00:01:04.000 --> 00:01:16.000
+So here is the first slide. A bank pays you a yearly rate on a deposit, and there are two ways it can work out what to pay.
+
+00:01:16.000 --> 00:01:28.000
+The first way is simple interest. With simple interest, the bank pays the rate on the deposit only, every year, and nothing else.
+
+00:01:28.000 --> 00:01:38.000
+The interest it pays you just sits there to one side. It does not earn anything itself.
+
+00:01:38.000 --> 00:01:50.000
+The second way is compound interest. With compound interest, the bank pays the rate on the whole balance.
+
+00:01:50.000 --> 00:02:02.000
+And the balance includes the interest you already earned. That is the difference, and it is the only difference.
+
+00:02:02.000 --> 00:02:12.000
 So last year's interest is now part of the balance, and this year it earns interest too.
 
-00:00:45.000 --> 00:00:54.000
+00:02:12.000 --> 00:02:24.000
 That is the whole trick. People call it interest on interest, and it is on the first slide for a reason.
 
-00:00:54.000 --> 00:01:03.000
-Now let us write it down. Call the deposit P and the yearly rate r.
+00:02:24.000 --> 00:02:33.000
+Let me say it again slowly, because the rest of the lecture depends on it.
 
-00:01:03.000 --> 00:01:12.000
-After one year the balance is P times one plus r. After two years you multiply by one plus r again.
+00:02:33.000 --> 00:02:45.000
+With simple interest the base is fixed. It is the deposit, and it stays the deposit for ever.
 
-00:01:12.000 --> 00:01:21.000
-Every year is the same step, so after n years the balance is P times one plus r to the power n.
+00:02:45.000 --> 00:02:54.000
+With compound interest the base moves. Every year it grows by the interest already earned.
 
-00:01:21.000 --> 00:01:30.000
-Let us put numbers in. Take a deposit of 100 at 5% a year.
+00:02:54.000 --> 00:03:06.000
+Notice what does not change. The rate is the same in both cases. What changes is the amount the rate is applied to.
 
-00:01:30.000 --> 00:01:39.000
-With simple interest you get 5 each year, so after 10 years you have 150.
+00:03:06.000 --> 00:03:18.000
+In the first year the two ways give exactly the same, because there is no past interest yet to earn anything.
 
-00:01:39.000 --> 00:01:48.000
-With compounding, the same 100 grows to 162.89 after 10 years.
+00:03:18.000 --> 00:03:30.000
+The difference only starts in the second year, when the first year's interest is part of the balance.
 
-00:01:48.000 --> 00:01:57.000
+00:03:30.000 --> 00:03:42.000
+In the second year, simple interest pays the rate on the deposit again, the same amount as the year before.
+
+00:03:42.000 --> 00:03:54.000
+Compound interest pays the rate on the deposit plus last year's interest, so it pays a little more.
+
+00:03:54.000 --> 00:04:06.000
+A little more in the second year, a bit more again in the third, and so on. It adds up.
+
+00:04:06.000 --> 00:04:18.000
+I want you to hold on to that picture of the base growing, because everything else today comes from it.
+
+00:04:18.000 --> 00:04:30.000
+So when somebody tells you compounding is a higher rate, that is not right. The rate is the same, the base is bigger.
+
+00:04:30.000 --> 00:04:39.000
+Okay. Any questions on the two definitions? No? Good, then let us write it down.
+
+00:04:39.000 --> 00:04:51.000
+Here is the second slide. Call the deposit P and the yearly rate r, written as a decimal.
+
+00:04:51.000 --> 00:05:03.000
+Let me go slowly here, one year at a time, because the reason for each step matters more than the formula.
+
+00:05:03.000 --> 00:05:15.000
+After one year the bank adds r times P to the deposit, so the balance is P plus r P, which is P times one plus r.
+
+00:05:15.000 --> 00:05:27.000
+Now the second year. The rate applies to the whole balance, and the whole balance is P times one plus r.
+
+00:05:27.000 --> 00:05:39.000
+So the bank adds r times that, and the balance becomes P times one plus r, times one plus r again.
+
+00:05:39.000 --> 00:05:51.000
+That is P times one plus r squared. We multiply the whole balance, not just the deposit, because last year's interest is in it.
+
+00:05:51.000 --> 00:06:02.000
+Then the third year does exactly the same to that balance, and you get one plus r cubed.
+
+00:06:02.000 --> 00:06:14.000
+Every year is the same step, you know, the same multiplication, so after n years the balance is P times one plus r to the power n.
+
+00:06:14.000 --> 00:06:26.000
+That is the formula on the slide. Write it in your notes in a box, because we will use it all the time.
+
+00:06:26.000 --> 00:06:38.000
+Check it with n equal to one. You get P times one plus r, which is the first year again. Good.
+
+00:06:38.000 --> 00:06:48.000
+And with n equal to zero you get P, the deposit, before any interest. So the formula behaves.
+
+00:06:48.000 --> 00:07:00.000
+Now, the most common mistake I see with this, in homework and in exams, is to add n times r.
+
+00:07:00.000 --> 00:07:12.000
+People write P times one plus n r. That looks reasonable, but that is simple interest, not compound interest.
+
+00:07:12.000 --> 00:07:24.000
+Adding n r means every year pays r on the deposit only. It forgets that the interest earns interest.
+
+00:07:24.000 --> 00:07:36.000
+So if you ever find yourself writing one plus n r for an account that compounds, stop and multiply instead.
+
+00:07:36.000 --> 00:07:48.000
+Let us put numbers in. Take a deposit of 100 at 5% a year, and leave it in the account for 10 years.
+
+00:07:48.000 --> 00:08:00.000
+With simple interest you get 5 each year, every year the same, so after 10 years you have 150.
+
+00:08:00.000 --> 00:08:12.000
+With compounding you need one point oh five to the power ten. On a calculator that is about one point six two eight nine.
+
+00:08:12.000 --> 00:08:19.000
+So the compound balance after ten years is 162.98.
+
+00:08:19.000 --> 00:08:28.000
+Sorry, I swapped the last two digits. It is 162.89, which is what the slide says.
+
+00:08:28.000 --> 00:08:37.000
+So the same 100 grows to 162.89 after 10 years, against 150 with simple interest.
+
+00:08:37.000 --> 00:08:49.000
 The gap is small at first and then it keeps widening, because each year starts from a bigger balance.
 
-00:01:57.000 --> 00:02:06.000
-One more question: how often does the bank pay? Many accounts pay monthly, or even daily.
+00:08:49.000 --> 00:08:59.000
+After one year both accounts hold 105. After two years simple interest gives 110, and compounding gives 110.25.
 
-00:02:06.000 --> 00:02:15.000
+00:08:59.000 --> 00:09:11.000
+That extra quarter is the interest on the first year's interest, and by year ten the gap has grown to almost 13.
+
+00:09:11.000 --> 00:09:23.000
+You can see it in the shapes. Simple interest grows in a straight line, the same step every year.
+
+00:09:23.000 --> 00:09:35.000
+Compound interest grows by the same factor every year, so it curves upwards, slowly at first and then faster.
+
+00:09:35.000 --> 00:09:45.000
+One more question for today: how often does the bank pay? Many accounts pay monthly, or even daily.
+
+00:09:45.000 --> 00:09:57.000
+That is the third slide. The bank quotes one rate, r a year, but it pays it in smaller pieces during the year.
+
+00:09:57.000 --> 00:10:09.000
+Banks like to quote the rate per year because it is easy to read, but it is not quite what you get.
+
+00:10:09.000 --> 00:10:21.000
 If the quoted rate is r and the bank pays m times a year, each payment uses r over m.
 
-00:02:15.000 --> 00:02:24.000
+00:10:21.000 --> 00:10:33.000
+Here m is just a count, the number of payments in a year: two for half-yearly, four for quarterly, twelve for monthly.
+
+00:10:33.000 --> 00:10:45.000
+Each payment is added to the balance, so the next payment earns interest on it. It is compounding again, only faster.
+
+00:10:45.000 --> 00:10:55.000
 Over a full year the balance grows by one plus r over m, to the power m.
 
-00:02:24.000 --> 00:02:33.000
-Take away one and you have the effective annual rate, the rate you really earn over the year.
+00:10:55.000 --> 00:11:07.000
+Take away one and you get the effect of annual rate, the rate you really earn over the year.
 
-00:02:33.000 --> 00:02:42.000
+00:11:07.000 --> 00:11:19.000
+If m is one, the bank pays once a year, and the formula gives back r itself. So nothing changes in that case.
+
+00:11:19.000 --> 00:11:31.000
+Let us try one. Say the bank quotes 12% a year and pays every month, so m is twelve.
+
+00:11:31.000 --> 00:11:43.000
+Each month it pays a twelfth of that, one percent, so you work out one point oh one to the power twelve.
+
+00:11:43.000 --> 00:11:55.000
+That is about one point one two six eight. Take away one, and the effective annual rate is about 12.68%.
+
+00:11:55.000 --> 00:12:04.000
+So the account that says 12% on the poster really pays you 12.68% over the year.
+
+00:12:04.000 --> 00:12:14.000
 The more often the bank pays, the higher the effective rate, even with the same quoted rate.
 
-00:02:42.000 --> 00:02:51.000
+00:12:14.000 --> 00:12:24.000
+Paying twice a year beats paying once, four times beats twice, monthly beats quarterly, and so on.
+
+00:12:24.000 --> 00:12:36.000
+But the gains get smaller. Going from monthly to daily adds very little, so do not expect a miracle.
+
+00:12:36.000 --> 00:12:48.000
+This is why the quoted rate on its own can mislead you. Two accounts can quote the same rate and pay different amounts.
+
+00:12:48.000 --> 00:12:57.000
 So when you compare two accounts, compare their effective annual rates, not the quoted ones.
 
-00:02:51.000 --> 00:02:58.000
-That is it for today. Next time we turn this around and ask what a future payment is worth now.
+00:12:57.000 --> 00:13:09.000
+The same goes for loans. When you borrow, the effective rate is what you really pay, so compare loans the same way.
+
+00:13:09.000 --> 00:13:21.000
+That is the last line on the slide, and it is the one I would like you to remember when you open an account.
+
+00:13:21.000 --> 00:13:31.000
+Before you go, look again at the three slides: simple against compound, the formula, and the frequency.
+
+00:13:31.000 --> 00:13:41.000
+If you can explain each of those in a sentence of your own, you have understood today.
+
+00:13:41.000 --> 00:13:53.000
+Right, that is it for today. Next time we turn this around and ask what a future payment is worth now.
+
+00:13:53.000 --> 00:14:00.000
+Thank you, and see you next time.

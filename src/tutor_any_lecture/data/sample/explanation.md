@@ -4,17 +4,18 @@
 - [Simple and compound interest](#simple-and-compound-interest)
 - [Growth over n years](#growth-over-n-years)
 - [Compounding frequency](#compounding-frequency)
+- [Not covered and errata](#not-covered-and-errata)
 
-How to read this note: what the lecturer said and the slides show, in lecture order; quotes are verbatim; (slide N) is the footer number, (mm:ss) the recording time.
+How to read this note: what the lecturer said and the slides show, in lecture order. Quotes are verbatim, with … for a cut and [ ] for an insertion; (slide N) is the footer number, (mm:ss) the recording time, and note boxes are tutor additions.
 
 ## Pretest
 
 <!-- tal:pretest -->
-1. You put 1000 in an account at 5% a year and leave it for two years. What does the second year pay if interest is simple, and what if it compounds?
+1. You put 1000 in an account at 4% a year and leave it for two years. What does the second year pay if interest is simple, and what if it compounds?
 
 <details><summary>Answer</summary>
 
-50 if simple, since the rate applies to the deposit only; 52.50 if it compounds, since the rate applies to the balance of 1050, past interest included (slide 1, 0:27).
+40 if simple and 41.60 if it compounds, because compound interest pays the rate on the whole balance, last year's interest included, and not on the deposit alone (slide 1, 1:38–2:12).
 
 </details>
 
@@ -22,7 +23,7 @@ How to read this note: what the lecturer said and the slides show, in lecture or
 
 <details><summary>Answer</summary>
 
-6.09%: each half-year pays 6%/2 = 3%, and (1 + 0.03)^2 - 1 = 0.0609 (slide 3, 2:24).
+About 6.09%, because the first half-year's interest joins the balance and earns interest in the second half, so the year pays a little more than the quoted rate (slide 3, 10:33–10:55).
 
 </details>
 
@@ -30,53 +31,112 @@ How to read this note: what the lecturer said and the slides show, in lecture or
 
 <details><summary>Answer</summary>
 
-About 584.93: the balance is 500 times 1.04 to the power 4, the formula P(1 + r)^n with P = 500, r = 0.04 and n = 4 (slide 2, 1:12).
+About 584.93, because each of the 4 years multiplies the whole balance, past interest included, by the same 1.04 (slide 2, 5:39–6:14).
 
 </details>
 <!-- /tal:pretest -->
 
 ## Simple and compound interest
 
-*(slide 1, 0:00–0:54)*
+*(slide 1, 0:40–4:39)*
 
-The lecturer starts from a bank that pays a yearly rate on a deposit (0:09). Slide 1 gives the two ways to pay it. Under simple interest "the rate applies to the deposit only"; under compound interest "the rate applies to the balance, past interest included" (slide 1).
+The lecturer starts from one idea that "sits under almost every price in finance" (0:40). A bank pays a yearly rate on a deposit, and slide 1 gives two ways to work out the payment, which differ only in what the rate is paid on (1:04, 2:54).
 
-The rate is the same in both; only its base differs. "Last year's interest is now part of the balance, and this year it earns interest too" (0:36). The lecturer calls this the whole trick and adds that "people call it interest on interest" (0:45). So compounding is not a higher rate but a base that grows every year by the interest already earned.
+> Simple: the rate applies to the deposit only
+>
+> Compound: the rate applies to the balance, past interest included (slide 1)
 
-## Growth over n years
-
-*(slide 2, 0:54–1:57)*
-
-With deposit $P$ and yearly rate $r$, "after one year the balance is P times one plus r" (1:03). The next year multiplies that balance by $1+r$ again, and "every year is the same step" (1:12), so $n$ years give the formula of slide 2:
-$$P(1+r)^n \tag{1}$$
-
-On "a deposit of 100 at 5% a year" (1:21), simple interest adds 5 each year and holds 150 after 10 years (1:30), while equation (1) gives $100 \times 1.05^{10}$: "the same 100 grows to 162.89 after 10 years" (1:39). The gap widens "because each year starts from a bigger balance" (1:48). Reading (1) as $P(1+nr)$ brings back the simple 150.
+Under compound interest "last year's interest is now part of the balance, and this year it earns interest too": interest on interest (2:02–2:24). So the first year pays the same both ways, and from the second year compound interest also pays on last year's interest: "The rate is the same, the base is bigger" (3:06–3:54, 4:18).
 
 <!-- tal:check -->
-1. Why does the compound balance grow by a power of 1 + r rather than by equal steps each year?
+1. Two accounts pay the same yearly rate on the same deposit, one simple and one compound. Why do they hold the same amount after one year but not after two?
 
 <details><summary>Answer</summary>
 
-Each year multiplies a bigger amount by the same 1 + r, because "last year's interest is now part of the balance" (0:36); equal steps would mean interest on the deposit only (slide 2, 1:03–1:21).
+In the first year there is no past interest yet, so both pay the rate on the deposit; from the second year the compound account also pays it on the first year's interest (3:06–3:54).
+
+</details>
+<!-- /tal:check -->
+
+## Growth over n years
+
+*(slide 2, 4:39–9:35)*
+
+### Derivation: the balance after n years
+
+Slide 2 calls the deposit $P$ and the yearly rate $r$ (4:39). The first year gives $P(1+r)$; the second pays the rate on that whole balance, multiplying by $1+r$ again to $P(1+r)^2$ (5:03–5:51). "Every year is the same step … so after n years the balance is P times one plus r to the power n" (6:02):
+$$P(1+r)^n \tag{1}$$
+
+*Why does the second year multiply $P(1+r)$, not $P$, by $1+r$?*
+
+<details><summary>Answer</summary>
+
+The rate is paid on the whole balance, not just the deposit, "because last year's interest is in it" (5:39).
+
+</details>
+
+> [!WARNING]
+> The most common mistake the lecturer sees is $P(1+nr)$: that is simple interest, and "it forgets that the interest earns interest" (6:48–7:12).
+
+### Worked example: 100 at 5% for 10 years
+
+With 100 at 5% a year for 10 years, simple interest pays 5 a year and ends at 150 (7:36–7:48). Equation (1) gives $100 \times 1.05^{10}$, or 162.89; the lecturer first said 162.98 and corrected it at once (8:00–8:28). The gap widens "because each year starts from a bigger balance" (8:37).
+
+<!-- tal:check -->
+1. Take 300 saved at 6% a year with yearly compounding, over 3 years. Year one gives 300 × 1.06 = 318, and year two gives 318 × 1.06 = 337.08. Finish the third year: what is the final balance, and which single power of 1.06 would give it in one step?
+
+<details><summary>Answer</summary>
+
+About 357.30, from 337.08 × 1.06; the same balance is 300 × 1.06 to the power 3 (slide 2, 5:03–6:14).
+
+</details>
+
+2. Someone saves 800 at 3% a year, compounded once a year, for 6 years. Set up and work out the closing balance.
+
+<details><summary>Answer</summary>
+
+About 955.24: 800 × 1.03 to the power 6 (slide 2, 6:02–6:14).
 
 </details>
 <!-- /tal:check -->
 
 ## Compounding frequency
 
-*(slide 3, 1:57–2:58)*
+*(slide 3, 9:35–14:00)*
 
-Many accounts pay monthly or even daily (1:57). With a quoted rate $r$ paid $m$ times a year, "each payment uses r over m" (2:06), so "over a full year the balance grows by one plus r over m, to the power m" (2:15). "Take away one and you have the effective annual rate" (2:24):
+Many accounts pay monthly or even daily (9:35). With a quoted rate $r$ paid $m$ times a year, "each payment uses r over m", and each payment joins the balance, so the next one earns interest on it (10:09–10:33). Over a year the balance grows by $(1+r/m)^m$, and "take away one and you get the [effective annual rate], the rate you really earn over the year" (10:45–10:55):
 $$(1+r/m)^m - 1 \tag{2}$$
 
-More payments raise equation (2) "even with the same quoted rate" (2:33): four payments a year beat two. Hence the rule to "compare their effective annual rates, not the quoted ones" (2:42). The lecture ends by turning to what a future payment is worth now (2:51).
+On the lecturer's example, 12% a year paid monthly, equation (2) gives about 12.68% (11:19–11:43). Paying more often raises the effective rate "even with the same quoted rate", though monthly to daily adds very little (12:04–12:24). The next lecture asks what a future payment is worth now (13:41).
+
+> [!IMPORTANT]
+> Two accounts can quote the same rate and pay different amounts, so "compare their effective annual rates, not the quoted ones" (slide 3, 12:36–12:57).
+
+> [!NOTE]
+> Equation (2) at a quoted 12%: twice a year gives $1.06^2 - 1 = 12.36\%$, four times $1.03^4 - 1 \approx 12.55\%$. Why does each extra payment add less?
 
 <!-- tal:check -->
 1. You must rank three savings accounts that pay interest on different schedules. Which single number do you work out for each one?
 
 <details><summary>Answer</summary>
 
-Its effective annual rate, since quoted rates on different schedules cannot be compared directly (slide 3, 2:42).
+Its effective annual rate, since quoted rates on different schedules cannot be compared directly (slide 3, 12:48).
 
 </details>
 <!-- /tal:check -->
+
+## Not covered and errata
+
+<!-- tal:not-covered -->
+- 0:00–0:40: small talk before the lecture, while people found their seats.
+<!-- /tal:not-covered -->
+
+<!-- tal:errata -->
+> [!CAUTION]
+> Transcript and slide errata
+>
+> | Time | Heard | Should be |
+> |---|---|---|
+> | 8:12 | 162.98 | 162.89 (lecturer's slip, corrected) |
+> | 10:55 | effect of annual rate | effective annual rate |
+<!-- /tal:errata -->

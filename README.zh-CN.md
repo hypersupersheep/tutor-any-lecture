@@ -26,11 +26,11 @@ Tutor Any Lecture 由一个 agent skill 和一个命令行工具组成,两者都
 
 ## 内置样例节选
 
-下面是内置合成样例笔记的一部分。这个样例是一段三分钟的复利小讲座,配三页课件,`tutor-any-lecture selftest` 会把它完整跑过门禁。完整笔记见 [src/tutor_any_lecture/data/sample/explanation.md](src/tutor_any_lecture/data/sample/explanation.md)。
+下面是内置合成样例笔记的一部分。这个样例是一段十四分钟的复利小讲座,配三页课件,`tutor-any-lecture selftest` 会把它完整跑过门禁。完整笔记见 [src/tutor_any_lecture/data/sample/explanation.md](src/tutor_any_lecture/data/sample/explanation.md)。
 
-> The lecturer starts from a bank that pays a yearly rate on a deposit (0:09). Slide 1 gives the two ways to pay it. Under simple interest "the rate applies to the deposit only"; under compound interest "the rate applies to the balance, past interest included" (slide 1).
+> The lecturer starts from one idea that "sits under almost every price in finance" (0:40). A bank pays a yearly rate on a deposit, and slide 1 gives two ways to work out the payment, which differ only in what the rate is paid on (1:04, 2:54).
 >
-> The rate is the same in both; only its base differs. "Last year's interest is now part of the balance, and this year it earns interest too" (0:36). The lecturer calls this the whole trick and adds that "people call it interest on interest" (0:45). So compounding is not a higher rate but a base that grows every year by the interest already earned.
+> Under compound interest "last year's interest is now part of the balance, and this year it earns interest too": interest on interest (2:02–2:24). So the first year pays the same both ways, and from the second year compound interest also pays on last year's interest: "The rate is the same, the base is bigger" (3:06–3:54, 4:18).
 
 ## 工作流程
 

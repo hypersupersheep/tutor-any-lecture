@@ -41,6 +41,13 @@
       "type": "pitfall",
       "order": 6,
       "citation": "(slide 3)"
+    },
+    {
+      "id": "add_nr",
+      "label": "Adding n times r",
+      "type": "pitfall",
+      "order": 7,
+      "citation": "(6:48–7:12)"
     }
   ],
   "edges": [
@@ -68,6 +75,11 @@
       "from": "effective",
       "to": "quoted",
       "verb": "replaces"
+    },
+    {
+      "from": "add_nr",
+      "to": "simple",
+      "verb": "is really"
     }
   ]
 }

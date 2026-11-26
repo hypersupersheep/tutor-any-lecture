@@ -274,7 +274,7 @@ def share(md):
 def test_quote_measures_are_the_same_before_and_after_cite_link():
     md = resources.files("tutor_any_lecture").joinpath("data", "sample", "explanation.md").read_text(encoding="utf-8")
     plain = measure_note(md, "en", "deep", 3.0, "en")
-    assert plain["quote_share"]["value"] == 0.32
+    assert plain["quote_share"]["value"] == 0.2
     for url in (YT, PANOPTO):
         linked, count = link_times(md, url)
         assert count > 0
