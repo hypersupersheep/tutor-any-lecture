@@ -358,3 +358,52 @@ def test_word_rules_are_not_applied_to_thai():
     assert status_of(unknown, "thin_section") == "WARN"
     assert measure_note(THAI_NOTE, "th", "deep", 3.0, "th")["length"] == {
         "unit": "words", "total": None, "per_min": None, "window": None}
+
+
+# ---- details blocks and math forms -----------------------------------------------
+
+
+def sample_note():
+    return resources.files("tutor_any_lecture").joinpath("data", "sample", "explanation.md").read_text(encoding="utf-8")
+
+
+def details_shape(md):
+    results = check_note(md, "en", "deep", 90, "markdown")
+    return status_of(results, "details_shape"), details_of(results, "details_shape")
+
+
+def test_details_must_be_balanced_and_have_a_summary():
+    assert details_shape("## A\n\nText.\n\n<details>\nAnswer.\n") == (
+        "FAIL", ["line 5: <details> has no <summary>", "line 5: <details> is never closed"])
+    assert details_shape("## A\n\nText.\n</details>\n") == ("FAIL", ["line 4: </details> closes nothing"])
+    assert details_shape("## A\n\n```\nx\n```\n\n<details>\nAnswer.\n</details>\n") == (
+        "FAIL", ["line 7: <details> has no <summary>"])
+    assert details_shape("## A\n\n<details>\n\n<summary>Answer</summary>\n\nYes.\n\n</details>\n") == ("PASS", [])
+    assert details_shape("## A\n\n```html\n<details>\nAnswer.\n```\n") == ("PASS", [])
+    assert details_shape(sample_note()) == ("PASS", [])
+
+
+def test_details_shape_comes_after_details_missing():
+    names = [r.name for r in check_note(sample_note(), "en", "deep", 90, "markdown")]
+    assert names[names.index("details_missing") + 1] == "details_shape"
+
+
+MATH_NOTE = "## A\n\nThe rate \\(r\\) grows.\n\n\\[ x^2 \\]\n\nIt costs $5 today.\n\nFine: $r$, $$x$$ and \\$5.\n"
+
+
+def test_math_forms_github_does_not_render_warn():
+    def math_form(md):
+        results = check_note(md, "en", "deep", 90, "markdown")
+        return status_of(results, "math_form"), details_of(results, "math_form")
+
+    three = [
+        "line 3: \\( … \\) does not render on GitHub: write $…$",
+        "line 5: \\[ … \\] does not render on GitHub: write $$…$$",
+        "line 7: unescaped $ outside math: write \\$ for a currency sign",
+    ]
+    assert math_form(MATH_NOTE) == ("WARN", three)
+    assert math_form(MATH_NOTE + "$$\nx\n$$\n\nIt costs $5.\n") == (
+        "WARN", three + ["line 14: unescaped $ outside math: write \\$ for a currency sign"])
+    assert math_form(sample_note()) == ("PASS", [])
+    names = [r.name for r in check_note(MATH_NOTE, "en", "deep", 90, "markdown")]
+    assert names[names.index("bullets") + 1] == "math_form"

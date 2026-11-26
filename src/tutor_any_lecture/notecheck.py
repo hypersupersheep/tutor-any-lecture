@@ -16,7 +16,9 @@ from .textstats import (
     ANGLE_URL_RE,
     BARE_URL_RE,
     CJK_RE,
+    DISPLAY_MATH_RE,
     INLINE_CODE_RE,
+    INLINE_MATH_RE,
     MD_LINK_URL_RE,
     fenced_lines,
     is_cjk_language,
@@ -98,6 +100,9 @@ HIGHLIGHT_RE = re.compile(r"==[^=\n]+==")
 BULLET_RE = re.compile(r"^\s*[-*+] ")
 # A list item line, as the paragraph splitter breaks on it.
 LIST_ITEM_RE = re.compile(r"^\s*(?:[-*]|\d+\.) ")
+# details_shape: an opening tag with or without attributes, and a closing tag, any letter case.
+DETAILS_TAG_RE = re.compile(r"<details(?:\s[^>]*)?>|</details\s*>", re.IGNORECASE)
+NONSPACE_RE = re.compile(r"\S")
 # cited_quotes holds each inline code span as <CODE_HOLD><index><CODE_HOLD> (a private-use character).
 CODE_HOLD = "\ue001"
 CODE_HOLD_RE = re.compile(rf"{CODE_HOLD}(\d+){CODE_HOLD}")
@@ -493,6 +498,71 @@ def _details_problems(bodies: dict[str, list[str]]) -> list[str]:
     return problems
 
 
+def _outside_code(md: str) -> str:
+    """``md`` with each fenced line left blank and inline code deleted: one line per line of
+    the note, so a position's line number is the note's own."""
+    lines = md.split("\n")
+    return "\n".join("" if fenced else INLINE_CODE_RE.sub("", line) for line, fenced in zip(lines, fenced_lines(lines)))
+
+
+def _line_of(text: str, pos: int) -> int:
+    return text.count("\n", 0, pos) + 1
+
+
+def _has_summary(text: str, end: int) -> bool:
+    """The next non-space text after ``end`` starts with <summary, and its line closes it."""
+    m = NONSPACE_RE.search(text, end)
+    if m is None or not text[m.start() :].lower().startswith("<summary"):
+        return False
+    eol = text.find("\n", m.start())
+    return "</summary>" in text[m.start() : eol if eol >= 0 else len(text)].lower()
+
+
+def _details_shape_problems(text: str) -> list[str]:
+    """Unbalanced <details> tags and blocks that do not open with a summary, in line order.
+
+    ``text`` is the note outside code (``_outside_code``). Blocks may nest. For one tag the
+    summary problem comes before the unclosed one.
+    """
+    problems: list[tuple[int, int, str]] = []  # (position, order for one tag, message)
+    open_tags: list[int] = []
+    for m in DETAILS_TAG_RE.finditer(text):
+        where = f"line {_line_of(text, m.start())}"
+        if m.group().startswith("</"):
+            if open_tags:
+                open_tags.pop()
+            else:
+                problems.append((m.start(), 0, f"{where}: </details> closes nothing"))
+            continue
+        open_tags.append(m.start())
+        if not _has_summary(text, m.end()):
+            problems.append((m.start(), 0, f"{where}: <details> has no <summary>"))
+    problems += [(pos, 1, f"line {_line_of(text, pos)}: <details> is never closed") for pos in open_tags]
+    return [message for _, _, message in sorted(problems)]
+
+
+def _math_form_problems(text: str) -> list[str]:
+    """Math that GitHub does not render, and stray dollar signs, at most one of each per line.
+
+    ``text`` is the note outside code. A stray $ is one left after removing \\$, display
+    math (across lines) and inline math; each removed span keeps its newlines.
+    """
+    def keep_newlines(m: re.Match) -> str:
+        return "\n" * m.group().count("\n")
+
+    rest = DISPLAY_MATH_RE.sub(keep_newlines, text.replace("\\$", ""))
+    rest = INLINE_MATH_RE.sub(keep_newlines, rest)
+    problems: list[str] = []
+    for n, (line, left) in enumerate(zip(text.split("\n"), rest.split("\n")), 1):
+        if "\\(" in line:
+            problems.append(f"line {n}: \\( … \\) does not render on GitHub: write $…$")
+        if "\\[" in line:
+            problems.append(f"line {n}: \\[ … \\] does not render on GitHub: write $$…$$")
+        if "$" in left:
+            problems.append(f"line {n}: unescaped $ outside math: write \\$ for a currency sign")
+    return problems
+
+
 def _round(x: float | None) -> float | None:
     return None if x is None else round(x, 2)
 
@@ -631,6 +701,7 @@ def check_note(
     w_lines = w.split("\n")
     p_lines = p.split("\n")
     paras = _paragraphs(p_lines)
+    outside_code = _outside_code(md)
     # Words cannot be counted in a script the checks cannot split.
     words_apply = not unsegmented(strip_markup(p))
 
@@ -654,6 +725,7 @@ def check_note(
     results.append(_result("callout_type", "FAIL", bad_callouts))
     results.append(_result("toc_mismatch", "FAIL", _toc_problems(w_lines, target)))
     results.append(_result("details_missing", "FAIL", _details_problems(bodies)))
+    results.append(_result("details_shape", "FAIL", _details_shape_problems(outside_code)))
 
     para_quotes = [[q for line in para for q in _inline_quotes(line)] for para in paras]
     results.append(
@@ -792,6 +864,7 @@ def check_note(
             else [f"{bullets} bullet lines of {len(p_lines)} ({share:.0%}), at most {THRESHOLDS['bullet_share_max']:.0%}"],
         )
     )
+    results.append(_result("math_form", "WARN", _math_form_problems(outside_code)))
 
     if _is_cross(lang, lecture_lang):
         lo, hi = THRESHOLDS["cross_language_quote_ratio"][quote_density]
