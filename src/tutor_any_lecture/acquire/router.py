@@ -1,7 +1,8 @@
 """Classify the files in a materials folder and plan the acquisition commands.
 
 ``route()`` only plans: it starts no process, writes no file, creates no folder and
-makes no network call. The only files it opens are the ``.json`` files in the folder.
+makes no network call. The only files it opens are the ``.json``, ``.txt`` and ``.docx``
+files in the folder: a ``.txt`` or ``.docx`` is a transcript only when it has time stamps.
 """
 
 from __future__ import annotations
@@ -9,16 +10,21 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from ..office import docx_lines
 from ..source import SLIDE_DECK_SUFFIXES
+from ..transcript import parse_meeting_export, parse_stamped_txt
 from ..unit import UnitPaths
 from .panopto import load_extract
 
 T = "tutor-any-lecture"
 
+# How much of a .txt is read to tell a transcript from other text.
+_TXT_HEAD_BYTES = 64 * 1024
+
 _BY_SUFFIX = {
     **{s: "video" for s in (".mp4", ".mkv", ".mov", ".webm", ".avi", ".m4v")},
     **{s: "audio" for s in (".mp3", ".m4a", ".wav", ".aac", ".flac", ".ogg")},
-    **{s: "transcript" for s in (".srt", ".vtt", ".txt")},
+    **{s: "transcript" for s in (".srt", ".vtt")},
     **{s: "slides" for s in SLIDE_DECK_SUFFIXES},
     **{s: "images" for s in (".jpg", ".jpeg", ".png", ".heic")},
 }
@@ -62,6 +68,24 @@ def _is_importable(path: Path) -> bool:
     if isinstance(data, list) and data:
         return all(isinstance(e, dict) and {"start", "end", "text"} <= e.keys() for e in data)
     return False
+
+
+def _is_timed_txt(path: Path) -> bool:
+    """The first 64 KiB give a segment, read as ``acquire import`` reads a .txt."""
+    try:
+        with open(path, "rb") as f:
+            text = f.read(_TXT_HEAD_BYTES).decode("utf-8-sig", errors="replace")
+        return bool(parse_stamped_txt(text, None) or parse_meeting_export(text.splitlines(), None))
+    except Exception:
+        return False
+
+
+def _is_timed_docx(path: Path) -> bool:
+    """A .docx whose lines give a segment; one that cannot be read is not a transcript."""
+    try:
+        return bool(parse_meeting_export(docx_lines(path), None))
+    except Exception:
+        return False
 
 
 def route(folder: Path, unit: Path | None = None) -> dict:
@@ -110,6 +134,10 @@ def route(folder: Path, unit: Path | None = None) -> dict:
                 cls = "transcript"
             else:
                 cls = "other"
+        elif suffix == ".txt":
+            cls = "transcript" if _is_timed_txt(path) else "other"
+        elif suffix == ".docx":
+            cls = "transcript" if _is_timed_docx(path) else "other"
         else:
             cls = _BY_SUFFIX.get(suffix, "other")
         files[cls].append(f)

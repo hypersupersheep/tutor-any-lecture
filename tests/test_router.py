@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from conftest import fx
+from fixtures.make_office import make_docx
 from tutor_any_lecture.acquire.router import route
 from tutor_any_lecture.cli import main
 from tutor_any_lecture.unit import UnitPaths
@@ -375,3 +376,81 @@ def test_each_unsafe_character_is_caught(tmp_path, name):
     plan = route(tmp_path)
     assert plan["steps"] == [] and plan["files"]["other"] == [str(tmp_path.resolve() / name)]
     assert [q["about"] for q in plan["questions"]] == ["unsafe-name"]
+
+
+# ---- Task 10b: a .txt or .docx is a transcript only with time stamps --------------
+
+TEAMS_HEADER_LINES = [
+    "Lecture 3 - Discounting",
+    "November 3, 2026, 2:00PM",
+    "Alice Smith started transcription",
+    "Alice Smith\t0:03",
+    "Welcome to the course.",
+    "Alice Smith   1:02",
+    "Today we cover discounting",
+    "and why it matters.",
+    "Speaker 2   1:02:03",
+    "What rate do we use?",
+    "Alice Smith stopped transcription",
+]
+
+
+def import_steps(plan):
+    # local helper: the planned acquire import steps
+    return [s for s in plan["steps"] if s["argv"][1:3] == ["acquire", "import"]]
+
+
+def test_unstamped_txt_is_not_a_transcript(tmp_path):
+    touch(tmp_path / "a", "lecture.srt")
+    (tmp_path / "a" / "notes.txt").write_text("Reading list\nChapter 2\n", encoding="utf-8", newline="\n")
+    plan = route(tmp_path / "a")
+    root = (tmp_path / "a").resolve()
+    assert plan["files"]["transcript"] == [str(root / "lecture.srt")]
+    assert plan["files"]["other"] == [str(root / "notes.txt")]
+    assert plan["questions"] == []
+    steps = import_steps(plan)
+    assert len(steps) == 1 and steps[0]["argv"][4] == str(root / "lecture.srt")
+
+    touch(tmp_path / "b")
+    (tmp_path / "b" / "notes.txt").write_text("Reading list\nChapter 2\n", encoding="utf-8", newline="\n")
+    plan = route(tmp_path / "b")
+    assert plan["steps"] == [] and plan["slide_source"] == "none"
+
+
+def test_stamped_txt_is_a_transcript(tmp_path):
+    touch(tmp_path / "a")
+    (tmp_path / "a" / "stamped.txt").write_bytes(fx("transcripts", "stamped.txt").read_bytes())
+    touch(tmp_path / "b")
+    (tmp_path / "b" / "bom.txt").write_bytes(b"\xef\xbb\xbf[0:00] a\r\n")
+    for folder, name in (("a", "stamped.txt"), ("b", "bom.txt")):
+        plan = route(tmp_path / folder)
+        assert plan["files"]["transcript"] == [str((tmp_path / folder).resolve() / name)]
+        assert kinds(plan["steps"]) == [["acquire", "import"]]
+
+
+def test_zoom_txt_is_a_transcript(tmp_path):
+    (tmp_path / "zoom.txt").write_text(
+        "[Alice Smith] 00:00:03\nWelcome to the course.\n", encoding="utf-8", newline="\n"
+    )
+    plan = route(tmp_path)
+    zoom = str(tmp_path.resolve() / "zoom.txt")
+    assert plan["files"]["transcript"] == [zoom]
+    assert [s["argv"] for s in plan["steps"]] == [
+        ["tutor-any-lecture", "acquire", "import", "--file", zoom, "--unit", "<unit>"],
+    ]
+    assert plan["questions"] == []
+
+
+def test_docx_is_a_transcript_only_with_time_stamps(tmp_path):
+    make_docx(tmp_path, TEAMS_HEADER_LINES, name="Lecture 3.docx")
+    make_docx(tmp_path, ["Week 3 reading list"], name="handout.docx")
+    (tmp_path / "empty.docx").write_bytes(b"")
+    plan = route(tmp_path)
+    root = tmp_path.resolve()
+    lecture = str(root / "Lecture 3.docx")
+    assert plan["files"]["transcript"] == [lecture]
+    assert plan["files"]["other"] == [str(root / "empty.docx"), str(root / "handout.docx")]
+    assert [s["argv"] for s in plan["steps"]] == [
+        ["tutor-any-lecture", "acquire", "import", "--file", lecture, "--unit", "<unit>"],
+    ]
+    assert plan["questions"] == []
