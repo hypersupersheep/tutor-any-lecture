@@ -12,6 +12,7 @@ from . import __version__
 from .office import OfficePackage, child, children, local_name, namespace, namespaced_attribute
 from .plan import read_json
 from .source import SourceInfo, add_slide_digest, sha256_file
+from .textstats import cjk_runs, cjk_script
 from .transcript import AcquireError
 from .unit import UnitPaths
 
@@ -313,8 +314,46 @@ def _term_class(token: str) -> int | None:
     return None
 
 
+def _pieces(chunk: str) -> list[tuple[str, bool]]:
+    """``chunk`` cut into maximal stretches of CJK letters (True) and of other characters (False)."""
+    pieces: list[tuple[str, bool]] = []
+    for ch in chunk:
+        cjk = cjk_script(ch) is not None
+        if pieces and pieces[-1][1] == cjk:
+            pieces[-1] = (pieces[-1][0] + ch, cjk)
+        else:
+            pieces.append((ch, cjk))
+    return pieces
+
+
+def _chunk_terms(chunk: str) -> list[tuple[str, int]]:
+    """The terms of one whitespace chunk, in order, with their class.
+
+    A stretch of other characters goes through the Latin rules (outer strip, then
+    ``_term_class``). A stretch of CJK letters is cut into its runs of one script; a run of
+    2 to 10 characters that is not hiragana is a class 2 term, as written. Unclassed tokens
+    are not recorded, so they never block a later spelling.
+    """
+    terms: list[tuple[str, int]] = []
+    for piece, cjk in _pieces(chunk):
+        if not cjk:
+            token = _strip_outer(piece)
+            cls = _term_class(token) if token else None
+            if cls is not None:
+                terms.append((token, cls))
+            continue
+        for run, script in cjk_runs(piece):
+            if script != "hiragana" and 2 <= len(run) <= 10:
+                terms.append((run, 2))
+    return terms
+
+
 def term_list(pages: list[Page]) -> list[str]:
-    """Distinctive slide terms, uncapped: class 1 in first-seen order, then class 2."""
+    """Distinctive slide terms, uncapped: class 1 in first-seen order, then class 2.
+
+    Each whitespace chunk is read as pieces (``_chunk_terms``), so a deck in Chinese,
+    Japanese or Korean gives its runs of one script between punctuation as terms.
+    """
     seen: set[str] = set()
     by_class: dict[int, list[str]] = {1: [], 2: []}
     for page in pages:
@@ -327,17 +366,12 @@ def term_list(pages: list[Page]) -> list[str]:
                 break
         for line in lines:
             for chunk in line.split():
-                token = _strip_outer(chunk)
-                if not token:
-                    continue
-                cls = _term_class(token)
-                if cls is None:
-                    continue  # unclassed tokens are not recorded, so they never block a later spelling
-                key = token.casefold()
-                if key in seen:
-                    continue
-                seen.add(key)
-                by_class[cls].append(token)
+                for token, cls in _chunk_terms(chunk):
+                    key = token.casefold()
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    by_class[cls].append(token)
     return by_class[1] + by_class[2]
 
 

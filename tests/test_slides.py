@@ -209,3 +209,18 @@ def test_render_failure_is_acquire_error(monkeypatch, tmp_path):
     assert str(exc.value).startswith("could not render page 1 of")
     assert str(exc.value) == "could not render page 1 of slides.pdf"
     assert isinstance(exc.value.__cause__, OSError)
+
+
+def test_cjk_slide_terms_are_runs_between_punctuation():
+    page = Page(1, "1", "随机微积分\n布朗运动、伊藤引理\n期权定价\n1/1")
+    assert term_list([page]) == ["随机微积分", "布朗运动", "伊藤引理", "期权定价"]
+    assert slide_terms([page]) == "随机微积分, 布朗运动, 伊藤引理, 期权定价"
+    assert term_list([Page(1, None, "確率過程の定義\nブラック・ショールズ")]) == ["確率過程", "定義", "ブラック", "ショールズ"]
+    assert term_list([Page(1, None, "확률과정 마르코프 연쇄")]) == ["확률과정", "마르코프", "연쇄"]
+    # one character, sixteen characters, hiragana
+    assert term_list([Page(1, None, "鞅\n布朗运动是一个连续时间的随机过程\nについて")]) == []
+
+
+def test_mixed_chunks_keep_latin_rules():
+    page = Page(1, None, "GBM的定义 Black-Scholes模型 martingale鞅过程")
+    assert term_list([page]) == ["GBM", "Black-Scholes", "的定义", "模型", "martingale", "鞅过程"]

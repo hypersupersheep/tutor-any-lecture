@@ -1,4 +1,4 @@
-"""ASR suspects: transcript words that look like a misheard slide term.
+"""ASR suspects: transcript words, or stretches of CJK text, that look like a misheard slide term.
 
 Flag only, never fix: the transcript is read and left byte-identical. The agent turns
 sources/suspects.json into the errata table of the note.
@@ -19,6 +19,9 @@ from .unit import UnitPaths
 THRESHOLD = 0.8
 # Word endings cut off to find a plain inflection of a slide term ("payments", "included").
 INFLECTION_ENDINGS = ("ing", "ed", "es", "s", "e", "d")
+# The lengths of a CJK slide term that is compared: a shorter one leaves too little to tell
+# a mishearing from another word, and term_list keeps no run longer than 10.
+CJK_TERM_MIN, CJK_TERM_MAX = 4, 10
 
 
 def norm(s: str) -> str:
@@ -27,18 +30,8 @@ def norm(s: str) -> str:
     return "".join(c for c in decomposed if unicodedata.combining(c) == 0).casefold()
 
 
-def _tokens(text: str) -> list[str]:
-    """Latin words and CJK 2-4-grams, in order of occurrence, from the runs of ``cjk_runs``."""
-    tokens: list[str] = []
-    for run, script in cjk_runs(text):
-        if script is None:
-            tokens.append(run)
-            continue
-        for start in range(len(run)):
-            for size in (2, 3, 4):
-                if start + size <= len(run):
-                    tokens.append(run[start:start + size])
-    return tokens
+def _nfkc(text: str) -> str:
+    return unicodedata.normalize("NFKC", text)
 
 
 def _stems(word: str) -> set[str]:
@@ -72,11 +65,51 @@ def _best_match(key: str, matchers: list[tuple[str, difflib.SequenceMatcher]]) -
     return best_term, best
 
 
+# CJK terms keyed by (written length, free position, NFKC form without that position); each
+# entry is (order in term_list, the term, its NFKC character at the free position).
+CjkIndex = dict[tuple[int, int, str], list[tuple[int, str, str]]]
+
+
+def _cjk_index(terms: list[str]) -> CjkIndex:
+    """The CJK terms (every character has a ``cjk_script``, 4 to 10 characters), indexed by
+    length and by the one position a window may differ in."""
+    index: CjkIndex = {}
+    for order, term in enumerate(terms):
+        if not CJK_TERM_MIN <= len(term) <= CJK_TERM_MAX or any(cjk_script(c) is None for c in term):
+            continue
+        form = _nfkc(term)
+        for i, ch in enumerate(form):
+            index.setdefault((len(term), i, form[:i] + form[i + 1:]), []).append((order, term, ch))
+    return index
+
+
+def _cjk_nearest(window: str, form: str, index: CjkIndex) -> str | None:
+    """The first term (in term_list order) of ``window``'s written length whose NFKC form
+    differs from ``form`` (the window's NFKC form) in exactly one position, else None."""
+    best: tuple[int, str] | None = None
+    for i, ch in enumerate(form):
+        for order, term, term_ch in index.get((len(window), i, form[:i] + form[i + 1:]), ()):
+            if term_ch != ch and (best is None or order < best[0]):
+                best = (order, term)
+    return best[1] if best is not None else None
+
+
 def flag_suspects(transcript: Transcript, pages: list[Page], lang: str) -> list[dict]:
     """Transcript tokens close to, but not found in, the slides.
 
-    A word (not a CJK n-gram) whose stems meet the stems of a slide term is a plain
-    inflection of that term ("payments" for "payment"), not a suspect.
+    Latin path: each run of letters of no CJK script (``cjk_runs``) is a token, compared
+    after ``norm`` with every slide term; a ratio of ``THRESHOLD`` or more is a suspect. A
+    token whose stems meet the stems of a slide term is a plain inflection of that term
+    ("payments" for "payment"), not a suspect.
+
+    CJK path: every window of a CJK run as long as a CJK term (``_cjk_index``) is compared,
+    after NFKC (``norm``'s NFKD would split a Hangul syllable), with the terms of that length;
+    it is a suspect when it is not in the NFKC slide text and differs from a term in exactly
+    one position. Its ratio is ``(L - 1) / L`` for a term of L characters; ``THRESHOLD`` does
+    not apply.
+
+    One entry per segment for each distinct compared form, ``heard`` as the segment first
+    has it; entries come in order of where the heard text starts, the shorter first.
     ``lang`` is kept for the interface; tokens are chosen by script, so it has no effect.
     """
     terms = term_list(pages)
@@ -85,15 +118,39 @@ def flag_suspects(transcript: Transcript, pages: list[Page], lang: str) -> list[
     term_stems = set().union(*(_stems(norm(t)) for t in terms))
     # Token first, term second, as in SequenceMatcher(None, norm(token), norm(term), autojunk=False).
     matchers = [(t, difflib.SequenceMatcher(None, "", norm(t), autojunk=False)) for t in terms]
-    slide_text = norm("\n".join(p.text for p in pages))
+    page_text = "\n".join(p.text for p in pages)
+    slide_text = norm(page_text)
+    slide_nfkc = _nfkc(page_text)
+    index = _cjk_index(terms)
+    lengths = sorted({length for length, _, _ in index})
 
-    # One computation per distinct normalised token: None means "not a suspect".
+    # One computation per distinct compared form: None means "not a suspect".
     cache: dict[str, tuple[str, float] | None] = {}
+    cjk_cache: dict[tuple[int, str], str | None] = {}
     found: list[dict] = []
     for segment in transcript.segments:
+        time = float(segment.start)
         reported: set[str] = set()
-        for token in _tokens(segment.text):
-            key = norm(token)
+        reported_cjk: set[str] = set()
+        for run, script in cjk_runs(segment.text):
+            if script is not None:
+                for offset in range(len(run)):
+                    for length in lengths:
+                        if offset + length > len(run):
+                            break
+                        window = run[offset:offset + length]
+                        form = _nfkc(window)
+                        if form in reported_cjk:
+                            continue
+                        if (length, form) not in cjk_cache:
+                            cjk_cache[length, form] = None if form in slide_nfkc else _cjk_nearest(window, form, index)
+                        nearest = cjk_cache[length, form]
+                        if nearest is not None:
+                            reported_cjk.add(form)
+                            ratio = round((length - 1) / length, 3)
+                            found.append({"time": time, "heard": window, "nearest": nearest, "ratio": ratio})
+                continue
+            key = norm(run)
             if key in reported:
                 continue
             if key not in cache:
@@ -103,13 +160,10 @@ def flag_suspects(transcript: Transcript, pages: list[Page], lang: str) -> list[
                     term, ratio = _best_match(key, matchers)
                     cache[key] = (term, ratio) if ratio >= THRESHOLD else None
             hit = cache[key]
-            if hit is None:
-                continue
-            # Decided by the token as heard: a CJK n-gram has no inflections.
-            if cjk_script(token[0]) is None and _stems(key) & term_stems:
+            if hit is None or _stems(key) & term_stems:
                 continue
             reported.add(key)
-            found.append({"time": float(segment.start), "heard": token, "nearest": hit[0], "ratio": round(hit[1], 3)})
+            found.append({"time": time, "heard": run, "nearest": hit[0], "ratio": round(hit[1], 3)})
     return found
 
 
