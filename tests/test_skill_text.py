@@ -386,3 +386,20 @@ def test_writing_lists_every_quotation_mark_pair():
 
 def test_writing_states_the_speaker_rule():
     assert "Give a quote to the speaker the transcript names" in read(REFERENCES / "writing.md")
+
+
+def test_gate_states_what_the_checks_cannot_read():
+    gate = read(REFERENCES / "gate.md")
+    for phrase in ("not applied for this language", "Thai", "German", "年", "details_shape", "math_form"):
+        assert phrase in gate, phrase
+
+
+def test_writing_has_one_math_rule():
+    writing = read(REFERENCES / "writing.md")
+    assert "Write math as `$…$` and `$$…$$` only" in writing
+    assert "`\\$`" in writing
+
+
+def test_writing_skeleton_answers_have_blank_lines():
+    answer = "   <details><summary>Answer</summary>\n\n   <cited answer>\n\n   </details>"
+    assert read(REFERENCES / "writing.md").count(answer) == 2

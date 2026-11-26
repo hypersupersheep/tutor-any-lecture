@@ -15,6 +15,8 @@ The note is written in `plan.note_language`. The `terms` setting decides how tec
 - `note`: the note language only;
 - `original`: the lecturer's term only.
 
+Which checks can read which languages, and what they report when they cannot, is in [gate](gate.md), Languages.
+
 Write directly: conclusion first, no greetings, no wrap-up. When you report the lecturer's position, write "the lecturer says", not "we think". Write headings in sentence case: a run of capitalised words, or a word with a capital inside it (an acronym, a CamelCase name), that does not appear in the transcript or slides draws a `terms` warning. NOTE callouts and the marker sections are exempt, and so are the lines between the H1 and the first H2 (the table of contents and the how-to-read lines) and the callout type names NOTE, IMPORTANT, WARNING and CAUTION anywhere.
 
 ## Skeleton
@@ -33,7 +35,9 @@ How to read this note: <two or three sentences, in the note language>
 <!-- tal:pretest -->
 1. <pre-variant prompt, verbatim from items.json>
    <details><summary>Answer</summary>
+
    <cited answer>
+
    </details>
 <!-- /tal:pretest -->
 
@@ -46,7 +50,9 @@ How to read this note: <two or three sentences, in the note language>
 <!-- tal:check -->
 1. <practice prompt, verbatim from items.json>
    <details><summary>Answer</summary>
+
    <cited answer>
+
    </details>
 <!-- /tal:check -->
 
@@ -69,6 +75,7 @@ How to read this note: <two or three sentences, in the note language>
 <!-- /tal:errata -->
 ```
 
+- Each answer has a blank line above and below it inside `<details>`, as in the skeleton: the blank lines let Markdown and math render inside the block.
 - Start the note with one H1 (a style rule; verify does not check it). Then the table of contents, then the "how to read this note" lines, then the sections.
 - **How to read this note** (kept from v1, shortened): the body holds only what the lecturer said and the slides show, in lecture order; quoted text is verbatim from the slides or the recording, with `…` marking a cut and `[ ]` an insertion; `(slide N)` is the footer number and `(mm:ss)` the recording time; note boxes are tutor additions, caution boxes are errata and doubts; equations are numbered so they can be referred to. Add or drop half a sentence to fit the unit (for example, no exercises).
 - **Table of contents.** One list item per H2 that you want listed. Each link must match an H2: `[text](#slug)` for markdown (see [markdown](output-targets/markdown.md)), `[[#Heading]]` with the heading text exactly for obsidian (see [obsidian](output-targets/obsidian.md)). Keep `[ ] | #` out of H2 text.
@@ -84,7 +91,7 @@ The first line of every topic H2 is an italic anchor line written as a citation,
 
 ## What a section is made of
 
-Each H2 holds one to six paragraphs; a paragraph completes one step of reasoning (roughly 60 to 250 CJK characters or 40 to 150 words; over 300 CJK characters or 180 words is too long). A display equation `$$…$$` belongs to its paragraph. Inside a paragraph the content keeps this order, using only the parts that exist: why the lecturer introduces the idea, then the definition (verbatim, cited), then intuition or a concrete example (examples before symbols), then the formula or derivation (key formulas numbered `$$…\tag{n}$$`, each derivation step naming the rule it uses), then a worked example, then the most common mistake.
+Each H2 holds one to six paragraphs; a paragraph completes one step of reasoning (roughly 60 to 250 CJK characters or 40 to 150 words; over 300 CJK characters or 180 words is too long). A display equation `$$…$$` belongs to its paragraph. Write math as `$…$` and `$$…$$` only, and number a key formula with `\tag{n}` inside its display, `$$…\tag{n}$$`; `\(…\)` and `\[…\]` do not render on GitHub and draw a `math_form` warning. Write a currency sign as `\$`, so it is not read as math. Inside a paragraph the content keeps this order, using only the parts that exist: why the lecturer introduces the idea, then the definition (verbatim, cited), then intuition or a concrete example (examples before symbols), then the formula or derivation (key formulas numbered, each derivation step naming the rule it uses), then a worked example, then the most common mistake.
 
 The body of a paragraph is your explanation; quotes are the evidence set into it. At most 3 quotes per paragraph; quote definitions, results and the lecturer's own explanations, never transitions, repetitions or a second phrasing of the same point (paraphrase those and cite the time). Quote where the lecturer's own wording matters (a definition, the statement of a result, a phrase worth remembering), in whole clauses, not as fragments spliced into a sentence of yours; a note in another language than the lecture is written in its own language, with the quotes set into it. A WARN from the quote measure (below) is advice, not a target: never add quotes to reach a number. Lists are only for parallel items: the formula table, the errata table, the exercise list and the item lists in marker sections. Reasoning, explanation and cause go into sentences. At most 15 bold spans in the note, at most one bolded conclusion per section.
 
@@ -134,7 +141,7 @@ What the sections print:
 - `not-covered`: every slide the lecture did not cover, written as `slide N`, or `slides N–M` for a run (en dash or hyphen), with a sentence on why; the break, if any, in one sentence. The gate reads this section only for slide numbers, so a unit without slides needs nothing in it: write the break and any skipped stretch of the recording in plain sentences (`- 0:12–0:50: small talk before the lecture`), or leave the section out.
 - `errata`: the real transcription errors among `sources/suspects.json` (heard word, nearest slide term, time in seconds; write it as mm:ss), flagged, never silently fixed. A suspect that is an inflection of the slide's word, or simply correct, is not listed (see [teaching](teaching.md), Suspects). The lecturer's own slips go here too (say whether they corrected themselves), and slide typos with the slide number in the time column. The gate checks only the markers of this section; with no errata, leave the section out.
 
-Every numbered item in `pretest` and `check` needs its `<details>` answer before the next numbered item. The answer cites its source. Start the answer on the line after `<summary>Answer</summary>`, as in the skeleton: on the same line, the `terms` check reads "Answer" and a capitalised first word of the answer as one term.
+Every numbered item in `pretest` and `check` needs its `<details>` answer before the next numbered item. The answer cites its source. Start the answer after one blank line below `<summary>Answer</summary>`, as in the skeleton: on the same line, the `terms` check reads "Answer" and a capitalised first word of the answer as one term.
 
 **No restating.** The lecture prose (the note with every marker section removed) never restates an item prompt: no sentence of it may reach 0.6 containment of any prompt. For each tracked concept, the section that covers it gives the cited answer to that concept's pretest question in its own prose.
 
